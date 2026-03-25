@@ -1,0 +1,30 @@
+{
+  "name": "game 2",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/client"
+        }
+      }
+    },
+    "Workspace": {
+      "$path": "src/workspace/workspace-assets.rbxmx",
+      "$ignoreUnknownInstances": true,
+      "HealthGUI": {
+        "$path": "src/workspace/HealthGUI"
+      }
+    }
+  }
+}
