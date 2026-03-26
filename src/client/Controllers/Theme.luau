@@ -24,7 +24,6 @@ Theme.ShopTabs = {
 	"Upgrades",
 	"Weapons",
 	"Cosmetics",
-	"Skill Tree",
 }
 
 Theme.ShopTabToCategory = {
@@ -46,7 +45,6 @@ Theme.ShopCopy = {
 	Upgrades = "Tune armor, stamina, and field utility before harder runs.",
 	Weapons = "Arm sidearms, control tools, and bunker-ready hardware.",
 	Cosmetics = "Apply bunker colors, field tags, and hub-facing flex gear.",
-	["Skill Tree"] = "Spend skill points to specialize into survival, combat, or logistics.",
 }
 
 Theme.SkillTreeBranches = {

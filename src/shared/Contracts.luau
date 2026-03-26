@@ -1,5 +1,5 @@
 export type FlowPhase = "Homepage" | "Loading" | "Lobby" | "Intermission" | "Deployment" | "Mission"
-export type TokenSource = "GroupJoin" | "DailyReward" | "RobuxPurchase" | "DeploySpend" | "MissionReward" | "SubscriptionReward"
+export type TokenSource = "GroupJoin" | "DailyReward" | "RobuxPurchase" | "DeploySpend" | "MissionReward" | "SubscriptionReward" | "ActivityReward"
 export type ShopCategory = "DeployTokens" | "Upgrades" | "Weapons" | "Cosmetics"
 
 export type SubscriptionProfile = {
@@ -62,6 +62,27 @@ export type LobbyState = {
 	activeSquads: number,
 	shopOpen: boolean,
 	deployPadLocked: boolean,
+	nextMissionPreview: {
+		optionId: string,
+		scenarioId: string,
+		scenarioName: string,
+		scenarioDescription: string,
+		layoutId: string,
+		layoutName: string,
+		layoutDescription: string,
+	}?,
+	nextMissionVote: {
+		sessionId: number,
+		leadingOptionId: string?,
+		options: {
+			{
+				optionId: string,
+				scenarioName: string,
+				layoutName: string,
+				voteCount: number,
+			}
+		},
+	}?,
 }
 
 export type DeployRequest = {
@@ -90,6 +111,7 @@ export type ProgressionProfile = {
 	identity: {
 		title: string,
 		badge: string?,
+		isModerator: boolean?,
 		isAdmin: boolean,
 		isOwner: boolean,
 	}?,
@@ -156,12 +178,14 @@ function Contracts.makeSquadSnapshot(
 	}
 end
 
-function Contracts.makeLobbyState(phase: FlowPhase, activeSquads: number, shopOpen: boolean, deployPadLocked: boolean): LobbyState
+function Contracts.makeLobbyState(phase: FlowPhase, activeSquads: number, shopOpen: boolean, deployPadLocked: boolean, nextMissionPreview, nextMissionVote): LobbyState
 	return {
 		phase = phase,
 		activeSquads = activeSquads,
 		shopOpen = shopOpen,
 		deployPadLocked = deployPadLocked,
+		nextMissionPreview = nextMissionPreview,
+		nextMissionVote = nextMissionVote,
 	}
 end
 

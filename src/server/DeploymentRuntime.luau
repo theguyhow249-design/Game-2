@@ -18,6 +18,16 @@ local function findMissionSpawn()
 	return mission:FindFirstChild("MissionSpawn")
 end
 
+local function getDeploymentOffset(index: number): Vector3
+	local formation = {
+		Vector3.new(-5, 4, -5),
+		Vector3.new(5, 4, -5),
+		Vector3.new(-5, 4, 5),
+		Vector3.new(5, 4, 5),
+	}
+	return formation[index] or Vector3.new(((index - 1) % 2 == 0 and -5 or 5), 4, math.floor((index - 1) / 2) * 6)
+end
+
 function DeploymentRuntime.start(serverSystems)
 	local flowService = serverSystems.FlowService
 	local missionService = serverSystems.MissionService
@@ -42,7 +52,7 @@ function DeploymentRuntime.start(serverSystems)
 				local character = player and player.Character
 				local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 				if rootPart then
-					local offset = Vector3.new((index - 1) * 6, 4, 0)
+					local offset = getDeploymentOffset(index)
 					character:PivotTo(missionSpawn.CFrame + offset)
 					player:SetAttribute("DeploymentState", "Mission")
 				end

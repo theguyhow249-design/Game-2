@@ -32,7 +32,10 @@ local InventoryService = require(servicesFolder:WaitForChild("InventoryService")
 local ShopService = require(servicesFolder:WaitForChild("ShopService"))
 local ScalingService = require(servicesFolder:WaitForChild("ScalingService"))
 local FlowService = require(servicesFolder:WaitForChild("FlowService"))
+local ActivityService = require(servicesFolder:WaitForChild("ActivityService"))
+local DuelService = require(servicesFolder:WaitForChild("DuelService"))
 local MissionService = require(servicesFolder:WaitForChild("MissionService"))
+local InstanceDeploymentService = require(servicesFolder:WaitForChild("InstanceDeploymentService"))
 local AdminService = require(servicesFolder:WaitForChild("AdminService"))
 local NameplateService = require(servicesFolder:WaitForChild("NameplateService"))
 
@@ -99,7 +102,9 @@ local function buildBootstrapData(player, services, config)
 			services.FlowService:GetPhase(),
 			services.SquadService:GetActiveSquadCount(),
 			true,
-			services.FlowService:IsDeployPadLocked()
+			services.FlowService:IsDeployPadLocked(),
+			services.FlowService:GetNextMissionPreview(),
+			services.FlowService:GetMapVoteState()
 		),
 		tokenBalance = services.TokenService:GetBalance(player),
 		squadSnapshot = squadSnapshot,
@@ -185,8 +190,19 @@ function ServerSystems.start()
 	local flowService = FlowService.new(context)
 	context.FlowService = flowService
 
+	local activityService = ActivityService.new(context)
+	context.ActivityService = activityService
+
+	local duelService = DuelService.new(context)
+	context.DuelService = duelService
+
 	local missionService = MissionService.new(context)
 	context.MissionService = missionService
+
+	local instanceDeploymentService = InstanceDeploymentService.new(context)
+	context.InstanceDeploymentService = instanceDeploymentService
+	flowService:SetInstanceDeploymentService(instanceDeploymentService)
+	missionService:SetInstanceDeploymentService(instanceDeploymentService)
 
 	local adminService = AdminService.new(context)
 	context.AdminService = adminService
@@ -209,7 +225,10 @@ function ServerSystems.start()
 	shopService:Start()
 	scalingService:Start()
 	flowService:Start()
+	activityService:Start()
+	duelService:Start()
 	missionService:Start()
+	instanceDeploymentService:Start()
 	adminService:Start()
 	nameplateService:Start()
 
@@ -269,6 +288,12 @@ function ServerSystems.start()
 	remotes:SetFunctionHandler(RemoteNames.Functions.RequestDeploy, function(player)
 		return flowService:RequestDeployment(player)
 	end)
+	remotes:SetFunctionHandler(RemoteNames.Functions.RequestMapVote, function(player, optionId)
+		return flowService:RequestMapVote(player, optionId)
+	end)
+	remotes:SetFunctionHandler(RemoteNames.Functions.RequestDuel, function(player, action)
+		return duelService:RequestDuel(player, action)
+	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.GetShopCatalog, function()
 		return shopService:GetCatalog()
 	end)
@@ -305,7 +330,10 @@ function ServerSystems.start()
 		ShopService = shopService,
 		ScalingService = scalingService,
 		FlowService = flowService,
+		ActivityService = activityService,
+		DuelService = duelService,
 		MissionService = missionService,
+		InstanceDeploymentService = instanceDeploymentService,
 		AdminService = adminService,
 		NameplateService = nameplateService,
 		ConfigureGroupRewards = function(predicate)

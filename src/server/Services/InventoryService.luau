@@ -1,7 +1,67 @@
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local InventoryService = {}
 InventoryService.__index = InventoryService
+
+local WEAPON_SKIN_PROFILES = {
+	cosmetic_field_cap = {
+		base = Color3.fromRGB(108, 118, 86),
+		accent = Color3.fromRGB(142, 156, 106),
+		dark = Color3.fromRGB(44, 50, 40),
+		grip = Color3.fromRGB(84, 90, 72),
+		material = Enum.Material.SmoothPlastic,
+	},
+	cosmetic_neon_outline = {
+		base = Color3.fromRGB(28, 34, 52),
+		accent = Color3.fromRGB(116, 92, 255),
+		dark = Color3.fromRGB(14, 18, 30),
+		grip = Color3.fromRGB(46, 54, 82),
+		material = Enum.Material.SmoothPlastic,
+		animated = true,
+		palette = {
+			Color3.fromRGB(88, 210, 255),
+			Color3.fromRGB(120, 84, 255),
+			Color3.fromRGB(255, 96, 214),
+		},
+		speed = 0.75,
+	},
+	cosmetic_bunker_glow = {
+		base = Color3.fromRGB(76, 104, 152),
+		accent = Color3.fromRGB(114, 162, 232),
+		dark = Color3.fromRGB(28, 38, 58),
+		grip = Color3.fromRGB(58, 74, 108),
+		material = Enum.Material.Metal,
+	},
+	cosmetic_ember_trace = {
+		base = Color3.fromRGB(126, 62, 44),
+		accent = Color3.fromRGB(224, 112, 74),
+		dark = Color3.fromRGB(46, 22, 18),
+		grip = Color3.fromRGB(82, 46, 32),
+		material = Enum.Material.Metal,
+		animated = true,
+		palette = {
+			Color3.fromRGB(178, 78, 52),
+			Color3.fromRGB(255, 132, 78),
+			Color3.fromRGB(255, 196, 104),
+		},
+		speed = 0.45,
+	},
+	cosmetic_medic_aura = {
+		base = Color3.fromRGB(82, 126, 104),
+		accent = Color3.fromRGB(136, 218, 170),
+		dark = Color3.fromRGB(28, 52, 42),
+		grip = Color3.fromRGB(68, 104, 86),
+		material = Enum.Material.SmoothPlastic,
+	},
+	cosmetic_vernal_glow = {
+		base = Color3.fromRGB(86, 132, 88),
+		accent = Color3.fromRGB(168, 232, 156),
+		dark = Color3.fromRGB(34, 58, 34),
+		grip = Color3.fromRGB(74, 108, 70),
+		material = Enum.Material.SmoothPlastic,
+	},
+}
 
 local function scaleVector3(vector, scale)
 	return Vector3.new(vector.X * scale, vector.Y * scale, vector.Z * scale)
@@ -31,10 +91,10 @@ local function attachWeaponPart(parent, handle, name, size, offset, color, mater
 	return part
 end
 
-local function buildWeaponVisual(parent, handle, weapon, scale)
+local function buildWeaponVisual(parent, handle, weapon, scale, styleOverride)
 	scale = scale or 1
 	local accentColor = weapon.AccentColor or weapon.HandleColor:Lerp(Color3.fromRGB(255, 255, 255), 0.25)
-	local style = weapon.ModelStyle or weapon.WeaponType
+	local style = styleOverride or weapon.ModelStyle or weapon.WeaponType
 
 	if style == "Fists" then
 		handle.Transparency = 1
@@ -60,10 +120,50 @@ local function buildWeaponVisual(parent, handle, weapon, scale)
 		return
 	end
 
+	if style == "PistolBack" then
+		handle.Size = scaleVector3(Vector3.new(0.18, 0.72, 0.2), scale)
+		attachWeaponPart(parent, handle, "Body", scaleVector3(Vector3.new(0.26, 0.96, 0.18), scale), CFrame.new(0, 0.08 * scale, 0), accentColor, Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Slide", scaleVector3(Vector3.new(0.3, 0.52, 0.14), scale), CFrame.new(0, 0.34 * scale, -0.08 * scale), Color3.fromRGB(28, 30, 36), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Muzzle", scaleVector3(Vector3.new(0.14, 0.16, 0.12), scale), CFrame.new(0, 0.62 * scale, -0.08 * scale), Color3.fromRGB(22, 22, 26), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Grip", scaleVector3(Vector3.new(0.16, 0.42, 0.18), scale), CFrame.new(0, -0.38 * scale, 0.08 * scale), weapon.HandleColor:Lerp(Color3.fromRGB(24, 24, 24), 0.18), Enum.Material.SmoothPlastic)
+		return
+	end
+
+	if style == "SMGBack" then
+		handle.Size = scaleVector3(Vector3.new(0.16, 1.02, 0.18), scale)
+		attachWeaponPart(parent, handle, "Body", scaleVector3(Vector3.new(0.28, 1.18, 0.18), scale), CFrame.new(0, 0.02 * scale, 0), accentColor, Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.12, 0.7, 0.12), scale), CFrame.new(0, 0.74 * scale, -0.04 * scale), Color3.fromRGB(22, 24, 28), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.14, 0.44, 0.16), scale), CFrame.new(0, -0.34 * scale, 0.08 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Stock", scaleVector3(Vector3.new(0.18, 0.46, 0.14), scale), CFrame.new(0, -0.72 * scale, 0), Color3.fromRGB(24, 26, 30), Enum.Material.Metal)
+		return
+	end
+
+	if style == "CarbineBack" then
+		handle.Size = scaleVector3(Vector3.new(0.16, 1.26, 0.18), scale)
+		attachWeaponPart(parent, handle, "Body", scaleVector3(Vector3.new(0.28, 1.36, 0.18), scale), CFrame.new(0, 0, 0), accentColor, Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 1.2, 0.1), scale), CFrame.new(0, 1.06 * scale, -0.04 * scale), Color3.fromRGB(22, 24, 28), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.14, 0.48, 0.16), scale), CFrame.new(0, -0.18 * scale, 0.08 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Stock", scaleVector3(Vector3.new(0.2, 0.56, 0.16), scale), CFrame.new(0, -0.92 * scale, 0.02 * scale), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		attachWeaponPart(parent, handle, "Sight", scaleVector3(Vector3.new(0.12, 0.18, 0.1), scale), CFrame.new(0, 0.42 * scale, -0.08 * scale), Color3.fromRGB(20, 22, 26), Enum.Material.Metal)
+		return
+	end
+
+	if style == "ShotgunBack" then
+		handle.Size = scaleVector3(Vector3.new(0.18, 1.32, 0.18), scale)
+		attachWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.3, 1.08, 0.18), scale), CFrame.new(0, 0.06 * scale, 0), accentColor, Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 1.46, 0.1), scale), CFrame.new(0, 1.12 * scale, -0.04 * scale), Color3.fromRGB(24, 24, 26), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Pump", scaleVector3(Vector3.new(0.18, 0.42, 0.16), scale), CFrame.new(0, 0.38 * scale, 0.06 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		attachWeaponPart(parent, handle, "Stock", scaleVector3(Vector3.new(0.22, 0.66, 0.16), scale), CFrame.new(0, -0.86 * scale, 0.02 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		return
+	end
+
 	if style == "Pistol" then
 		handle.Size = scaleVector3(Vector3.new(0.26, 0.92, 0.54), scale)
+		attachWeaponPart(parent, handle, "Frame", scaleVector3(Vector3.new(0.24, 0.36, 0.66), scale), CFrame.new(0, 0.02 * scale, 0.04 * scale), weapon.HandleColor, Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Slide", scaleVector3(Vector3.new(0.32, 0.2, 1.08), scale), CFrame.new(0, 0.3 * scale, -0.12 * scale), accentColor, Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.14, 0.14, 0.88), scale), CFrame.new(0, 0.22 * scale, -0.88 * scale), accentColor, Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Muzzle", scaleVector3(Vector3.new(0.16, 0.16, 0.12), scale), CFrame.new(0, 0.22 * scale, -1.38 * scale), Color3.fromRGB(26, 26, 30), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "GripPanel", scaleVector3(Vector3.new(0.18, 0.54, 0.28), scale), CFrame.new(0, -0.18 * scale, 0.18 * scale), weapon.HandleColor:Lerp(Color3.fromRGB(24, 24, 24), 0.2), Enum.Material.SmoothPlastic)
 		attachWeaponPart(parent, handle, "Sight", scaleVector3(Vector3.new(0.1, 0.08, 0.22), scale), CFrame.new(0, 0.44 * scale, -0.12 * scale), Color3.fromRGB(22, 24, 28), Enum.Material.Metal)
 		return
 	end
@@ -74,10 +174,14 @@ local function buildWeaponVisual(parent, handle, weapon, scale)
 		attachWeaponPart(parent, handle, "LowerReceiver", scaleVector3(Vector3.new(0.28, 0.34, 0.82), scale), CFrame.new(0, 0.08 * scale, 0.02 * scale), weapon.HandleColor, Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 0.1, 1.84), scale), CFrame.new(0, 0.32 * scale, -1.62 * scale), accentColor, Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Handguard", scaleVector3(Vector3.new(0.24, 0.2, 0.96), scale), CFrame.new(0, 0.22 * scale, -0.92 * scale), Color3.fromRGB(34, 36, 42), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "TopRail", scaleVector3(Vector3.new(0.12, 0.06, 1.84), scale), CFrame.new(0, 0.5 * scale, -0.72 * scale), Color3.fromRGB(18, 20, 24), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "MuzzleBrake", scaleVector3(Vector3.new(0.14, 0.14, 0.18), scale), CFrame.new(0, 0.32 * scale, -2.58 * scale), Color3.fromRGB(20, 20, 22), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "StockStrut", scaleVector3(Vector3.new(0.1, 0.16, 0.72), scale), CFrame.new(0, 0.18 * scale, 0.98 * scale), Color3.fromRGB(22, 24, 28), Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.24, 0.46, 0.96), scale), CFrame.new(0, 0.02 * scale, 0.88 * scale), weapon.HandleColor, Enum.Material.SmoothPlastic)
 		attachWeaponPart(parent, handle, "ButtPad", scaleVector3(Vector3.new(0.28, 0.54, 0.18), scale), CFrame.new(0, -0.04 * scale, 1.44 * scale), Color3.fromRGB(24, 24, 28), Enum.Material.Rubber)
 		attachWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.18, 0.52, 0.22), scale), CFrame.new(0, -0.42 * scale, -0.08 * scale) * CFrame.Angles(math.rad(-8), 0, 0), weapon.HandleColor, Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Sight", scaleVector3(Vector3.new(0.14, 0.12, 0.36), scale), CFrame.new(0, 0.54 * scale, -0.22 * scale), Color3.fromRGB(24, 26, 30), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "ChargingHandle", scaleVector3(Vector3.new(0.08, 0.08, 0.28), scale), CFrame.new(0.12 * scale, 0.34 * scale, 0.16 * scale), Color3.fromRGB(20, 22, 24), Enum.Material.Metal)
 		return
 	end
 
@@ -86,8 +190,11 @@ local function buildWeaponVisual(parent, handle, weapon, scale)
 		attachWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.32, 0.24, 1.02), scale), CFrame.new(0, 0.28 * scale, -0.08 * scale), accentColor, Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 0.1, 1.02), scale), CFrame.new(0, 0.22 * scale, -1.06 * scale), accentColor, Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Shroud", scaleVector3(Vector3.new(0.18, 0.18, 0.54), scale), CFrame.new(0, 0.24 * scale, -0.62 * scale), Color3.fromRGB(28, 30, 36), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "TopRail", scaleVector3(Vector3.new(0.1, 0.05, 1.02), scale), CFrame.new(0, 0.42 * scale, -0.12 * scale), Color3.fromRGB(18, 20, 24), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "Muzzle", scaleVector3(Vector3.new(0.12, 0.12, 0.12), scale), CFrame.new(0, 0.22 * scale, -1.56 * scale), Color3.fromRGB(22, 22, 24), Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.16, 0.72, 0.2), scale), CFrame.new(0, -0.5 * scale, -0.06 * scale), weapon.HandleColor, Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Stock", scaleVector3(Vector3.new(0.18, 0.18, 0.72), scale), CFrame.new(0, 0.18 * scale, 0.72 * scale), Color3.fromRGB(26, 28, 32), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "StockPad", scaleVector3(Vector3.new(0.2, 0.26, 0.12), scale), CFrame.new(0, 0.18 * scale, 1.14 * scale), Color3.fromRGB(18, 18, 20), Enum.Material.Rubber)
 		return
 	end
 
@@ -97,8 +204,11 @@ local function buildWeaponVisual(parent, handle, weapon, scale)
 		attachWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 0.1, 2.02), scale), CFrame.new(0, 0.22 * scale, -1.76 * scale), accentColor, Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Tube", scaleVector3(Vector3.new(0.08, 0.08, 1.74), scale), CFrame.new(0, 0.02 * scale, -1.54 * scale), Color3.fromRGB(96, 82, 64), Enum.Material.Metal)
 		attachWeaponPart(parent, handle, "Pump", scaleVector3(Vector3.new(0.22, 0.18, 0.58), scale), CFrame.new(0, 0.08 * scale, -0.98 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		attachWeaponPart(parent, handle, "VentRib", scaleVector3(Vector3.new(0.06, 0.04, 1.66), scale), CFrame.new(0, 0.34 * scale, -1.42 * scale), Color3.fromRGB(18, 18, 20), Enum.Material.Metal)
+		attachWeaponPart(parent, handle, "FrontBead", scaleVector3(Vector3.new(0.05, 0.05, 0.08), scale), CFrame.new(0, 0.36 * scale, -2.76 * scale), Color3.fromRGB(220, 184, 96), Enum.Material.Neon)
 		attachWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.24, 0.42, 0.92), scale), CFrame.new(0, 0.02 * scale, 0.86 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
 		attachWeaponPart(parent, handle, "ButtPad", scaleVector3(Vector3.new(0.28, 0.46, 0.16), scale), CFrame.new(0, -0.06 * scale, 1.38 * scale), Color3.fromRGB(30, 28, 24), Enum.Material.Rubber)
+		attachWeaponPart(parent, handle, "TriggerGuard", scaleVector3(Vector3.new(0.18, 0.12, 0.2), scale), CFrame.new(0, -0.12 * scale, 0.06 * scale), Color3.fromRGB(18, 18, 20), Enum.Material.Metal)
 	end
 end
 
@@ -106,31 +216,51 @@ local function getShowcaseMount(weapon)
 	local style = weapon.ModelStyle or weapon.WeaponType
 	if style == "Pistol" then
 		return {
-			anchorName = "RightUpperLeg",
-			fallbackName = "RightLowerLeg",
-			offset = CFrame.new(-0.18, 0.08, -0.14) * CFrame.Angles(math.rad(4), math.rad(90), math.rad(86)),
-			scale = 0.68,
+			anchorName = "UpperTorso",
+			attachmentName = "BodyBackAttachment",
+			fallbackName = "Torso",
+			useTorsoBackAnchor = true,
+			backOffset = Vector3.new(0, -0.18, 0.16),
+			offset = CFrame.Angles(0, 0, math.rad(90)),
+			handleOffset = CFrame.Angles(0, 0, 0),
+			visualStyle = "PistolBack",
+			scale = 0.44,
 		}
 	elseif style == "SMG" then
 		return {
 			anchorName = "UpperTorso",
+			attachmentName = "BodyBackAttachment",
 			fallbackName = "Torso",
-			offset = CFrame.new(0.84, -0.06, 0.58) * CFrame.Angles(math.rad(-2), math.rad(26), math.rad(98)),
-			scale = 0.64,
+			useTorsoBackAnchor = true,
+			backOffset = Vector3.new(-0.08, -0.02, 0.18),
+			offset = CFrame.Angles(0, 0, math.rad(90)),
+			handleOffset = CFrame.new(),
+			visualStyle = "SMGBack",
+			scale = 0.5,
 		}
 	elseif style == "Carbine" then
 		return {
 			anchorName = "UpperTorso",
+			attachmentName = "BodyBackAttachment",
 			fallbackName = "Torso",
-			offset = CFrame.new(0.92, -0.16, 0.62) * CFrame.Angles(math.rad(-6), math.rad(32), math.rad(94)),
-			scale = 0.6,
+			useTorsoBackAnchor = true,
+			backOffset = Vector3.new(-0.12, 0.08, 0.18),
+			offset = CFrame.Angles(0, 0, math.rad(90)),
+			handleOffset = CFrame.new(),
+			visualStyle = "CarbineBack",
+			scale = 0.46,
 		}
 	elseif style == "Shotgun" then
 		return {
 			anchorName = "UpperTorso",
+			attachmentName = "BodyBackAttachment",
 			fallbackName = "Torso",
-			offset = CFrame.new(0.96, -0.22, 0.58) * CFrame.Angles(math.rad(-10), math.rad(36), math.rad(90)),
-			scale = 0.56,
+			useTorsoBackAnchor = true,
+			backOffset = Vector3.new(-0.1, 0.04, 0.2),
+			offset = CFrame.Angles(0, 0, math.rad(90)),
+			handleOffset = CFrame.new(),
+			visualStyle = "ShotgunBack",
+			scale = 0.44,
 		}
 	elseif style == "Blade" then
 		return {
@@ -177,10 +307,18 @@ function InventoryService.new(context)
 	self._skillTreeService = context.SkillTreeService
 	self._subscriptionService = context.SubscriptionService
 	self._roleService = context.RoleService
+	self._animatedShowcases = {}
+	self._showcaseHeartbeat = nil
 	return self
 end
 
 function InventoryService:Start()
+	if not self._showcaseHeartbeat then
+		self._showcaseHeartbeat = RunService.Heartbeat:Connect(function()
+			self:_stepShowcaseSkins()
+		end)
+	end
+
 	Players.PlayerAdded:Connect(function(player)
 		self:BindPlayer(player)
 	end)
@@ -207,114 +345,95 @@ function InventoryService:_clearWeaponShowcase(character)
 	end
 	local existing = character:FindFirstChild("EquippedWeaponShowcase")
 	if existing then
+		self._animatedShowcases[existing] = nil
 		existing:Destroy()
 	end
 end
 
-function InventoryService:_applyShowcaseCosmetic(player, showcaseModel, handle)
+function InventoryService:_classifyWeaponPart(part)
+	local name = string.lower(part.Name)
+	if string.find(name, "barrel", 1, true) or string.find(name, "tube", 1, true) then
+		return "barrel"
+	end
+	if string.find(name, "receiver", 1, true) or string.find(name, "slide", 1, true) or string.find(name, "shroud", 1, true) then
+		return "body"
+	end
+	if string.find(name, "stock", 1, true) or string.find(name, "pump", 1, true) or string.find(name, "guard", 1, true) then
+		return "grip"
+	end
+	if string.find(name, "sight", 1, true) or string.find(name, "butt", 1, true) or string.find(name, "magazine", 1, true) then
+		return "detail"
+	end
+	if name == "handle" then
+		return "grip"
+	end
+	return "body"
+end
+
+function InventoryService:_stepShowcaseSkins()
+	local timeNow = os.clock()
+	for model, state in pairs(self._animatedShowcases) do
+		if not model or model.Parent == nil then
+			self._animatedShowcases[model] = nil
+		else
+			local profile = state.profile
+			local palette = profile and profile.palette
+			if profile and palette and #palette >= 3 then
+				local phase = (timeNow * (profile.speed or 0.5)) + (state.phase or 0)
+				local blendA = (math.sin(phase) + 1) * 0.5
+				local blendB = (math.sin(phase + 1.6) + 1) * 0.5
+				local mainColor = palette[1]:Lerp(palette[2], blendA)
+				local accentColor = palette[2]:Lerp(palette[3], blendB)
+				for _, part in ipairs(state.bodyParts) do
+					if part and part.Parent then
+						part.Color = mainColor
+					end
+				end
+				for _, part in ipairs(state.accentParts) do
+					if part and part.Parent then
+						part.Color = accentColor
+					end
+				end
+			end
+		end
+	end
+end
+
+function InventoryService:_applyShowcaseCosmetic(player, showcaseModel)
 	local cosmeticId = self:GetEquippedCosmetic(player)
-	local cosmetic = self._missionConfig.getCosmeticDefinition(cosmeticId)
-	if not cosmetic or not showcaseModel or not handle then
+	local profile = WEAPON_SKIN_PROFILES[cosmeticId]
+	if not profile or not showcaseModel then
 		return
 	end
 
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "ShowcaseCosmeticHighlight"
-	highlight.FillColor = cosmetic.HighlightColor
-	highlight.OutlineColor = cosmetic.HighlightColor
-	highlight.FillTransparency = math.clamp((cosmetic.FillTransparency or 0.85) + 0.08, 0, 1)
-	highlight.OutlineTransparency = math.max(0, (cosmetic.OutlineTransparency or 0.05) - 0.02)
-	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
-	highlight.Parent = showcaseModel
+	local bodyParts = {}
+	local accentParts = {}
+	for _, descendant in ipairs(showcaseModel:GetDescendants()) do
+		if descendant:IsA("BasePart") and descendant.Name ~= "Mount" then
+			local group = self:_classifyWeaponPart(descendant)
+			if group == "barrel" or group == "body" then
+				descendant.Color = profile.base
+				descendant.Material = profile.material
+				table.insert(bodyParts, descendant)
+			elseif group == "grip" then
+				descendant.Color = profile.grip
+				descendant.Material = Enum.Material.SmoothPlastic
+			else
+				descendant.Color = profile.accent
+				descendant.Material = Enum.Material.Metal
+				table.insert(accentParts, descendant)
+			end
+		end
+	end
 
-	local attachment = Instance.new("Attachment")
-	attachment.Name = "ShowcaseEffectAttachment"
-	attachment.Parent = handle
-
-	local emitter = Instance.new("ParticleEmitter")
-	emitter.Name = "ShowcaseEmitter"
-	emitter.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, cosmetic.HighlightColor),
-		ColorSequenceKeypoint.new(1, cosmetic.HighlightColor:Lerp(Color3.new(1, 1, 1), 0.32)),
-	})
-	emitter.LightEmission = 0.72
-	emitter.LightInfluence = 0
-	emitter.Size = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.16),
-		NumberSequenceKeypoint.new(0.55, 0.34),
-		NumberSequenceKeypoint.new(1, 0),
-	})
-	emitter.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.18),
-		NumberSequenceKeypoint.new(1, 1),
-	})
-	emitter.Lifetime = NumberRange.new(0.6, 1.1)
-	emitter.Rate = 10
-	emitter.Speed = NumberRange.new(0.15, 0.45)
-	emitter.SpreadAngle = Vector2.new(20, 20)
-	emitter.Rotation = NumberRange.new(0, 360)
-	emitter.RotSpeed = NumberRange.new(-40, 40)
-	emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-	emitter.Parent = attachment
-
-	local light = Instance.new("PointLight")
-	light.Name = "ShowcaseGlow"
-	light.Color = cosmetic.HighlightColor
-	light.Brightness = 0.55
-	light.Range = 10
-	light.Parent = handle
-
-	local trailAttachment0 = Instance.new("Attachment")
-	trailAttachment0.Name = "ShowcaseTrailStart"
-	trailAttachment0.Position = Vector3.new(0, 0.2, -0.35)
-	trailAttachment0.Parent = handle
-
-	local trailAttachment1 = Instance.new("Attachment")
-	trailAttachment1.Name = "ShowcaseTrailEnd"
-	trailAttachment1.Position = Vector3.new(0, -0.2, 0.35)
-	trailAttachment1.Parent = handle
-
-	local trail = Instance.new("Trail")
-	trail.Name = "ShowcaseTrail"
-	trail.Attachment0 = trailAttachment0
-	trail.Attachment1 = trailAttachment1
-	trail.Color = ColorSequence.new(
-		cosmetic.HighlightColor:Lerp(Color3.new(1, 1, 1), 0.18),
-		cosmetic.HighlightColor
-	)
-	trail.LightEmission = 0.85
-	trail.LightInfluence = 0
-	trail.Lifetime = 0.18
-	trail.MinLength = 0.02
-	trail.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.2),
-		NumberSequenceKeypoint.new(1, 1),
-	})
-	trail.WidthScale = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.26),
-		NumberSequenceKeypoint.new(1, 0),
-	})
-	trail.Parent = handle
-
-	local ring = Instance.new("Part")
-	ring.Name = "ShowcaseRing"
-	ring.Size = Vector3.new(0.9, 0.08, 0.9)
-	ring.Shape = Enum.PartType.Cylinder
-	ring.Anchored = false
-	ring.CanCollide = false
-	ring.CanTouch = false
-	ring.CanQuery = false
-	ring.Massless = true
-	ring.Transparency = 0.52
-	ring.Material = Enum.Material.Neon
-	ring.Color = cosmetic.HighlightColor
-	ring.CFrame = handle.CFrame * CFrame.Angles(0, 0, math.rad(90))
-	ring.Parent = showcaseModel
-
-	local ringWeld = Instance.new("WeldConstraint")
-	ringWeld.Part0 = handle
-	ringWeld.Part1 = ring
-	ringWeld.Parent = ring
+	if profile.animated then
+		self._animatedShowcases[showcaseModel] = {
+			profile = profile,
+			bodyParts = bodyParts,
+			accentParts = accentParts,
+			phase = player.UserId % 17,
+		}
+	end
 end
 
 function InventoryService:_applyWeaponShowcase(player, character)
@@ -339,6 +458,8 @@ function InventoryService:_applyWeaponShowcase(player, character)
 	if not anchorPart or not anchorPart:IsA("BasePart") then
 		return
 	end
+	local anchorAttachment = mountInfo.attachmentName and anchorPart:FindFirstChild(mountInfo.attachmentName)
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
 
 	local showcaseModel = Instance.new("Model")
 	showcaseModel.Name = "EquippedWeaponShowcase"
@@ -352,11 +473,22 @@ function InventoryService:_applyWeaponShowcase(player, character)
 	mount.CanTouch = false
 	mount.CanQuery = false
 	mount.Massless = true
-	mount.CFrame = anchorPart.CFrame * mountInfo.offset
+	if mountInfo.useTorsoBackAnchor and anchorPart and anchorPart:IsA("BasePart") and typeof(mountInfo.backOffset) == "Vector3" then
+		local offset = mountInfo.backOffset
+		local worldPosition = anchorPart.Position
+			+ (anchorPart.CFrame.RightVector * offset.X)
+			+ (anchorPart.CFrame.UpVector * offset.Y)
+			- (anchorPart.CFrame.LookVector * ((anchorPart.Size.Z * 0.5) + offset.Z))
+		mount.CFrame = CFrame.fromMatrix(worldPosition, anchorPart.CFrame.RightVector, anchorPart.CFrame.UpVector) * mountInfo.offset
+	elseif mountInfo.useRootBackAnchor and rootPart and rootPart:IsA("BasePart") and typeof(mountInfo.rootOffset) == "Vector3" then
+		mount.CFrame = rootPart.CFrame * CFrame.new(mountInfo.rootOffset) * mountInfo.offset
+	else
+		mount.CFrame = (anchorAttachment and anchorAttachment:IsA("Attachment") and anchorAttachment.WorldCFrame or anchorPart.CFrame) * mountInfo.offset
+	end
 	mount.Parent = showcaseModel
 
 	local torsoWeld = Instance.new("WeldConstraint")
-	torsoWeld.Part0 = anchorPart
+	torsoWeld.Part0 = (mountInfo.useRootBackAnchor and rootPart and rootPart:IsA("BasePart")) and rootPart or anchorPart
 	torsoWeld.Part1 = mount
 	torsoWeld.Parent = mount
 
@@ -369,7 +501,7 @@ function InventoryService:_applyWeaponShowcase(player, character)
 	handle.CanTouch = false
 	handle.CanQuery = false
 	handle.Massless = true
-	handle.CFrame = mount.CFrame
+	handle.CFrame = mount.CFrame * (mountInfo.handleOffset or CFrame.new())
 	handle.Parent = showcaseModel
 
 	local mountWeld = Instance.new("WeldConstraint")
@@ -377,8 +509,8 @@ function InventoryService:_applyWeaponShowcase(player, character)
 	mountWeld.Part1 = handle
 	mountWeld.Parent = handle
 
-	buildWeaponVisual(showcaseModel, handle, weapon, mountInfo.scale or 0.8)
-	self:_applyShowcaseCosmetic(player, showcaseModel, handle)
+	buildWeaponVisual(showcaseModel, handle, weapon, mountInfo.scale or 0.8, mountInfo.visualStyle)
+	self:_applyShowcaseCosmetic(player, showcaseModel)
 end
 
 function InventoryService:BindPlayer(player)

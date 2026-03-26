@@ -7,6 +7,28 @@ PersistenceService.__index = PersistenceService
 
 local DATASTORE_NAME = "ZombieSurvivalPlayerData_v1"
 
+local function getDayKey(timestamp)
+	return math.floor((timestamp or os.time()) / 86400)
+end
+
+local function getWeekKey(timestamp)
+	return math.floor((timestamp or os.time()) / 604800)
+end
+
+local function getMonthKey(timestamp)
+	local utc = os.date("!*t", timestamp or os.time())
+	return (utc.year * 100) + utc.month
+end
+
+local function defaultTrackedStats()
+	return {
+		missionsCompleted = 0,
+		zombiesDefeated = 0,
+		timePlayedMinutes = 0,
+		donationScore = 0,
+	}
+end
+
 local function deepCopy(value)
 	if type(value) ~= "table" then
 		return value
@@ -105,10 +127,13 @@ function PersistenceService:_defaultProfile()
 			lastCheckedAt = nil,
 		},
 		stats = {
-			missionsCompleted = 0,
-			zombiesDefeated = 0,
-			timePlayedMinutes = 0,
-			donationScore = 0,
+			allTime = defaultTrackedStats(),
+			monthly = defaultTrackedStats(),
+			weekly = defaultTrackedStats(),
+			daily = defaultTrackedStats(),
+			monthKey = getMonthKey(),
+			weekKey = getWeekKey(),
+			dayKey = getDayKey(),
 		},
 		dailyOps = {
 			dayKey = 0,
@@ -116,7 +141,69 @@ function PersistenceService:_defaultProfile()
 			claimed = {},
 		},
 		claimedRewards = {},
+		activities = {
+			parkourBestMs = 0,
+			rangeBestScore = 0,
+			salvageBestMs = 0,
+		},
 	}
+end
+
+function PersistenceService:_normalizeStats(profile)
+	profile.stats = profile.stats or {}
+	local stats = profile.stats
+
+	if stats.missionsCompleted ~= nil or stats.zombiesDefeated ~= nil or stats.timePlayedMinutes ~= nil or stats.donationScore ~= nil then
+		local legacyStats = {
+			missionsCompleted = math.max(0, math.floor(tonumber(stats.missionsCompleted) or 0)),
+			zombiesDefeated = math.max(0, math.floor(tonumber(stats.zombiesDefeated) or 0)),
+			timePlayedMinutes = math.max(0, math.floor(tonumber(stats.timePlayedMinutes) or 0)),
+			donationScore = math.max(0, math.floor(tonumber(stats.donationScore) or 0)),
+		}
+		stats = {
+			allTime = legacyStats,
+			monthly = defaultTrackedStats(),
+			weekly = defaultTrackedStats(),
+			daily = defaultTrackedStats(),
+			monthKey = getMonthKey(),
+			weekKey = getWeekKey(),
+			dayKey = getDayKey(),
+		}
+		profile.stats = stats
+	end
+
+	stats.allTime = stats.allTime or defaultTrackedStats()
+	stats.monthly = stats.monthly or defaultTrackedStats()
+	stats.weekly = stats.weekly or defaultTrackedStats()
+	stats.daily = stats.daily or defaultTrackedStats()
+	stats.monthKey = tonumber(stats.monthKey) or getMonthKey()
+	stats.weekKey = tonumber(stats.weekKey) or getWeekKey()
+	stats.dayKey = tonumber(stats.dayKey) or getDayKey()
+
+	local currentMonthKey = getMonthKey()
+	local currentWeekKey = getWeekKey()
+	local currentDayKey = getDayKey()
+	if stats.monthKey ~= currentMonthKey then
+		stats.monthly = defaultTrackedStats()
+		stats.monthKey = currentMonthKey
+	end
+	if stats.weekKey ~= currentWeekKey then
+		stats.weekly = defaultTrackedStats()
+		stats.weekKey = currentWeekKey
+	end
+	if stats.dayKey ~= currentDayKey then
+		stats.daily = defaultTrackedStats()
+		stats.dayKey = currentDayKey
+	end
+
+	for _, bucketName in ipairs({ "allTime", "monthly", "weekly", "daily" }) do
+		local bucket = stats[bucketName]
+		for statName, defaultValue in pairs(defaultTrackedStats()) do
+			bucket[statName] = math.max(0, math.floor(tonumber(bucket[statName]) or defaultValue))
+		end
+	end
+
+	return stats
 end
 
 function PersistenceService:_getKey(userId)
@@ -209,6 +296,8 @@ function PersistenceService:BindPlayer(player)
 		profile.unlocks[self._missionConfig.DefaultWeaponId] = true
 	end
 
+	self:_normalizeStats(profile)
+
 	profile.weaponExperience = profile.weaponExperience or {}
 	if profile.weaponExperience[self._missionConfig.DefaultWeaponId] == nil then
 		profile.weaponExperience[self._missionConfig.DefaultWeaponId] = 0
@@ -219,6 +308,14 @@ function PersistenceService:BindPlayer(player)
 	end
 
 	self._profiles[player.UserId] = profile
+	profile.activities = profile.activities or {
+		parkourBestMs = 0,
+		rangeBestScore = 0,
+		salvageBestMs = 0,
+	}
+	player:SetAttribute("ParkourBestMs", math.max(0, math.floor(profile.activities.parkourBestMs or 0)))
+	player:SetAttribute("RangeBestScore", math.max(0, math.floor(profile.activities.rangeBestScore or 0)))
+	player:SetAttribute("SalvageBestMs", math.max(0, math.floor(profile.activities.salvageBestMs or 0)))
 	self:_emitPersistenceState(player)
 end
 
@@ -311,12 +408,29 @@ end
 
 function PersistenceService:IncrementStat(player, statName, amount)
 	local profile = self:GetProfile(player)
-	profile.stats[statName] = math.max(0, math.floor((profile.stats[statName] or 0) + (amount or 0)))
+	local stats = self:_normalizeStats(profile)
+	local delta = math.floor(amount or 0)
+	stats.allTime[statName] = math.max(0, math.floor((stats.allTime[statName] or 0) + delta))
+	stats.monthly[statName] = math.max(0, math.floor((stats.monthly[statName] or 0) + delta))
+	stats.weekly[statName] = math.max(0, math.floor((stats.weekly[statName] or 0) + delta))
+	stats.daily[statName] = math.max(0, math.floor((stats.daily[statName] or 0) + delta))
 	self:_markDirty(player.UserId)
 end
 
 function PersistenceService:GetStats(player)
-	return self:GetProfile(player).stats
+	return self:_normalizeStats(self:GetProfile(player)).allTime
+end
+
+function PersistenceService:GetStatsWindow(player, windowName)
+	local stats = self:_normalizeStats(self:GetProfile(player))
+	if windowName == "daily" then
+		return stats.daily
+	elseif windowName == "weekly" then
+		return stats.weekly
+	elseif windowName == "monthly" then
+		return stats.monthly
+	end
+	return stats.allTime
 end
 
 function PersistenceService:GetDailyOpsState(player)
@@ -418,6 +532,47 @@ end
 function PersistenceService:SetSkillRank(player, skillId, rank)
 	self:GetSkills(player)[skillId] = math.max(0, math.floor(rank or 0))
 	self:_markDirty(player.UserId)
+end
+
+function PersistenceService:GetActivityStats(player)
+	local profile = self:GetProfile(player)
+	profile.activities = profile.activities or {
+		parkourBestMs = 0,
+		rangeBestScore = 0,
+		salvageBestMs = 0,
+	}
+	return profile.activities
+end
+
+function PersistenceService:SetActivityStat(player, statName, amount)
+	local stats = self:GetActivityStats(player)
+	local value = math.max(0, math.floor(amount or 0))
+	stats[statName] = value
+	if statName == "parkourBestMs" then
+		player:SetAttribute("ParkourBestMs", value)
+	elseif statName == "rangeBestScore" then
+		player:SetAttribute("RangeBestScore", value)
+	elseif statName == "salvageBestMs" then
+		player:SetAttribute("SalvageBestMs", value)
+	end
+	self:_markDirty(player.UserId)
+	return value
+end
+
+function PersistenceService:UpdateActivityBest(player, statName, amount, lowerIsBetter)
+	local stats = self:GetActivityStats(player)
+	local candidate = math.max(0, math.floor(amount or 0))
+	local current = math.max(0, math.floor(stats[statName] or 0))
+	local improved = false
+	if lowerIsBetter then
+		improved = candidate > 0 and (current <= 0 or candidate < current)
+	else
+		improved = candidate > current
+	end
+	if improved then
+		current = self:SetActivityStat(player, statName, candidate)
+	end
+	return improved, current
 end
 
 function PersistenceService:SavePlayer(player)

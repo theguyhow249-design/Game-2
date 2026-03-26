@@ -47,6 +47,22 @@ local function createRuntimeDecoration(parent, decoration, cframe)
 	return part
 end
 
+local function findMissionEntryById(entries, entryId, fallback)
+	if type(entryId) == "string" then
+		for _, entry in ipairs(entries or {}) do
+			if entry.Id == entryId then
+				return entry
+			end
+		end
+	end
+	return fallback
+end
+
+local function clampPositiveInteger(value, fallback)
+	local parsed = math.floor(tonumber(value) or fallback or 0)
+	return math.max(1, parsed)
+end
+
 function MissionService.new(context)
 	local self = setmetatable({}, MissionService)
 	self._missionConfig = context.MissionConfig
@@ -61,12 +77,17 @@ function MissionService.new(context)
 	self._skillTreeConfig = context.SkillTreeConfig
 	self._skillTreeService = context.SkillTreeService
 	self._subscriptionService = context.SubscriptionService
+	self._instanceDeploymentService = context.InstanceDeploymentService
 	self._remoteNames = context.RemoteNames
 	self._remotes = context.Remotes
 	self._activeMission = nil
 	self._attackCooldowns = {}
 	self._weaponState = {}
 	return self
+end
+
+function MissionService:SetInstanceDeploymentService(service)
+	self._instanceDeploymentService = service
 end
 
 function MissionService:Start()
@@ -82,6 +103,19 @@ function MissionService:_getExtractionPad()
 	local mission = self:_getMissionModel()
 	local runtime = mission and mission:FindFirstChild("MissionRuntime")
 	return runtime and runtime:FindFirstChild("ExtractionPad")
+end
+
+function MissionService:_isCharacterInsideExtractionPad(rootPart, pad)
+	if not rootPart or not pad then
+		return false
+	end
+
+	local localPoint = pad.CFrame:PointToObjectSpace(rootPart.Position)
+	local half = pad.Size * 0.5
+	local buffer = 2.5
+	return math.abs(localPoint.X) <= (half.X + buffer)
+		and math.abs(localPoint.Z) <= (half.Z + buffer)
+		and math.abs(localPoint.Y) <= 8
 end
 
 function MissionService:_getLobbyRoot()
@@ -203,6 +237,73 @@ function MissionService:_getRunStats(player)
 	return stats
 end
 
+function MissionService:_recordZombieDamage(zombieModel, attacker, damage)
+	local mission = self._activeMission
+	if not mission or not zombieModel or not attacker or not attacker.UserId or not damage or damage <= 0 then
+		return
+	end
+
+	mission.zombieDamageByZombie = mission.zombieDamageByZombie or setmetatable({}, { __mode = "k" })
+	mission.zombieLastHitByZombie = mission.zombieLastHitByZombie or setmetatable({}, { __mode = "k" })
+
+	local damageByPlayer = mission.zombieDamageByZombie[zombieModel]
+	if not damageByPlayer then
+		damageByPlayer = {}
+		mission.zombieDamageByZombie[zombieModel] = damageByPlayer
+	end
+
+	damageByPlayer[attacker.UserId] = (damageByPlayer[attacker.UserId] or 0) + math.max(0, math.floor(damage))
+	mission.zombieLastHitByZombie[zombieModel] = attacker.UserId
+	zombieModel:SetAttribute("LastDamagerUserId", attacker.UserId)
+end
+
+function MissionService:_getZombieContributors(zombieModel)
+	local mission = self._activeMission
+	if not mission or not zombieModel then
+		return {}
+	end
+
+	local damageByPlayer = mission.zombieDamageByZombie and mission.zombieDamageByZombie[zombieModel] or nil
+	local contributors = {}
+	local seen = {}
+
+	if damageByPlayer then
+		for userId, totalDamage in pairs(damageByPlayer) do
+			if totalDamage > 0 then
+				local player = Players:GetPlayerByUserId(userId)
+				if player and player.Parent and not seen[userId] then
+					seen[userId] = true
+					table.insert(contributors, player)
+				end
+			end
+		end
+	end
+
+	if #contributors == 0 then
+		local fallbackUserId = mission.zombieLastHitByZombie and mission.zombieLastHitByZombie[zombieModel] or zombieModel:GetAttribute("LastDamagerUserId")
+		local fallbackPlayer = fallbackUserId and Players:GetPlayerByUserId(tonumber(fallbackUserId) or 0) or nil
+		if fallbackPlayer and fallbackPlayer.Parent then
+			table.insert(contributors, fallbackPlayer)
+		end
+	end
+
+	return contributors
+end
+
+function MissionService:_clearZombieDamageTracking(zombieModel)
+	local mission = self._activeMission
+	if not mission or not zombieModel then
+		return
+	end
+
+	if mission.zombieDamageByZombie then
+		mission.zombieDamageByZombie[zombieModel] = nil
+	end
+	if mission.zombieLastHitByZombie then
+		mission.zombieLastHitByZombie[zombieModel] = nil
+	end
+end
+
 function MissionService:_awardMissionExperience(player, rewardKey, fallbackAmount)
 	if not self._skillTreeService or not player then
 		return 0
@@ -236,31 +337,99 @@ function MissionService:_emitProgressionUpdate(player)
 	self._remotes:FireEventFor(player, self._remoteNames.Events.ProgressionUpdated, self._inventoryService:BuildProgressionPayload(player))
 end
 
-function MissionService:_awardLootDrops(player, sourceKey, chanceScale)
-	if not player or not player.Parent or not self._inventoryService or not self._tokenEconomy then
-		return {}
-	end
+function MissionService:_getLootDropSourceConfig(sourceKey)
+	local lootDrops = self._missionConfig.Mission and self._missionConfig.Mission.LootDrops or nil
+	local sourceConfig = lootDrops and lootDrops[sourceKey] or nil
+	return {
+		Rolls = clampPositiveInteger(sourceConfig and sourceConfig.Rolls or 1, 1),
+		PoolCap = clampPositiveInteger(sourceConfig and sourceConfig.PoolCap or 4, 4),
+		MaxUnlocks = clampPositiveInteger(sourceConfig and sourceConfig.MaxUnlocks or 1, 1),
+	}
+end
 
+function MissionService:_buildLootDropCandidates(player, sourceKey, chanceScale)
+	local sourceConfig = self:_getLootDropSourceConfig(sourceKey)
 	local activeEvent = self._tokenEconomy.getActiveSeasonalEvent and self._tokenEconomy.getActiveSeasonalEvent() or nil
-	local unlocked = {}
+	local candidates = {}
+	local effectiveMultiplier = chanceScale or 1
+	if self._gamePassService then
+		effectiveMultiplier *= self._gamePassService:GetDropChanceMultiplier(player)
+	end
 
 	for _, entry in ipairs(self._tokenEconomy.getDroppableItems and self._tokenEconomy.getDroppableItems() or {}) do
 		local category = entry.category
 		local item = entry.item
 		if item and not self._inventoryService:IsUnlocked(player, item.Id) then
-			local effectiveMultiplier = chanceScale or 1
-			if self._gamePassService then
-				effectiveMultiplier *= self._gamePassService:GetDropChanceMultiplier(player)
-			end
 			local chance = self._tokenEconomy.getDropChanceForItem(item, activeEvent, effectiveMultiplier)
-			if chance > 0 and (math.random() * 100) <= chance then
-				self._inventoryService:UnlockItem(player, item.Id)
-				table.insert(unlocked, {
+			if chance > 0 then
+				table.insert(candidates, {
 					category = category,
-					itemId = item.Id,
-					displayName = item.DisplayName or item.Id,
+					item = item,
+					chance = chance,
 				})
 			end
+		end
+	end
+
+	table.sort(candidates, function(a, b)
+		return a.chance > b.chance
+	end)
+
+	while #candidates > sourceConfig.PoolCap do
+		table.remove(candidates)
+	end
+
+	return candidates, activeEvent, sourceConfig
+end
+
+function MissionService:_pickWeightedLootDrop(candidates)
+	local totalWeight = 0
+	for _, candidate in ipairs(candidates) do
+		totalWeight += candidate.chance
+	end
+	if totalWeight <= 0 then
+		return nil, nil
+	end
+
+	local roll = math.random() * totalWeight
+	local running = 0
+	for index, candidate in ipairs(candidates) do
+		running += candidate.chance
+		if roll <= running then
+			return index, candidate
+		end
+	end
+
+	return #candidates, candidates[#candidates]
+end
+
+function MissionService:_awardLootDrops(player, sourceKey, chanceScale)
+	if not player or not player.Parent or not self._inventoryService or not self._tokenEconomy then
+		return {}
+	end
+
+	local candidates, activeEvent, sourceConfig = self:_buildLootDropCandidates(player, sourceKey, chanceScale)
+	local unlocked = {}
+
+	for _ = 1, sourceConfig.Rolls do
+		if #unlocked >= sourceConfig.MaxUnlocks or #candidates == 0 then
+			break
+		end
+
+		local selectedIndex, candidate = self:_pickWeightedLootDrop(candidates)
+		if not candidate then
+			break
+		end
+
+		table.remove(candidates, selectedIndex)
+		if (math.random() * 100) <= candidate.chance then
+			local item = candidate.item
+			self._inventoryService:UnlockItem(player, item.Id)
+			table.insert(unlocked, {
+				category = candidate.category,
+				itemId = item.Id,
+				displayName = item.DisplayName or item.Id,
+			})
 		end
 	end
 
@@ -367,6 +536,24 @@ function MissionService:_getActiveLayout()
 	return mission and mission.layout or self._missionConfig.getLayout(1)
 end
 
+function MissionService:_getActiveModifier()
+	local mission = self._activeMission
+	return mission and mission.modifier or (self._missionConfig.getModifier and self._missionConfig.getModifier(1)) or nil
+end
+
+function MissionService:_getModifierRuntimeTraits()
+	local modifier = self:_getActiveModifier()
+	return {
+		WaveSurgeDelayScale = tonumber(modifier and modifier.WaveSurgeDelayScale) or 1,
+		HazardWindupScale = tonumber(modifier and modifier.HazardWindupScale) or 1,
+		HazardActiveScale = tonumber(modifier and modifier.HazardActiveScale) or 1,
+		ObjectivePressureInterval = clampPositiveInteger(modifier and modifier.ObjectivePressureInterval or 4, 4),
+		ForceRunnerPressure = modifier and modifier.ForceRunnerPressure == true,
+		ForceBrutePressure = modifier and modifier.ForceBrutePressure == true,
+		BonusSupplyPickup = type(modifier and modifier.BonusSupplyPickup) == "string" and modifier.BonusSupplyPickup or nil,
+	}
+end
+
 function MissionService:_getLayoutWorldPosition(offset: Vector3)
 	local anchor = self:_getMissionAnchorCFrame()
 	if not anchor then
@@ -400,11 +587,11 @@ function MissionService:_spawnFrameStructure(parent, prefix, frame, anchor)
 	local rightPillar = createRuntimePart(frameFolder, prefix .. "PillarRight", frame.PillarSize, anchor * CFrame.new(frame.PillarOffsetX, frame.BackplateOffset.Y, frame.PillarOffsetZ), frameColor, Enum.Material.Metal)
 	rightPillar.CanQuery = false
 
-	local glow = createRuntimeGlow(frameFolder, prefix .. "Glow", frame.GlowSize, anchor * CFrame.new(frame.GlowOffset), glowColor, 0.72)
+	local glow = createRuntimeGlow(frameFolder, prefix .. "Glow", frame.GlowSize * 0.82, anchor * CFrame.new(frame.GlowOffset), glowColor, 0.82)
 	glow.CanQuery = false
 
-	local labelPart, _ = self:_createWorldMarker(frameFolder, prefix .. "Sign", frame.SignText, glowColor, Vector2.new(180, 34), 16)
-	labelPart.CFrame = anchor * CFrame.new(0, frame.BackplateOffset.Y + 3.5, frame.BackplateOffset.Z + 1.5)
+	local labelPart, _ = self:_createWorldMarker(frameFolder, prefix .. "Sign", frame.SignText, glowColor, Vector2.new(144, 28), 14)
+	labelPart.CFrame = anchor * CFrame.new(0, frame.BackplateOffset.Y + 2.6, frame.BackplateOffset.Z + 1.2)
 end
 
 function MissionService:_decorateMissionRuntime(runtime)
@@ -418,8 +605,12 @@ function MissionService:_decorateMissionRuntime(runtime)
 	shell.Name = "ArenaLayout"
 	shell.Parent = runtime
 
-	local floor = createRuntimePart(shell, "ArenaFloor", Vector3.new(110, 1.2, 118), anchor * CFrame.new(0, -0.75, -4), Color3.fromRGB(48, 54, 62), Enum.Material.DiamondPlate)
+	local floor = createRuntimePart(shell, "ArenaFloor", Vector3.new(150, 1.2, 170), anchor * CFrame.new(0, -0.75, -6), Color3.fromRGB(48, 54, 62), Enum.Material.DiamondPlate)
 	floor.CanQuery = false
+	local floorTrim = createRuntimePart(shell, "ArenaFloorTrim", Vector3.new(118, 0.18, 138), anchor * CFrame.new(0, -0.05, -6), Color3.fromRGB(72, 80, 92), Enum.Material.SmoothPlastic)
+	floorTrim.CanCollide = false
+	floorTrim.CanQuery = false
+	floorTrim.Transparency = 0.18
 
 	for _, decoration in ipairs(layout.DecorationPieces or {}) do
 		createRuntimeDecoration(shell, decoration, anchor * CFrame.new(decoration.Offset))
@@ -428,44 +619,61 @@ function MissionService:_decorateMissionRuntime(runtime)
 	self:_spawnFrameStructure(shell, "ObjectiveFrame", layout.ObjectiveFrame, anchor * CFrame.new(layout.ObjectiveOffset or Vector3.new(0, 5, 18)))
 	self:_spawnFrameStructure(shell, "ExtractionFrame", layout.ExtractionFrame, anchor * CFrame.new(layout.ExtractionOffset or Vector3.new(0, -0.3, -26)))
 
-	if layout.Id == "arena_service_tunnel" then
-		floor.Size = Vector3.new(72, 1.2, 152)
-		floor.CFrame = anchor * CFrame.new(0, -0.75, -10)
+	if layout.Id == "arena_breach_yard" then
+		floor.Size = Vector3.new(164, 1.2, 184)
+		floor.CFrame = anchor * CFrame.new(0, -0.75, -6)
+		floorTrim.Size = Vector3.new(128, 0.18, 150)
+		floorTrim.CFrame = anchor * CFrame.new(0, -0.05, -6)
+	elseif layout.Id == "arena_service_tunnel" then
+		floor.Size = Vector3.new(86, 1.2, 198)
+		floor.CFrame = anchor * CFrame.new(0, -0.75, -12)
+		floorTrim.Size = Vector3.new(58, 0.18, 172)
+		floorTrim.CFrame = anchor * CFrame.new(0, -0.05, -12)
 
 		for _, side in ipairs({ -1, 1 }) do
-			local wall = createRuntimePart(shell, side < 0 and "TunnelWallLeft" or "TunnelWallRight", Vector3.new(4, 13, 152), anchor * CFrame.new(side * 34, 6, -10), Color3.fromRGB(34, 38, 44), Enum.Material.Metal)
+			local wall = createRuntimePart(shell, side < 0 and "TunnelWallLeft" or "TunnelWallRight", Vector3.new(3.6, 10, 198), anchor * CFrame.new(side * 41, 4.5, -12), Color3.fromRGB(34, 38, 44), Enum.Material.Metal)
 			wall.CanQuery = false
-			local strip = createRuntimeGlow(shell, side < 0 and "TunnelStripLeft" or "TunnelStripRight", Vector3.new(0.22, 4.8, 128), anchor * CFrame.new(side * 31.9, 4.8, -8), Color3.fromRGB(104, 154, 204), 0.62)
+			local strip = createRuntimeGlow(shell, side < 0 and "TunnelStripLeft" or "TunnelStripRight", Vector3.new(0.18, 3.4, 154), anchor * CFrame.new(side * 39.2, 3.8, -10), Color3.fromRGB(104, 154, 204), 0.78)
 			strip.CanQuery = false
-			local curb = createRuntimePart(shell, side < 0 and "TunnelCurbLeft" or "TunnelCurbRight", Vector3.new(5.4, 0.8, 152), anchor * CFrame.new(side * 28.8, 0.4, -10), Color3.fromRGB(66, 72, 82), Enum.Material.Metal)
+			local curb = createRuntimePart(shell, side < 0 and "TunnelCurbLeft" or "TunnelCurbRight", Vector3.new(4, 0.55, 198), anchor * CFrame.new(side * 36.5, 0.28, -12), Color3.fromRGB(66, 72, 82), Enum.Material.Metal)
 			curb.CanQuery = false
 		end
 
-		local bulkhead = createRuntimePart(shell, "TunnelBackBulkhead", Vector3.new(72, 13, 4), anchor * CFrame.new(0, 6, 64), Color3.fromRGB(30, 34, 38), Enum.Material.Metal)
+		local bulkhead = createRuntimePart(shell, "TunnelBackBulkhead", Vector3.new(86, 10, 3.2), anchor * CFrame.new(0, 4.5, 84), Color3.fromRGB(30, 34, 38), Enum.Material.Metal)
 		bulkhead.CanQuery = false
-		local frame = createRuntimePart(shell, "TunnelFrontFrame", Vector3.new(72, 9, 2), anchor * CFrame.new(0, 4.5, -70), Color3.fromRGB(40, 44, 50), Enum.Material.Metal)
+		local frame = createRuntimePart(shell, "TunnelFrontFrame", Vector3.new(86, 7, 1.6), anchor * CFrame.new(0, 3.5, -92), Color3.fromRGB(40, 44, 50), Enum.Material.Metal)
 		frame.CanQuery = false
 
-		for _, z in ipairs({ -36, 20 }) do
-			for _, x in ipairs({ -18, 18 }) do
-				local cover = createRuntimePart(shell, ("TunnelCover_%d_%d"):format(x, z), Vector3.new(10, 3.8, 4), anchor * CFrame.new(x, 1.9, z), Color3.fromRGB(78, 86, 96), Enum.Material.Metal)
+		for _, z in ipairs({ -30, 18 }) do
+			for _, x in ipairs({ -16, 16 }) do
+				local cover = createRuntimePart(shell, ("TunnelCover_%d_%d"):format(x, z), Vector3.new(7.5, 2.8, 3.2), anchor * CFrame.new(x, 1.4, z), Color3.fromRGB(78, 86, 96), Enum.Material.Metal)
 				cover.CanQuery = false
 			end
 		end
 
-		createRuntimeGlow(shell, "TunnelLaneGlow", Vector3.new(9, 0.18, 120), anchor * CFrame.new(0, 0.12, -8), Color3.fromRGB(112, 144, 176), 0.72)
-		createRuntimeGlow(shell, "TunnelLaneGlowLeft", Vector3.new(6, 0.12, 116), anchor * CFrame.new(-18, 0.08, -8), Color3.fromRGB(184, 116, 82), 0.82)
-		createRuntimeGlow(shell, "TunnelLaneGlowRight", Vector3.new(6, 0.12, 116), anchor * CFrame.new(18, 0.08, -8), Color3.fromRGB(184, 116, 82), 0.82)
+		createRuntimeGlow(shell, "TunnelLaneGlow", Vector3.new(6.5, 0.12, 112), anchor * CFrame.new(0, 0.08, -8), Color3.fromRGB(112, 144, 176), 0.8)
+		createRuntimeGlow(shell, "TunnelLaneGlowLeft", Vector3.new(4, 0.08, 108), anchor * CFrame.new(-15, 0.05, -8), Color3.fromRGB(184, 116, 82), 0.9)
+		createRuntimeGlow(shell, "TunnelLaneGlowRight", Vector3.new(4, 0.08, 108), anchor * CFrame.new(15, 0.05, -8), Color3.fromRGB(184, 116, 82), 0.9)
+	elseif layout.Id == "arena_crossroads" then
+		floor.Size = Vector3.new(176, 1.2, 176)
+		floor.CFrame = anchor * CFrame.new(0, -0.75, 0)
+		floorTrim.Size = Vector3.new(138, 0.18, 138)
+		floorTrim.CFrame = anchor * CFrame.new(0, -0.05, 0)
+	elseif layout.Id == "arena_reactor_fields" then
+		floor.Size = Vector3.new(168, 1.2, 188)
+		floor.CFrame = anchor * CFrame.new(0, -0.75, -2)
+		floorTrim.Size = Vector3.new(134, 0.18, 150)
+		floorTrim.CFrame = anchor * CFrame.new(0, -0.05, -2)
 	else
 		for _, data in ipairs({
-			{ "YardNorthBarrierWest", Vector3.new(42, 8, 4), Vector3.new(-31, 3.5, 52) },
-			{ "YardNorthBarrierEast", Vector3.new(42, 8, 4), Vector3.new(31, 3.5, 52) },
-			{ "YardSouthBarrierWest", Vector3.new(42, 8, 4), Vector3.new(-31, 3.5, -60) },
-			{ "YardSouthBarrierEast", Vector3.new(42, 8, 4), Vector3.new(31, 3.5, -60) },
-			{ "YardWestBarrierNorth", Vector3.new(4, 8, 42), Vector3.new(-53, 3.5, 25) },
-			{ "YardWestBarrierSouth", Vector3.new(4, 8, 42), Vector3.new(-53, 3.5, -33) },
-			{ "YardEastBarrierNorth", Vector3.new(4, 8, 42), Vector3.new(53, 3.5, 25) },
-			{ "YardEastBarrierSouth", Vector3.new(4, 8, 42), Vector3.new(53, 3.5, -33) },
+			{ "YardNorthBarrierWest", Vector3.new(34, 5.5, 3), Vector3.new(-28, 2.2, 49) },
+			{ "YardNorthBarrierEast", Vector3.new(34, 5.5, 3), Vector3.new(28, 2.2, 49) },
+			{ "YardSouthBarrierWest", Vector3.new(34, 5.5, 3), Vector3.new(-28, 2.2, -57) },
+			{ "YardSouthBarrierEast", Vector3.new(34, 5.5, 3), Vector3.new(28, 2.2, -57) },
+			{ "YardWestBarrierNorth", Vector3.new(3, 5.5, 34), Vector3.new(-50, 2.2, 22) },
+			{ "YardWestBarrierSouth", Vector3.new(3, 5.5, 34), Vector3.new(-50, 2.2, -30) },
+			{ "YardEastBarrierNorth", Vector3.new(3, 5.5, 34), Vector3.new(50, 2.2, 22) },
+			{ "YardEastBarrierSouth", Vector3.new(3, 5.5, 34), Vector3.new(50, 2.2, -30) },
 		}) do
 			local barrier = createRuntimePart(shell, data[1], data[2], anchor * CFrame.new(data[3]), Color3.fromRGB(30, 34, 40), Enum.Material.Metal)
 			barrier.CanQuery = false
@@ -482,24 +690,18 @@ function MissionService:_decorateMissionRuntime(runtime)
 		end
 
 		for _, info in ipairs({
-			{ "NorthWest", Vector3.new(-22, 0, 28), Vector3.new(18, 3.8, 4) },
-			{ "NorthEast", Vector3.new(22, 0, 28), Vector3.new(18, 3.8, 4) },
-			{ "SouthWest", Vector3.new(-20, 0, -8), Vector3.new(16, 3.8, 4) },
-			{ "SouthEast", Vector3.new(20, 0, -8), Vector3.new(16, 3.8, 4) },
-			{ "West", Vector3.new(-30, 0, 8), Vector3.new(4, 3.8, 18) },
-			{ "East", Vector3.new(30, 0, 8), Vector3.new(4, 3.8, 18) },
+			{ "NorthWest", Vector3.new(-20, 0, 25), Vector3.new(14, 2.8, 3.2) },
+			{ "NorthEast", Vector3.new(20, 0, 25), Vector3.new(14, 2.8, 3.2) },
+			{ "SouthWest", Vector3.new(-18, 0, -6), Vector3.new(12, 2.8, 3.2) },
+			{ "SouthEast", Vector3.new(18, 0, -6), Vector3.new(12, 2.8, 3.2) },
+			{ "West", Vector3.new(-28, 0, 8), Vector3.new(3.2, 2.8, 14) },
+			{ "East", Vector3.new(28, 0, 8), Vector3.new(3.2, 2.8, 14) },
 		}) do
 			local barricade = createRuntimePart(shell, "YardBarricade" .. info[1], info[3], anchor * CFrame.new(info[2].X, 1.9, info[2].Z), Color3.fromRGB(92, 82, 68), Enum.Material.WoodPlanks)
 			barricade.CanQuery = false
 		end
 
-		for _, x in ipairs({ -26, 26 }) do
-			local tower = createRuntimePart(shell, x < 0 and "WatchTowerLeft" or "WatchTowerRight", Vector3.new(8, 14, 8), anchor * CFrame.new(x, 7, -42), Color3.fromRGB(34, 39, 44), Enum.Material.Metal)
-			tower.CanQuery = false
-			createRuntimeGlow(shell, x < 0 and "TowerGlowLeft" or "TowerGlowRight", Vector3.new(6, 0.2, 6), anchor * CFrame.new(x, 13.8, -42), Color3.fromRGB(214, 236, 255), 0.25)
-		end
-
-		createRuntimeGlow(shell, "YardCentralLaneGlow", Vector3.new(28, 0.12, 70), anchor * CFrame.new(0, 0.08, -4), Color3.fromRGB(108, 138, 170), 0.84)
+		createRuntimeGlow(shell, "YardCentralLaneGlow", Vector3.new(20, 0.08, 62), anchor * CFrame.new(0, 0.05, -4), Color3.fromRGB(108, 138, 170), 0.9)
 	end
 end
 
@@ -529,6 +731,8 @@ end
 function MissionService:_spawnHazardZones(runtime)
 	local mission = self._activeMission
 	local layout = self:_getActiveLayout()
+	local modifier = self:_getActiveModifier()
+	local modifierTraits = self:_getModifierRuntimeTraits()
 	if not mission or not layout or not layout.HazardZones then
 		return
 	end
@@ -557,8 +761,8 @@ function MissionService:_spawnHazardZones(runtime)
 
 		task.spawn(function()
 			while self._activeMission == mission and zone.Parent do
-				local windup = isSteam and 2.6 or 3.2
-				local activeDuration = isSteam and 1.6 or 2
+				local windup = (isSteam and 2.6 or 3.2) * modifierTraits.HazardWindupScale
+				local activeDuration = (isSteam and 1.6 or 2) * modifierTraits.HazardActiveScale
 
 				zone.Transparency = 0.78
 				zone.Color = baseColor
@@ -572,7 +776,8 @@ function MissionService:_spawnHazardZones(runtime)
 					zone.Color = activeColor
 					emitterPart.Transparency = isSteam and 0.45 or 0.3
 					emitterPart.Color = activeColor
-					self:_applyHazardDamage(mission, zone, hazard.Damage or 6, activeColor)
+					local scaledHazardDamage = math.max(1, math.floor((hazard.Damage or 6) * (modifier and modifier.HazardDamageScale or 1)))
+					self:_applyHazardDamage(mission, zone, scaledHazardDamage, activeColor)
 					task.wait(0.2)
 				end
 			end
@@ -641,6 +846,12 @@ function MissionService:_damageZombie(zombieModel, damage, attacker)
 		if zombieModel:GetAttribute("Boss") then
 			damage = math.max(1, math.floor(damage * self._skillTreeService:GetBossDamageMultiplier(attacker)))
 		end
+	end
+	self:_recordZombieDamage(zombieModel, attacker, damage)
+
+	if attacker then
+		zombieModel:SetAttribute("LastDamagerUserId", attacker.UserId)
+		zombieModel:SetAttribute("LastDamagerAt", os.clock())
 	end
 
 	local rootPart = zombieModel.PrimaryPart
@@ -1140,6 +1351,19 @@ function MissionService:_clearDownedState(player, restoreHealth)
 	end
 end
 
+function MissionService:_getObjectiveStateText(mission)
+	if not mission then
+		return "Objective: defend the bunker core"
+	end
+	if self:_isPowerCellScenario(mission) then
+		return "Objective: deliver power cells"
+	end
+	if self:_isNestScenario(mission) then
+		return "Objective: destroy nests"
+	end
+	return "Objective: defend the bunker core"
+end
+
 function MissionService:_enterDownedState(player, mission, character, humanoid)
 	if not mission or not character or not humanoid or self:_isCharacterDowned(character) then
 		return
@@ -1217,6 +1441,7 @@ function MissionService:_enterDownedState(player, mission, character, humanoid)
 			return
 		end
 		self:_clearDownedState(player, false)
+		player:SetAttribute("MissionEliminated", true)
 		if character and character.Parent then
 			character:SetAttribute("BleedoutFinalizing", true)
 		end
@@ -1349,22 +1574,22 @@ function MissionService:_createWorldMarker(parent, name, text, color, size, text
 
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromOffset(size.X, size.Y)
-	gui.StudsOffset = Vector3.new(0, 2, 0)
+	gui.StudsOffset = Vector3.new(0, 1.4, 0)
 	gui.AlwaysOnTop = false
-	gui.MaxDistance = 52
+	gui.MaxDistance = 38
 	gui.LightInfluence = 1
 	gui.Parent = marker
 
 	local frame = Instance.new("Frame")
 	frame.BackgroundColor3 = Color3.fromRGB(16, 18, 22)
-	frame.BackgroundTransparency = 0.46
+	frame.BackgroundTransparency = 0.62
 	frame.BorderSizePixel = 0
 	frame.Size = UDim2.fromScale(1, 1)
 	frame.Parent = gui
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = color
-	stroke.Transparency = 0.34
+	stroke.Transparency = 0.46
 	stroke.Thickness = 1
 	stroke.Parent = frame
 
@@ -1380,8 +1605,8 @@ function MissionService:_createWorldMarker(parent, name, text, color, size, text
 	label.Parent = frame
 
 	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0, 8)
-	padding.PaddingRight = UDim.new(0, 8)
+	padding.PaddingLeft = UDim.new(0, 6)
+	padding.PaddingRight = UDim.new(0, 6)
 	padding.Parent = frame
 
 	return marker, label
@@ -1598,6 +1823,7 @@ function MissionService:_spawnPowerCellObjective(runtime, objective)
 	if not missionSpawn then
 		return
 	end
+	local layout = self:_getActiveLayout()
 
 	local required = self._missionConfig.Mission.PowerCellRequiredCount
 	objective:SetAttribute("DeliveredPowerCells", 0)
@@ -1648,10 +1874,16 @@ function MissionService:_spawnPowerCellObjective(runtime, objective)
 		end)
 	end
 
-	local cellPositions = {
-		missionSpawn.Position + Vector3.new(22, 0, 22),
-		missionSpawn.Position + Vector3.new(-26, 0, 18),
-	}
+	local cellPositions = {}
+	for _, offset in ipairs((layout and layout.PowerCellOffsets) or {}) do
+		table.insert(cellPositions, self:_getLayoutWorldPosition(offset))
+	end
+	if #cellPositions == 0 then
+		cellPositions = {
+			missionSpawn.Position + Vector3.new(22, 0, 22),
+			missionSpawn.Position + Vector3.new(-26, 0, 18),
+		}
+	end
 
 	for index = 1, required do
 		self:_spawnPowerCell(runtime, cellPositions[index] or (missionSpawn.Position + Vector3.new(index * 8, 0, 20)), index)
@@ -1766,16 +1998,23 @@ function MissionService:_spawnNestObjective(runtime, objective)
 	if not missionSpawn then
 		return
 	end
+	local layout = self:_getActiveLayout()
 
 	local required = self._missionConfig.Mission.NestRequiredCount
 	objective:SetAttribute("DestroyedNests", 0)
 	objective:SetAttribute("RequiredNests", required)
 
-	local positions = {
-		missionSpawn.Position + Vector3.new(28, 0, 28),
-		missionSpawn.Position + Vector3.new(-30, 0, 20),
-		missionSpawn.Position + Vector3.new(0, 0, 40),
-	}
+	local positions = {}
+	for _, offset in ipairs((layout and layout.NestOffsets) or {}) do
+		table.insert(positions, self:_getLayoutWorldPosition(offset))
+	end
+	if #positions == 0 then
+		positions = {
+			missionSpawn.Position + Vector3.new(28, 0, 28),
+			missionSpawn.Position + Vector3.new(-30, 0, 20),
+			missionSpawn.Position + Vector3.new(0, 0, 40),
+		}
+	end
 
 	for index = 1, required do
 		self:_spawnNest(runtime, positions[index] or (missionSpawn.Position + Vector3.new(index * 10, 0, 28)), index)
@@ -2226,7 +2465,7 @@ function MissionService:_equipPlayer(player)
 	self:_createMedkitTool(player)
 	self:_createDashTool(player)
 	self:_applyCosmetic(player)
-	self:_fireMissionState({ player }, "Objective: defend the bunker core")
+	self:_fireMissionState({ player }, self:_getObjectiveStateText(self._activeMission))
 end
 
 function MissionService:_applyCosmetic(player)
@@ -2265,6 +2504,10 @@ function MissionService:_bindCharacter(player)
 	local connection = player.CharacterAdded:Connect(function()
 		task.wait(0.25)
 		if self._activeMission ~= mission then
+			return
+		end
+		if player:GetAttribute("MissionEliminated") == true then
+			self:_fireMissionState({ player }, "Eliminated. Await squad extraction.")
 			return
 		end
 
@@ -2354,6 +2597,18 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 	zombie:SetAttribute("Brute", isBrute)
 	zombie:SetAttribute("Runner", isRunner)
 	zombie:SetAttribute("Boss", isBoss)
+	local modifierTraits = self:_getModifierRuntimeTraits()
+	local objectivePressure = isBoss or isBrute or (self._activeMission.wave >= 3 and index % 3 == 0) or (self._activeMission.wave >= 2 and index % 4 == 0)
+	if self._activeMission.wave >= 2 and index % modifierTraits.ObjectivePressureInterval == 0 then
+		objectivePressure = true
+	end
+	if modifierTraits.ForceRunnerPressure and isRunner then
+		objectivePressure = true
+	end
+	if modifierTraits.ForceBrutePressure and isBrute then
+		objectivePressure = true
+	end
+	zombie:SetAttribute("ObjectivePressure", objectivePressure)
 
 	if isBoss then
 		zombie.Name = ("SiegeTyrant_%d"):format(self._activeMission.wave)
@@ -2458,18 +2713,34 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 				end
 			end
 
-			if nearestRoot then
+			local objective = self:_getMissionObjective()
+			local targetRoot = nearestRoot
+			local targetDistance = nearestDistance
+			if objective then
+				local objectiveDistance = (objective.Position - root.Position).Magnitude
+				local objectivePressure = zombie:GetAttribute("ObjectivePressure") == true
+				local disruptRange = isBoss and 20 or (isBrute and 14 or (isRunner and 10 or 12))
+				if objectivePressure and (not nearestRoot or nearestDistance > disruptRange) then
+					targetRoot = objective
+					targetDistance = objectiveDistance
+				elseif not nearestRoot then
+					targetRoot = objective
+					targetDistance = objectiveDistance
+				end
+			end
+
+			if targetRoot then
 				local now = os.clock()
-				if isRunner and nearestDistance <= self._missionConfig.Mission.RunnerBurstDistance and now >= runnerBurstReadyAt then
+				if isRunner and targetRoot ~= objective and targetDistance <= self._missionConfig.Mission.RunnerBurstDistance and now >= runnerBurstReadyAt then
 					runnerBurstReadyAt = now + self._missionConfig.Mission.RunnerBurstCooldown
-					local burstDirection = nearestRoot.Position - root.Position
+					local burstDirection = targetRoot.Position - root.Position
 					if burstDirection.Magnitude > 0.01 then
 						root.AssemblyLinearVelocity = burstDirection.Unit * self._missionConfig.Mission.RunnerBurstSpeed + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
 						self:_emitPulse(root.CFrame, Vector3.new(2.4, 2.4, 2.4), Color3.fromRGB(192, 236, 124), 0.45, 0.1)
 					end
 				end
 
-				if isBrute and nearestDistance <= self._missionConfig.Mission.BruteImpactRadius and now >= bruteImpactReadyAt then
+				if isBrute and targetDistance <= self._missionConfig.Mission.BruteImpactRadius and now >= bruteImpactReadyAt then
 					bruteImpactReadyAt = now + self._missionConfig.Mission.BruteImpactCooldown
 					self:_bruteImpact(zombie, root, scaledStats)
 				end
@@ -2487,7 +2758,7 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 					end
 
 					local bossCooldownScale = bossEnrageActive and self._missionConfig.Mission.BossEnrageCooldownScale or 1
-					if nearestDistance <= self._missionConfig.Mission.BossSlamRadius and now >= bossSlamReadyAt then
+					if targetDistance <= self._missionConfig.Mission.BossSlamRadius and now >= bossSlamReadyAt then
 						bossSlamReadyAt = now + (self._missionConfig.Mission.BossSlamCooldown * bossCooldownScale)
 						self:_bossSlam(zombie, root, scaledStats)
 					elseif now >= bossSummonReadyAt then
@@ -2496,18 +2767,13 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 					end
 				end
 
-				humanoid:MoveTo(nearestRoot.Position)
-				if nearestDistance < (isBoss and 20 or 16) then
-					local lungeDirection = nearestRoot.Position - root.Position
+				humanoid:MoveTo(targetRoot.Position)
+				if targetDistance < (isBoss and 20 or 16) then
+					local lungeDirection = targetRoot.Position - root.Position
 					if lungeDirection.Magnitude > 0.01 then
 						local bossLungeScale = bossEnrageActive and self._missionConfig.Mission.BossEnrageSpeedScale or 1
 						root.AssemblyLinearVelocity = lungeDirection.Unit * ((isBoss and 18 or (isRunner and 22 or (isBrute and 10 or (isElite and 16 or 13)))) * bossLungeScale) + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
 					end
-				end
-			else
-				local objective = self:_getMissionObjective()
-				if objective then
-					humanoid:MoveTo(objective.Position)
 				end
 			end
 
@@ -2528,8 +2794,18 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 
 		local mission = self._activeMission
 		if mission then
+			local contributors = self:_getZombieContributors(zombie)
 			mission.remainingZombies = math.max(0, mission.remainingZombies - 1)
-			for _, player in ipairs(mission.party) do
+			if isBoss then
+				for _, player in ipairs(mission.party) do
+					if player and player.Parent then
+						self:_awardLootDrops(player, "BossKill", 0.75)
+						self:_emitProgressionUpdate(player)
+					end
+				end
+			end
+
+			for _, player in ipairs(contributors) do
 				if player and player.Parent then
 					self._persistenceService:IncrementStat(player, "zombiesDefeated", 1)
 					if self._dailyOpsService then
@@ -2551,15 +2827,15 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 						self._persistenceService:AddWeaponExperience(player, equippedWeaponId, weaponXp)
 					end
 					self:_awardMissionExperience(player, "ZombieKill", 5)
-					if isBoss then
-						self:_awardLootDrops(player, "BossKill", 0.75)
-						self:_emitProgressionUpdate(player)
-					end
 				end
 			end
 
+			self:_clearZombieDamageTracking(zombie)
+
 			if mission.remainingZombies <= 0 then
-				self:_completeWave()
+				if mission.phase == "Combat" then
+					self:_completeWave()
+				end
 			end
 		end
 
@@ -2654,7 +2930,7 @@ function MissionService:_createExtractionPad(runtime)
 
 	local pad = Instance.new("Part")
 	pad.Name = "ExtractionPad"
-	pad.Size = Vector3.new(18, 1, 18)
+	pad.Size = Vector3.new(28, 1, 28)
 	pad.Anchored = true
 	pad.CanCollide = true
 	pad.Material = Enum.Material.Neon
@@ -2671,7 +2947,7 @@ function MissionService:_createExtractionPad(runtime)
 	ring.Material = Enum.Material.Neon
 	ring.Color = Color3.fromRGB(167, 248, 215)
 	ring.Transparency = 0.58
-	ring.Size = Vector3.new(24, 0.12, 24)
+	ring.Size = Vector3.new(36, 0.12, 36)
 	ring.CFrame = pad.CFrame * CFrame.new(0, 0.1, 0)
 	ring.Parent = runtime
 
@@ -2679,7 +2955,7 @@ function MissionService:_createExtractionPad(runtime)
 	labelPart.CFrame = pad.CFrame * CFrame.new(0, 6, 0)
 	local labelGui = labelPart:FindFirstChildOfClass("BillboardGui")
 	if labelGui then
-		labelGui.MaxDistance = 42
+		labelGui.MaxDistance = 64
 	end
 
 	return pad
@@ -2818,6 +3094,7 @@ function MissionService:_cleanupPlayerMissionTools(player)
 	self._weaponState[player.UserId] = nil
 	self:_clearCarriedPowerCell(player)
 	self:_clearDownedState(player, false)
+	player:SetAttribute("MissionEliminated", false)
 	player:SetAttribute("MissionMedkits", 0)
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	if backpack then
@@ -2963,6 +3240,8 @@ end
 
 function MissionService:_spawnSupplyDrops(runtime)
 	local layout = self:_getActiveLayout()
+	local modifier = self:_getActiveModifier()
+	local modifierTraits = self:_getModifierRuntimeTraits()
 	if not layout then
 		return
 	end
@@ -2974,10 +3253,94 @@ function MissionService:_spawnSupplyDrops(runtime)
 	self:_createSupplyPickup(runtime, "Ammo", self:_getLayoutWorldPosition(supplyOffsets[1]))
 	self:_createSupplyPickup(runtime, "Salvage", self:_getLayoutWorldPosition(supplyOffsets[2]))
 	self:_createSupplyPickup(runtime, "Medkit", self:_getLayoutWorldPosition(Vector3.new(0, 0, 10)))
+
+	if modifier and (modifier.ExtraSupplyDrops or 0) > 0 then
+		local bonusOffsets = {
+			Vector3.new(18, 0, 22),
+			Vector3.new(-18, 0, 22),
+			Vector3.new(24, 0, -20),
+			Vector3.new(-24, 0, -20),
+		}
+		for index = 1, math.min(modifier.ExtraSupplyDrops, #bonusOffsets) do
+			local pickupType = (index % 2 == 1) and "Salvage" or "Ammo"
+			self:_createSupplyPickup(runtime, pickupType, self:_getLayoutWorldPosition(bonusOffsets[index]))
+		end
+	end
+
+	if modifierTraits.BonusSupplyPickup then
+		local bonusOffset = modifierTraits.BonusSupplyPickup == "Ammo" and Vector3.new(0, 0, -24) or Vector3.new(0, 0, 24)
+		self:_createSupplyPickup(runtime, modifierTraits.BonusSupplyPickup, self:_getLayoutWorldPosition(bonusOffset))
+	end
+end
+
+function MissionService:_finalizeMissionRuntime(mission)
+	self:_clearRuntime()
+	for _, connection in ipairs(mission.connections) do
+		connection:Disconnect()
+	end
+	self._activeMission = nil
+end
+
+function MissionService:FinalizePendingInstanceReturn()
+	local mission = self._activeMission
+	if not mission or mission.phase ~= "Returning" then
+		return false
+	end
+	self:_finalizeMissionRuntime(mission)
+	return true
+end
+
+function MissionService:FailPendingInstanceReturn()
+	local mission = self._activeMission
+	if not mission or mission.phase ~= "Returning" then
+		return false
+	end
+	mission.phase = "ReturnFailed"
+	self:_fireMissionState(mission.party, "Lobby return failed")
+	self:_notifyParty(mission.party, "Lobby return failed. Retry or rejoin the lobby.")
+	if (mission.returnRetryCount or 0) < 1 then
+		mission.returnRetryCount = (mission.returnRetryCount or 0) + 1
+		task.delay(3, function()
+			if self._activeMission ~= mission or mission.phase ~= "ReturnFailed" then
+				return
+			end
+			self:_notifyParty(mission.party, "Retrying lobby return...")
+			self:_fireMissionState(mission.party, "Retrying lobby return")
+			self:_tryReturnInstancePartyToLobby(
+				mission,
+				mission.pendingReturnStatus or "Back in the bunker.",
+				mission.pendingReturnFailureState or "Lobby return failed"
+			)
+		end)
+	end
+	return true
+end
+
+function MissionService:_tryReturnInstancePartyToLobby(mission, status, failureState)
+	if not (self._instanceDeploymentService and self._instanceDeploymentService:IsMissionInstanceServer()) then
+		return false
+	end
+
+	mission.phase = "Returning"
+	mission.pendingReturnStatus = status
+	mission.pendingReturnFailureState = failureState
+	local ok = self._instanceDeploymentService:ReturnPartyToLobby(mission.party, status)
+	if ok then
+		self:_fireMissionState(mission.party, "Returning to lobby")
+		return true
+	end
+
+	self:_notifyParty(mission.party, "Lobby return failed. Stay in the server and retry or rejoin.")
+	self:_fireMissionState(mission.party, failureState or "Lobby return failed")
+	return true
 end
 
 function MissionService:_finishAndReturnToLobby(mission, status)
 	task.delay(self._missionConfig.Mission.ReturnToLobbyDelay, function()
+		if self:_tryReturnInstancePartyToLobby(mission, status, "Lobby return failed") then
+			return
+		end
+
 		local lobbySpawn = self:_getLobbySpawn()
 		for _, player in ipairs(mission.party) do
 			if player and player.Parent then
@@ -2990,11 +3353,7 @@ function MissionService:_finishAndReturnToLobby(mission, status)
 			end
 		end
 
-		self:_clearRuntime()
-		for _, connection in ipairs(mission.connections) do
-			connection:Disconnect()
-		end
-		self._activeMission = nil
+		self:_finalizeMissionRuntime(mission)
 		self._flowService:ReturnPlayersToLobby(mission.party, status)
 	end)
 end
@@ -3003,6 +3362,11 @@ function MissionService:AbortActiveMission(status)
 	local mission = self._activeMission
 	if not mission then
 		return false, "no_active_mission"
+	end
+
+	if self:_tryReturnInstancePartyToLobby(mission, status or "Run aborted. Back in the bunker.", "Abort return failed") then
+		self:_notifyParty(mission.party, status or "Run aborted. Returning to bunker.")
+		return true
 	end
 
 	local lobbySpawn = self:_getLobbySpawn()
@@ -3016,11 +3380,7 @@ function MissionService:AbortActiveMission(status)
 		end
 	end
 
-	self:_clearRuntime()
-	for _, connection in ipairs(mission.connections) do
-		connection:Disconnect()
-	end
-	self._activeMission = nil
+	self:_finalizeMissionRuntime(mission)
 	self._flowService:ReturnPlayersToLobby(mission.party, status or "Run aborted. Back in the bunker.")
 	self:_notifyParty(mission.party, status or "Run aborted. Returning to bunker.")
 	return true
@@ -3056,12 +3416,16 @@ function MissionService:_spawnWave()
 		return
 	end
 	local layout = self:_getActiveLayout()
+	local modifier = self:_getActiveModifier()
 
 	local scenario = mission.scenario or self._missionConfig.getScenario(1)
-	local baseSpawnCount = self._missionConfig.Mission.BaseZombieCount + ((mission.wave - 1) * self._missionConfig.Mission.ExtraZombiesPerWave) + (scenario.ExtraSpawnBonus or 0)
+	local baseSpawnCount = self._missionConfig.Mission.BaseZombieCount
+		+ ((mission.wave - 1) * self._missionConfig.Mission.ExtraZombiesPerWave)
+		+ (scenario.ExtraSpawnBonus or 0)
+		+ (modifier and modifier.ExtraSpawnBonus or 0)
 	local scaledStats = self._scalingService:ScaleEnemyStats({
-		health = math.floor((self._missionConfig.Mission.ZombieBaseHealth + ((mission.wave - 1) * 10)) * (scenario.HealthScale or 1)),
-		damage = math.floor((self._missionConfig.Mission.ZombieBaseDamage + (mission.wave - 1)) * (scenario.DamageScale or 1)),
+		health = math.floor((self._missionConfig.Mission.ZombieBaseHealth + ((mission.wave - 1) * 10)) * (scenario.HealthScale or 1) * (modifier and modifier.HealthScale or 1)),
+		damage = math.floor((self._missionConfig.Mission.ZombieBaseDamage + (mission.wave - 1)) * (scenario.DamageScale or 1) * (modifier and modifier.DamageScale or 1)),
 		spawnCount = baseSpawnCount,
 	}, #mission.party)
 
@@ -3069,10 +3433,12 @@ function MissionService:_spawnWave()
 	local runnerCount = 0
 	local bruteCount = 0
 	local bossCount = 0
+	local runnerStep = clampPositiveInteger(modifier and modifier.RunnerStep or 3, 3)
+	local bruteStep = clampPositiveInteger(modifier and modifier.BruteStep or 4, 4)
 	for index = 1, scaledStats.spawnCount do
 		local willBeBoss = index == scaledStats.spawnCount and mission.wave >= self._missionConfig.Mission.WaveCount
-		local willBeBrute = not willBeBoss and mission.wave >= 3 and index % 4 == 0
-		local willBeRunner = not willBeBoss and not willBeBrute and mission.wave >= 2 and index % 3 == 0
+		local willBeBrute = not willBeBoss and mission.wave >= 3 and index % bruteStep == 0
+		local willBeRunner = not willBeBoss and not willBeBrute and mission.wave >= 2 and index % runnerStep == 0
 		if willBeBoss then
 			bossCount += 1
 		elseif willBeBrute then
@@ -3094,7 +3460,8 @@ function MissionService:_spawnWave()
 	end
 
 	local mixSummary = #mixParts > 0 and (" Mix: " .. table.concat(mixParts, ", ") .. ".") or ""
-	self:_notifyParty(mission.party, ("%s: Wave %d incoming with %d infected.%s"):format(scenario.DisplayName, mission.wave, scaledStats.spawnCount, mixSummary))
+	local modifierSummary = modifier and modifier.DisplayName ~= "Standard Ops" and (" Condition: " .. modifier.DisplayName .. ".") or ""
+	self:_notifyParty(mission.party, ("%s: Wave %d incoming with %d infected.%s%s"):format(scenario.DisplayName, mission.wave, scaledStats.spawnCount, mixSummary, modifierSummary))
 	self:_fireMissionState(mission.party, ("Wave %d/%d"):format(mission.wave, self._missionConfig.Mission.WaveCount))
 	if bossCount > 0 then
 		self:_notifyParty(mission.party, "Boss contact: Siege Tyrant detected.")
@@ -3124,11 +3491,15 @@ function MissionService:_scheduleWaveSurge(mission, scaledStats)
 	end
 
 	local startWave = self._missionConfig.Mission.WaveSurgeStartWave or 2
+	local modifier = self:_getActiveModifier()
+	local modifierTraits = self:_getModifierRuntimeTraits()
+	startWave = math.max(1, startWave + (modifier and modifier.SurgeStartWaveOffset or 0))
 	if mission.wave < startWave or mission.wave >= self._missionConfig.Mission.WaveCount then
 		return
 	end
 
-	task.delay(self._missionConfig.Mission.WaveSurgeDelay, function()
+	local waveSurgeDelay = self._missionConfig.Mission.WaveSurgeDelay * modifierTraits.WaveSurgeDelayScale
+	task.delay(waveSurgeDelay, function()
 		if not self._activeMission or self._activeMission ~= mission then
 			return
 		end
@@ -3138,7 +3509,7 @@ function MissionService:_scheduleWaveSurge(mission, scaledStats)
 
 		local liveParty = self:_getLivePartyMembers()
 		local partyBonus = math.floor(math.max(0, #liveParty - 1) / 2)
-		local surgeCount = math.max(1, (self._missionConfig.Mission.WaveSurgeBaseCount or 2) + partyBonus)
+		local surgeCount = math.max(1, (self._missionConfig.Mission.WaveSurgeBaseCount or 2) + partyBonus + (modifier and modifier.WaveSurgeBonus or 0))
 		local layout = self:_getActiveLayout()
 		local anchor = self:_getMissionSpawn()
 		if not anchor then
@@ -3150,6 +3521,8 @@ function MissionService:_scheduleWaveSurge(mission, scaledStats)
 			damage = math.max(1, math.floor((scaledStats.damage or self._missionConfig.Mission.ZombieBaseDamage) * self._missionConfig.Mission.WaveSurgeDamageScale)),
 			spawnCount = surgeCount,
 		}
+
+		mission.remainingZombies += surgeCount
 
 		self:_notifyParty(mission.party, "Pressure spike: reinforcements inbound.")
 		self:_fireMissionState(mission.party, "Breach surge")
@@ -3220,17 +3593,16 @@ function MissionService:_completeMission()
 				continue
 			end
 
-			local allInside = true
 			local livePlayers = 0
+			local insidePlayers = 0
 			for _, player in ipairs(self:_getLivePartyMembers()) do
 				local character = player.Character
 				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 				local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 				if humanoid and humanoid.Health > 0 and rootPart and not self:_isCharacterDowned(character) then
 					livePlayers += 1
-					local distance = (rootPart.Position - pad.Position).Magnitude
-					if distance > 10 then
-						allInside = false
+					if self:_isCharacterInsideExtractionPad(rootPart, pad) then
+						insidePlayers += 1
 					end
 				end
 			end
@@ -3240,6 +3612,12 @@ function MissionService:_completeMission()
 				return
 			end
 
+			local requiredInside = livePlayers
+			if livePlayers >= 3 then
+				requiredInside = livePlayers - 1
+			end
+			local allInside = insidePlayers >= requiredInside
+
 			if allInside then
 				mission.extractionStartedAt = mission.extractionStartedAt or os.clock()
 				local extractionHold = self:_getExtractionHoldDuration(mission.party)
@@ -3248,7 +3626,7 @@ function MissionService:_completeMission()
 				self:_setExtractionVisualState(progress)
 				self:_fireMissionState(mission.party, ("Extracting in %ds"):format(math.ceil(remaining)))
 				if remaining <= 0 then
-					local rewardBonus = mission.scenario and mission.scenario.RewardBonus or 0
+					local rewardBonus = (mission.scenario and mission.scenario.RewardBonus or 0) + (mission.modifier and mission.modifier.RewardBonus or 0)
 					local completionReward = self._missionConfig.Mission.CompletionReward + rewardBonus
 					self:_rewardParty(completionReward, "mission_complete")
 					for _, player in ipairs(mission.party) do
@@ -3274,7 +3652,7 @@ function MissionService:_completeMission()
 			else
 				mission.extractionStartedAt = nil
 				self:_setExtractionVisualState(0)
-				self:_fireMissionState(mission.party, "Objective: regroup on extraction")
+				self:_fireMissionState(mission.party, ("Objective: regroup on extraction (%d/%d)"):format(insidePlayers, requiredInside))
 			end
 
 			task.wait(0.35)
@@ -3284,7 +3662,7 @@ end
 
 function MissionService:_completeWave()
 	local mission = self._activeMission
-	if not mission then
+	if not mission or mission.phase ~= "Combat" then
 		return
 	end
 
@@ -3344,8 +3722,9 @@ function MissionService:StartMission(request)
 	self._activeMission = {
 		party = request.party,
 		profile = request.profile,
-		scenario = self._missionConfig.getScenario(),
-		layout = self._missionConfig.getLayout(),
+		scenario = findMissionEntryById(self._missionConfig.Scenarios, request.preview and request.preview.scenarioId, self._missionConfig.getScenario()),
+		layout = findMissionEntryById(self._missionConfig.Layouts, request.preview and request.preview.layoutId, self._missionConfig.getLayout()),
+		modifier = findMissionEntryById(self._missionConfig.MissionModifiers, request.preview and request.preview.modifierId, self._missionConfig.getModifier and self._missionConfig.getModifier()),
 		runtime = runtime,
 		zombiesFolder = zombiesFolder,
 		wave = 0,
@@ -3354,7 +3733,12 @@ function MissionService:StartMission(request)
 		hazardCooldowns = {},
 		connections = {},
 		downedStates = {},
+		zombieDamageByZombie = setmetatable({}, { __mode = "k" }),
+		zombieLastHitByZombie = setmetatable({}, { __mode = "k" }),
 		runStats = {},
+		returnRetryCount = 0,
+		pendingReturnStatus = nil,
+		pendingReturnFailureState = nil,
 	}
 	self:_decorateMissionRuntime(runtime)
 	self:_createObjective(runtime)
@@ -3365,21 +3749,24 @@ function MissionService:StartMission(request)
 	for _, player in ipairs(request.party) do
 		if player and player.Parent then
 			player:SetAttribute("InMission", true)
+			player:SetAttribute("MissionEliminated", false)
 			self:_bindCharacter(player)
 			self:_equipPlayer(player)
 			self:_bindMissionCharacterState(player)
 		end
 	end
 
+	local modifierText = self._activeMission.modifier and self._activeMission.modifier.DisplayName or "Standard Ops"
+	local modifierDescription = self._activeMission.modifier and self._activeMission.modifier.Description or ""
 	if self:_isPowerCellScenario(self._activeMission) then
-		self:_notifyParty(request.party, ("Mission started in %s. Defend the relay, recover power cells, and survive the waves."):format(self._activeMission.layout.DisplayName))
-		self:_fireMissionState(request.party, "Objective: deliver power cells")
+		self:_notifyParty(request.party, ("Mission started in %s [%s]. Defend the relay, recover power cells, and survive the waves. %s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription))
+		self:_fireMissionState(request.party, self:_getObjectiveStateText(self._activeMission))
 	elseif self:_isNestScenario(self._activeMission) then
-		self:_notifyParty(request.party, ("Mission started in %s. Defend the relay, hunt infected nests, and survive the waves."):format(self._activeMission.layout.DisplayName))
-		self:_fireMissionState(request.party, "Objective: destroy nests")
+		self:_notifyParty(request.party, ("Mission started in %s [%s]. Defend the relay, hunt infected nests, and survive the waves. %s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription))
+		self:_fireMissionState(request.party, self:_getObjectiveStateText(self._activeMission))
 	else
-		self:_notifyParty(request.party, ("Mission started in %s. Defend the bunker core and survive the waves."):format(self._activeMission.layout.DisplayName))
-		self:_fireMissionState(request.party, "Objective: defend the bunker core")
+		self:_notifyParty(request.party, ("Mission started in %s [%s]. Defend the bunker core and survive the waves. %s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription))
+		self:_fireMissionState(request.party, self:_getObjectiveStateText(self._activeMission))
 	end
 	task.delay(2, function()
 		if self._activeMission then

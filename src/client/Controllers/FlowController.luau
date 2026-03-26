@@ -383,6 +383,15 @@ local function normalizeStationPanelName(panelName)
 	if lowerName == "social" or string.find(lowerName, "comms", 1, true) or string.find(lowerName, "lounge", 1, true) then
 		return "Social"
 	end
+	if lowerName == "inventory" or string.find(lowerName, "locker", 1, true) or string.find(lowerName, "loadout", 1, true) then
+		return "Inventory"
+	end
+	if lowerName == "skilltree" or lowerName == "skill tree" or string.find(lowerName, "skill", 1, true) or string.find(lowerName, "branch", 1, true) then
+		return "SkillTree"
+	end
+	if lowerName == "questboard" or lowerName == "ops" or string.find(lowerName, "operations", 1, true) or string.find(lowerName, "daily", 1, true) then
+		return "QuestBoard"
+	end
 
 	return nil
 end
@@ -911,6 +920,9 @@ function FlowController.start()
 	local currentSkillTreeBranchFilter = "All"
 	local selectedSkillTreeNodeId = nil
 	local currentAdminStatus = "Commands ready."
+	local currentAdminEventLabel = "Event Mode: Auto Rotation"
+	local selectedAdminTargetUserId = nil
+	local activeAdminTab = "Session"
 	local squadSnapshot = nil
 	local squadDirectory = {}
 	local inviteablePlayers = {}
@@ -925,6 +937,7 @@ function FlowController.start()
 		identity = {
 			title = "Survivor",
 			badge = nil,
+			isModerator = false,
 			isAdmin = false,
 			isOwner = false,
 		},
@@ -955,6 +968,18 @@ function FlowController.start()
 		ammo = nil,
 		reserveAmmo = nil,
 	}
+	local nextMissionPreview = {
+		scenarioName = "Hold The Core",
+		scenarioDescription = "Standard bunker defense. Hold the center and clear the waves.",
+		layoutName = "Breach Yard",
+		layoutDescription = "Wide yard lanes with long sightlines and exposed flanks.",
+		modifierName = "Standard Ops",
+		modifierDescription = "Balanced bunker-defense pressure.",
+	}
+	local nextMissionVoteOptions = {}
+	local leadingMissionVoteOptionId = nil
+	local currentVoteOptionId = nil
+	local currentVoteSessionId = 0
 	local cameraKick = Vector2.zero
 	local hitMarkerToken = 0
 	local isClaimingDailyReward = false
@@ -980,6 +1005,8 @@ function FlowController.start()
 	local renderInvitePlayerList
 	local renderDailyOpsItems
 	local renderLeaderboardBoard
+	local renderAdminTargetList
+	local setLobbyValue
 	local refreshSquadDirectory
 	local refreshInviteablePlayers
 	local refreshDailyRewardState
@@ -987,6 +1014,228 @@ function FlowController.start()
 	local refreshWeeklyRewardState
 	local refreshShopCatalog
 	local enterLobby
+	local homeSignalSweepTween = nil
+	local homeSignalPulseTweens = {}
+	local homeIntroPlayed = false
+
+	local function cancelHomeAnimations()
+		if homeSignalSweepTween then
+			homeSignalSweepTween:Cancel()
+			homeSignalSweepTween = nil
+		end
+		for _, tween in ipairs(homeSignalPulseTweens) do
+			tween:Cancel()
+		end
+		table.clear(homeSignalPulseTweens)
+	end
+
+	local function animateHomeScreen(playIntro)
+		if not ui or not ui.Home or not ui.Home.Panel then
+			return
+		end
+
+		cancelHomeAnimations()
+
+		local panel = ui.Home.Panel
+		local leftPane = ui.Home.LeftCommandPane
+		local rightPane = ui.Home.RightHeroPane
+		local readinessCard = ui.Home.ReadinessCard
+		local glow = ui.Home.BackdropGlow
+		local heroBand = ui.Home.HeroBand
+		local heroStatus = ui.Home.HeroStatus
+		local heroTitle = ui.Home.HeroTitle
+		local heroBody = ui.Home.HeroBody
+		local hint = ui.Home.Hint
+		local playButton = ui.Home.PlayButton
+		local signalSweep = ui.Home.SignalSweep
+		local signalBars = ui.Home.SignalBars or {}
+		local infoCards = ui.Home.InfoCards or {}
+
+		if playIntro or not homeIntroPlayed then
+			homeIntroPlayed = true
+
+			leftPane.Position = UDim2.new(0, -28, 0, 0)
+			leftPane.BackgroundTransparency = 0.18
+			rightPane.Position = UDim2.new(0, 388, 0, 0)
+			rightPane.BackgroundTransparency = 0.18
+			readinessCard.Position = UDim2.new(0, 24, 0, 192)
+			readinessCard.BackgroundTransparency = 0.22
+			glow.BackgroundTransparency = 0.96
+			heroStatus.TextTransparency = 1
+			heroTitle.TextTransparency = 1
+			heroBody.TextTransparency = 1
+			hint.TextTransparency = 1
+			for _, card in ipairs(infoCards) do
+				if card then
+					card.Position = card.Position + UDim2.fromOffset(0, 18)
+					card.BackgroundTransparency = 0.2
+				end
+			end
+			local playScale = playButton:FindFirstChild("HomeIntroScale") or new("UIScale", {
+				Name = "HomeIntroScale",
+				Scale = 0.92,
+				Parent = playButton,
+			})
+			playScale.Scale = 0.92
+
+			TweenService:Create(leftPane, TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Position = UDim2.new(0, 0, 0, 0),
+				BackgroundTransparency = 0.06,
+			}):Play()
+			TweenService:Create(rightPane, TweenInfo.new(0.46, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Position = UDim2.new(0, 360, 0, 0),
+				BackgroundTransparency = 0.02,
+			}):Play()
+			TweenService:Create(readinessCard, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Position = UDim2.new(0, 24, 0, 172),
+				BackgroundTransparency = 0.08,
+			}):Play()
+			TweenService:Create(glow, TweenInfo.new(0.52, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+				BackgroundTransparency = 0.88,
+			}):Play()
+			TweenService:Create(heroStatus, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				TextTransparency = 0,
+			}):Play()
+			TweenService:Create(heroTitle, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				TextTransparency = 0,
+			}):Play()
+			TweenService:Create(heroBody, TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				TextTransparency = 0,
+			}):Play()
+			TweenService:Create(hint, TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				TextTransparency = 0,
+			}):Play()
+			TweenService:Create(playScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Scale = 1,
+			}):Play()
+			for index, card in ipairs(infoCards) do
+				if card then
+					local targetPosition = UDim2.new(0, (index - 1) * 148, 0, 0)
+					TweenService:Create(card, TweenInfo.new(0.32 + (index * 0.05), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						Position = targetPosition,
+						BackgroundTransparency = 0.06,
+					}):Play()
+				end
+			end
+		end
+
+		if glow then
+			local glowTween = TweenService:Create(glow, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				BackgroundTransparency = 0.93,
+			})
+			glowTween:Play()
+			table.insert(homeSignalPulseTweens, glowTween)
+		end
+		if heroBand then
+			local bandTween = TweenService:Create(heroBand, TweenInfo.new(1.25, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				Size = UDim2.new(0, 212, 0, 4),
+				BackgroundTransparency = 0.18,
+			})
+			bandTween:Play()
+			table.insert(homeSignalPulseTweens, bandTween)
+		end
+		if signalSweep then
+			signalSweep.Position = UDim2.new(0, -72, 0, 8)
+			homeSignalSweepTween = TweenService:Create(signalSweep, TweenInfo.new(1.35, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1), {
+				Position = UDim2.new(1, 12, 0, 8),
+			})
+			homeSignalSweepTween:Play()
+		end
+		for index, bar in ipairs(signalBars) do
+			if bar then
+				local pulseTween = TweenService:Create(bar, TweenInfo.new(0.7 + (index * 0.08), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+					BackgroundTransparency = 0.28,
+					Size = UDim2.new(0, 16, 0, bar.Size.Y.Offset + (index % 2 == 0 and 8 or 4)),
+				})
+				pulseTween:Play()
+				table.insert(homeSignalPulseTweens, pulseTween)
+			end
+		end
+	end
+
+	local function getAdminTargetPlayer()
+		if selectedAdminTargetUserId and tonumber(selectedAdminTargetUserId) and tonumber(selectedAdminTargetUserId) ~= player.UserId then
+			return Players:GetPlayerByUserId(tonumber(selectedAdminTargetUserId))
+		end
+		return player
+	end
+
+	local function updateAdminTargetSummary()
+		if not ui or not ui.Lobby.AdminTargetName then
+			return
+		end
+		local targetPlayer = getAdminTargetPlayer()
+		local targetIsSelf = not targetPlayer or targetPlayer == player
+		local levelValue = targetPlayer and math.max(1, tonumber(targetPlayer:GetAttribute("SkillTreeLevel")) or 1) or (progression.skillTree and progression.skillTree.level or 1)
+		local titleValue = targetPlayer and tostring(targetPlayer:GetAttribute("PlayerTitle") or "Survivor") or tostring(progression.identity and progression.identity.title or "Survivor")
+		ui.Lobby.AdminTargetName.Text = ("Target: %s"):format(targetIsSelf and "Self" or tostring(targetPlayer.DisplayName or targetPlayer.Name))
+		ui.Lobby.AdminTargetRole.Text = ("%s | Lv.%d"):format(titleValue, levelValue)
+		ui.Lobby.AdminTargetMeta.Text = targetIsSelf and "Self-targeted commands affect your own operator profile." or ("Selected server target: %s"):format(tostring(targetPlayer.Name or targetPlayer.DisplayName))
+	end
+
+	local function getAllowedAdminTabs(identity)
+		local isModerator = identity.isModerator == true or identity.isAdmin == true or identity.isOwner == true
+		local isAdmin = identity.isAdmin == true or identity.isOwner == true
+		local isOwner = identity.isOwner == true
+		return {
+			Session = isModerator,
+			Progression = isAdmin,
+			LiveOps = isAdmin,
+			Access = isOwner,
+		}
+	end
+
+	local function updateAdminTabVisibility()
+		if not ui or not ui.Lobby.AdminTabs or not ui.Lobby.AdminPages then
+			return
+		end
+		local allowedTabs = getAllowedAdminTabs(progression.identity or {})
+		if not allowedTabs[activeAdminTab] then
+			if allowedTabs.Session then
+				activeAdminTab = "Session"
+			elseif allowedTabs.Progression then
+				activeAdminTab = "Progression"
+			elseif allowedTabs.LiveOps then
+				activeAdminTab = "LiveOps"
+			elseif allowedTabs.Access then
+				activeAdminTab = "Access"
+			end
+		end
+		local activeColors = {
+			Session = Color3.fromRGB(92, 150, 112),
+			Progression = Color3.fromRGB(188, 142, 76),
+			LiveOps = Color3.fromRGB(102, 132, 188),
+			Access = Color3.fromRGB(148, 86, 86),
+		}
+		for tabKey, tabButton in pairs(ui.Lobby.AdminTabs) do
+			local isAllowed = allowedTabs[tabKey] == true
+			local isActive = isAllowed and activeAdminTab == tabKey
+			tabButton.Visible = isAllowed
+			setButtonEnabled(tabButton, isAllowed, isActive and activeColors[tabKey] or Theme.Colors.Backdrop)
+			if ui.Lobby.AdminPages[tabKey] then
+				ui.Lobby.AdminPages[tabKey].Visible = isActive
+			end
+		end
+	end
+
+	local function setAdminTab(tabKey)
+		local allowedTabs = getAllowedAdminTabs(progression.identity or {})
+		if allowedTabs[tabKey] ~= true then
+			return
+		end
+		activeAdminTab = tabKey
+		updateAdminTabVisibility()
+	end
+
+	local function describeMapVoteError(code)
+		if code == "busy" then
+			return "Map voting closes once deployment starts."
+		end
+		if code == "invalid_option" then
+			return "That map option is no longer available."
+		end
+		return "Map vote unavailable."
+	end
 
 	local function findShopItem(category, itemId)
 		local items = shopCatalog[category] or {}
@@ -1080,16 +1329,26 @@ function FlowController.start()
 
 	local function updateAdminControls()
 		local identity = progression.identity or {}
+		local isModerator = identity.isModerator == true or identity.isAdmin == true or identity.isOwner == true
 		local isAdmin = identity.isAdmin == true or identity.isOwner == true
+		local isOwner = identity.isOwner == true
+		local supportBotsAuto = player:GetAttribute("AutoSupportBots") == true
+		local targetPlayer = getAdminTargetPlayer()
+		local hasTarget = targetPlayer ~= nil
+		local hasOtherTarget = hasTarget and targetPlayer ~= player
 		if ui.Lobby.AdminButton then
-			ui.Lobby.AdminButton.Visible = isAdmin
-			ui.Lobby.AdminButton.Text = identity.isOwner and "Owner" or "Admin"
+			ui.Lobby.AdminButton.Visible = isModerator
+			ui.Lobby.AdminButton.Text = identity.isOwner and "Owner" or (identity.isAdmin and "Admin" or "Mod")
 		end
 		if ui.Lobby.AdminSummary then
-			ui.Lobby.AdminSummary.Text = isAdmin and currentAdminStatus or "Owner access unavailable."
+			ui.Lobby.AdminSummary.Text = isModerator and currentAdminStatus or "Owner access unavailable."
+		end
+		updateAdminTabVisibility()
+		if ui.Lobby.AdminEventLabel then
+			ui.Lobby.AdminEventLabel.Text = currentAdminEventLabel
 		end
 		if ui.Lobby.AdminHealButton then
-			setButtonEnabled(ui.Lobby.AdminHealButton, isAdmin, Color3.fromRGB(94, 156, 108))
+			setButtonEnabled(ui.Lobby.AdminHealButton, isModerator, Color3.fromRGB(94, 156, 108))
 			setButtonEnabled(ui.Lobby.AdminHealSquadButton, isAdmin, Color3.fromRGB(82, 146, 118))
 			setButtonEnabled(ui.Lobby.AdminTokensButton, isAdmin, Color3.fromRGB(188, 142, 76))
 			setButtonEnabled(ui.Lobby.AdminTokensLargeButton, isAdmin, Color3.fromRGB(204, 158, 84))
@@ -1097,7 +1356,38 @@ function FlowController.start()
 			setButtonEnabled(ui.Lobby.AdminXpLargeButton, isAdmin, Color3.fromRGB(102, 144, 204))
 			setButtonEnabled(ui.Lobby.AdminReviveSquadButton, isAdmin, Color3.fromRGB(92, 168, 132))
 			setButtonEnabled(ui.Lobby.AdminReturnButton, isAdmin, Color3.fromRGB(168, 92, 92))
-			setButtonEnabled(ui.Lobby.AdminRefreshButton, isAdmin, Theme.Colors.Backdrop)
+			setButtonEnabled(ui.Lobby.AdminRefreshButton, isModerator, Theme.Colors.Backdrop)
+			setButtonEnabled(ui.Lobby.AdminGrantTokensTargetButton, isAdmin and hasOtherTarget, Color3.fromRGB(182, 138, 74))
+			setButtonEnabled(ui.Lobby.AdminGrantXpTargetButton, isAdmin and hasOtherTarget, Color3.fromRGB(82, 124, 186))
+			setButtonEnabled(ui.Lobby.AdminHealTargetButton, isAdmin and hasTarget, Color3.fromRGB(82, 154, 118))
+			setButtonEnabled(ui.Lobby.AdminGrantWeaponsButton, isAdmin and hasOtherTarget, Color3.fromRGB(166, 112, 78))
+			setButtonEnabled(ui.Lobby.AdminGrantCosmeticsButton, isAdmin and hasOtherTarget, Color3.fromRGB(122, 94, 172))
+			setButtonEnabled(ui.Lobby.AdminTerminateButton, isAdmin and hasOtherTarget, Color3.fromRGB(158, 86, 86))
+			setButtonEnabled(ui.Lobby.AdminRoleModButton, isOwner and hasOtherTarget, Color3.fromRGB(86, 118, 188))
+			setButtonEnabled(ui.Lobby.AdminRoleAdminButton, isOwner and hasOtherTarget, Color3.fromRGB(122, 96, 188))
+			setButtonEnabled(ui.Lobby.AdminRoleClearButton, isOwner and hasOtherTarget, Color3.fromRGB(82, 82, 92))
+			setButtonEnabled(ui.Lobby.AdminBanButton, isOwner and hasOtherTarget, Color3.fromRGB(156, 76, 76))
+			setButtonEnabled(ui.Lobby.AdminEventAutoButton, isOwner, Theme.Colors.Backdrop)
+			setButtonEnabled(ui.Lobby.AdminEventOffButton, isOwner, Color3.fromRGB(126, 78, 78))
+			setButtonEnabled(ui.Lobby.AdminEventSpringButton, isOwner, Color3.fromRGB(86, 146, 102))
+			setButtonEnabled(ui.Lobby.AdminEventHarvestButton, isOwner, Color3.fromRGB(168, 122, 74))
+			setButtonEnabled(ui.Lobby.AdminEventWinterButton, isOwner, Color3.fromRGB(82, 132, 188))
+			setButtonEnabled(ui.Lobby.AdminSkipWaveButton, isAdmin, Color3.fromRGB(188, 132, 78))
+			setButtonEnabled(ui.Lobby.AdminForceBossButton, isAdmin, Color3.fromRGB(166, 86, 92))
+			setButtonEnabled(ui.Lobby.AdminRefillAmmoButton, isAdmin, Color3.fromRGB(82, 128, 188))
+			setButtonEnabled(ui.Lobby.AdminTeleportSquadButton, isAdmin, Color3.fromRGB(96, 164, 132))
+			setButtonEnabled(ui.Lobby.AdminSpawnBruteButton, isAdmin, Color3.fromRGB(168, 122, 84))
+			setButtonEnabled(ui.Lobby.AdminSpawnRunnerButton, isAdmin, Color3.fromRGB(126, 174, 96))
+			setButtonEnabled(ui.Lobby.AdminGiveDropsButton, isAdmin, Color3.fromRGB(132, 96, 184))
+			setButtonEnabled(ui.Lobby.AdminSpawnSupportBotsButton, isAdmin, Color3.fromRGB(92, 152, 188))
+			setButtonEnabled(ui.Lobby.AdminToggleSupportBotsButton, isAdmin, supportBotsAuto and Color3.fromRGB(102, 168, 212) or Color3.fromRGB(88, 118, 168))
+			if ui.Lobby.AdminToggleSupportBotsButton then
+				ui.Lobby.AdminToggleSupportBotsButton.Text = supportBotsAuto and "Bots Auto: On" or "Bots Auto: Off"
+			end
+		end
+		updateAdminTargetSummary()
+		if renderAdminTargetList and ui.Lobby.AdminPopup and ui.Lobby.AdminPopup.Visible then
+			renderAdminTargetList()
 		end
 	end
 
@@ -1133,75 +1423,16 @@ function FlowController.start()
 	end
 
 	renderLeaderboardBoard = function()
-		if not ui.Lobby.LeaderboardColumns then
+		if not ui.Lobby.LeaderboardSummary then
 			return
 		end
 
 		local playersList = Players:GetPlayers()
-		local columns = ui.Lobby.LeaderboardColumns
-		local topRankColors = {
-			[1] = "#AC6EFF",
-			[2] = "#FFC25E",
-			[3] = "#6CF2D6",
-		}
-		local function buildRichLeaderboardBody(valueGetter, valueFormatter)
-			local entries = {}
-			for _, candidate in ipairs(playersList) do
-				table.insert(entries, {
-					name = trimLabel(candidate.DisplayName, 12),
-					value = valueGetter(candidate),
-				})
-			end
-			table.sort(entries, function(a, b)
-				if a.value == b.value then
-					return a.name < b.name
-				end
-				return a.value > b.value
-			end)
-
-			local lines = {}
-			for index = 1, math.min(4, #entries) do
-				local entry = entries[index]
-				local valueText = valueFormatter(entry.value)
-				local line = index == 1
-					and ("<font size=\"20\">%d. %s</font>\n<font size=\"17\">%s</font>"):format(index, entry.name, valueText)
-					or ("%d. %s\n%s"):format(index, entry.name, valueText)
-				local color = topRankColors[index]
-				lines[index] = color and ("<font color=\"%s\">%s</font>"):format(color, line) or line
-			end
-			return #lines > 0 and table.concat(lines, "\n\n") or "No data yet."
-		end
-		if columns.Levels then
-			columns.Levels.RichText = true
-			columns.Levels.Text = buildRichLeaderboardBody(function(candidate)
-				return tonumber(candidate:GetAttribute("SkillTreeLevel")) or 0
-			end, function(value)
-				return ("Level %d"):format(value)
-			end)
-		end
-		if columns.Runs then
-			columns.Runs.RichText = true
-			columns.Runs.Text = buildRichLeaderboardBody(function(candidate)
-				return tonumber(candidate:GetAttribute("MissionsCompleted")) or 0
-			end, function(value)
-				return ("%d run%s"):format(value, value == 1 and "" or "s")
-			end)
-		end
-		if columns.Kills then
-			columns.Kills.RichText = true
-			columns.Kills.Text = buildRichLeaderboardBody(function(candidate)
-				return tonumber(candidate:GetAttribute("ZombiesDefeated")) or 0
-			end, function(value)
-				return ("%d kill%s"):format(value, value == 1 and "" or "s")
-			end)
-		end
 		local playerCount = #playersList
-		if ui.Lobby.LeaderboardSummary then
-			ui.Lobby.LeaderboardSummary.Text = ("%d operator%s online. Board updates from live server stats."):format(
-				playerCount,
-				playerCount == 1 and "" or "s"
-			)
-		end
+		ui.Lobby.LeaderboardSummary.Text = ("Global Top 100 at Archive Walk. %d operator%s in this server. Use the world board for All Time, Monthly, Weekly, and Daily."):format(
+			playerCount,
+			playerCount == 1 and "" or "s"
+		)
 	end
 
 	local function flashHitMarker(color)
@@ -1479,12 +1710,24 @@ end
 					or (identity.isAdmin and Color3.fromRGB(56, 48, 32) or Color3.fromRGB(36, 40, 46))
 			end
 		end
-		ui.Lobby.MissionStatus.Text = ("%s\n%s"):format(missionTelemetry.scenarioName or "Hold The Core", currentDeployStatus)
-		ui.Lobby.MissionMeta.Text = ("Wave %d/%d | Core %d%%"):format(
-			missionTelemetry.wave or 0,
-			missionTelemetry.totalWaves or 0,
-			missionTelemetry.objectiveHealthPercent or 100
-		)
+		if state == "Mission" then
+			ui.Lobby.MissionStatus.Text = ("%s\n%s"):format(missionTelemetry.scenarioName or "Hold The Core", currentDeployStatus)
+			ui.Lobby.MissionMeta.Text = ("Wave %d/%d | Core %d%%"):format(
+				missionTelemetry.wave or 0,
+				missionTelemetry.totalWaves or 0,
+				missionTelemetry.objectiveHealthPercent or 100
+			)
+		else
+			local previewModifier = tostring(nextMissionPreview.modifierName or "Standard Ops")
+			ui.Lobby.MissionStatus.Text = ("Next Run: %s\n%s [%s]"):format(
+				tostring(nextMissionPreview.layoutName or "Breach Yard"),
+				tostring(nextMissionPreview.scenarioName or "Hold The Core"),
+				previewModifier
+			)
+			ui.Lobby.MissionMeta.Text = ("%s\nYour squad launches into its own run instance."):format(
+				tostring(nextMissionPreview.modifierDescription or nextMissionPreview.layoutDescription or nextMissionPreview.scenarioDescription or "Mission preview pending.")
+			)
+		end
 		ui.Lobby.SocialBody.Text = currentSocialMessage
 		ui.Lobby.ShopBody.Text = Theme.ShopCopy[currentShopTab] or Theme.ShopCopy["Deploy Tokens"]
 		local weaponName = findShopItem(Theme.ShopTabToCategory.Weapons, progression.equippedWeapon)
@@ -1568,7 +1811,37 @@ end
 		if missionTelemetry.ammo ~= nil then
 			ammoText = ("%d/%d"):format(missionTelemetry.ammo or 0, missionTelemetry.reserveAmmo or 0)
 		end
-		ui.Lobby.MissionLoadout.Text = ("Loadout: %s | Ammo: %s"):format(weaponName and weaponName.DisplayName or "Training Blade", ammoText)
+		if state == "Mission" then
+			ui.Lobby.MissionLoadout.Text = ("Loadout: %s | Ammo: %s"):format(weaponName and weaponName.DisplayName or "Training Blade", ammoText)
+		else
+			ui.Lobby.MissionLoadout.Text = "Your squad deploys into its own run instance."
+		end
+		if ui.Lobby.MissionVoteLabel then
+			local showVoteUi = state ~= "Mission" and #nextMissionVoteOptions > 0
+			ui.Lobby.MissionVoteLabel.Visible = showVoteUi
+			ui.Lobby.MissionVoteLabel.Text = currentVoteOptionId and "Route selected. You can still change it before deploy." or "Pick your squad's next run:"
+			for index, button in ipairs(ui.Lobby.MissionVoteButtons or {}) do
+				local option = nextMissionVoteOptions[index]
+				button.Visible = showVoteUi and option ~= nil
+				if option then
+					local isLeading = option.optionId == leadingMissionVoteOptionId
+					local isSelected = option.optionId == currentVoteOptionId
+					local accentColor = isSelected and Color3.fromRGB(228, 178, 96) or (isLeading and Color3.fromRGB(96, 144, 216) or Theme.Colors.Backdrop)
+					local modifierName = trimLabel(option.modifierName or "Standard Ops", 18)
+					local voteCount = tonumber(option.voteCount) or 0
+					button.Text = ("%s\n%s\n%s\n%d vote%s%s"):format(
+						trimLabel(option.layoutName or "Map", 18),
+						trimLabel(option.scenarioName or "Directive", 22),
+						modifierName,
+						voteCount,
+						voteCount == 1 and "" or "s",
+						isSelected and " | YOUR PICK" or (isLeading and " | LEADING" or "")
+					)
+					button:SetAttribute("VoteOptionId", option.optionId)
+					setButtonEnabled(button, showVoteUi, accentColor)
+				end
+			end
+		end
 		local seasonalText = seasonalEventState and (" | Event: " .. tostring(seasonalEventState.DisplayName or seasonalEventState.Id)) or ""
 		ui.Lobby.ShopStatus.Text = currentShopStatus .. seasonalText
 		ui.Lobby.InventoryStatus.Text = currentInventoryStatus
@@ -1642,6 +1915,9 @@ end
 		if ui.Lobby.ShopPremiumFilters then
 			ui.Lobby.ShopPremiumFilters.Visible = currentShopTab == "Deploy Tokens"
 		end
+		if ui.Lobby.ShopPremiumFilterLabel then
+			ui.Lobby.ShopPremiumFilterLabel.Visible = currentShopTab == "Deploy Tokens"
+		end
 		if ui.Lobby.ShopPremiumButtons then
 			for filterName, button in pairs(ui.Lobby.ShopPremiumButtons) do
 				local activeColor = filterName == "Packs" and Color3.fromRGB(104, 214, 164)
@@ -1679,7 +1955,7 @@ end
 	local function updateHudVisibility()
 		local inMission = state == "Mission"
 			or player:GetAttribute("InMission") == true
-			or (ui.Lobby.MissionPanel and ui.Lobby.MissionPanel.Visible == true)
+		local missionPanelOpen = ui.Lobby.MissionPanel and ui.Lobby.MissionPanel.Visible == true
 		if ui.Lobby.HudBar then
 			ui.Lobby.HudBar.Visible = not inMission
 		end
@@ -1693,7 +1969,7 @@ end
 			ui.Lobby.RewardFloatLayer.Visible = inMission
 		end
 		if ui.Lobby.LeaderboardBoard then
-			ui.Lobby.LeaderboardBoard.Visible = (not inMission) and activePopup == nil
+			ui.Lobby.LeaderboardBoard.Visible = (not inMission) and activePopup == nil and (not missionPanelOpen)
 		end
 		if not inMission and next(suppressedMissionPrompts) ~= nil then
 			for prompt in pairs(suppressedMissionPrompts) do
@@ -1933,6 +2209,30 @@ end
 			return
 		end
 
+		if panelName == "Inventory" then
+			setInventoryTab("Weapons")
+			setActivePopup("Inventory")
+			updateLobbyText()
+			return
+		end
+
+		if panelName == "SkillTree" then
+			setActivePopup("SkillTree")
+			currentSkillTreeStatus = "Allocate points to unlock deeper branch nodes."
+			updateLobbyText()
+			return
+		end
+
+		if panelName == "QuestBoard" then
+			setActivePopup("QuestBoard")
+			refreshDailyRewardState()
+			refreshDailyOpsState()
+			refreshWeeklyRewardState()
+			refreshSubscriptionState()
+			updateLobbyText()
+			return
+		end
+
 		if panelName == "Squad" or panelName == "Social" then
 			setActivePopup(panelName)
 			refreshSquadDirectory()
@@ -1959,6 +2259,7 @@ end
 			promptTween = nil
 		end
 		setPageVisibility(ui, "Home")
+		animateHomeScreen(true)
 		updateHudVisibility()
 	end
 
@@ -1967,6 +2268,7 @@ end
 		ui.Root.Visible = true
 		setFullscreenMode()
 		CinematicController.stop(ui.Root)
+		cancelHomeAnimations()
 		setActivePopup(nil)
 		loadingStartedAt = os.clock()
 		awaitingContinuePrompt = waitForInput == true
@@ -2010,6 +2312,7 @@ end
 		ui.Root.Visible = true
 		setWorldHudMode()
 		CinematicController.stop(ui.Root)
+		cancelHomeAnimations()
 		restoreCameraToPlayer(player)
 		setActivePopup(nil)
 		awaitingContinuePrompt = false
@@ -2044,6 +2347,7 @@ end
 		end
 		ui.Root.Visible = true
 		setWorldHudMode()
+		cancelHomeAnimations()
 		restoreCameraToPlayer(player)
 		setPageVisibility(ui, "Lobby")
 		ui.Lobby.MissionPanel.Visible = true
@@ -2089,12 +2393,6 @@ end
 	local function setShopTab(tabName)
 		tabName = normalizeShopTab(tabName)
 		if Theme.ShopCopy[tabName] then
-			if tabName == "Skill Tree" then
-				currentSkillTreeStatus = "Allocate points to unlock deeper branch nodes."
-				setActivePopup("SkillTree")
-				updateLobbyText()
-				return
-			end
 			currentShopTab = tabName
 			currentShopStatus = Theme.ShopCopy[tabName]
 			updateLobbyText()
@@ -2425,6 +2723,21 @@ end
 		return "Unable to join squad."
 	end
 
+	local function describeDuelError(code)
+		if code == "corner_taken" then
+			return "That duel corner is already occupied."
+		elseif code == "already_in_match" then
+			return "You are already in an active duel."
+		elseif code == "cooldown" then
+			return "Duel cooldown active. Give it a few seconds before requeueing."
+		elseif code == "not_in_lobby" then
+			return "Duel ring is only available from the lobby."
+		elseif code == "invalid_corner" then
+			return "That duel entry is offline."
+		end
+		return "Unable to join the duel ring."
+	end
+
 	refreshDailyRewardState = function()
 		local callOk, rewardState = safeInvoke(RemoteNames.Functions.GetDailyRewardState)
 		if callOk and type(rewardState) == "table" then
@@ -2659,15 +2972,63 @@ end
 		elseif resultOrCode == "insufficient_tokens" then
 			currentDeployStatus = "Need more deploy tokens to start."
 		elseif resultOrCode == "busy" then
-			currentDeployStatus = "Deployment already in progress."
+			currentDeployStatus = "Squad launch already in progress."
 		else
 			currentDeployStatus = "Unable to deploy right now."
 		end
 		updateLobbyText()
 	end
 
-	local function requestAdminCommand(commandId)
-		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.AdminCommand, commandId)
+	local function requestMapVote(optionId)
+		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.RequestMapVote, optionId)
+		if not callOk then
+			currentDeployStatus = "Map vote request failed."
+			updateLobbyText()
+			return
+		end
+		if success then
+			if type(payloadOrCode) == "table" then
+				currentVoteOptionId = tostring(payloadOrCode.selectedOptionId or optionId)
+				if type(payloadOrCode.lobbyState) == "table" then
+					setLobbyValue(payloadOrCode.lobbyState)
+				end
+				currentDeployStatus = ("Vote locked for %s."):format(tostring(payloadOrCode.layoutName or "next run"))
+			else
+				currentVoteOptionId = tostring(optionId)
+				currentDeployStatus = "Map vote locked."
+			end
+		else
+			currentDeployStatus = describeMapVoteError(payloadOrCode)
+		end
+		updateLobbyText()
+	end
+
+	local function requestDuel(action)
+		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.RequestDuel, action)
+		if not callOk then
+			currentSocialMessage = "Duel request failed."
+		elseif success then
+			if resultOrCode == "started" then
+				currentSocialMessage = "Duel started. Hold the ring."
+			elseif resultOrCode == "left" then
+				currentSocialMessage = "You left the duel ring."
+			else
+				currentSocialMessage = "Duel corner locked in. Waiting for an opponent."
+			end
+		else
+			currentSocialMessage = describeDuelError(resultOrCode)
+		end
+		updateLobbyText()
+	end
+
+	local function requestAdminCommand(commandRequest)
+		local requestPayload = commandRequest
+		if type(requestPayload) ~= "table" then
+			requestPayload = {
+				commandId = tostring(commandRequest or ""),
+			}
+		end
+		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.AdminCommand, requestPayload)
 		if not callOk then
 			currentAdminStatus = "Owner command failed."
 			updateLobbyText()
@@ -2679,6 +3040,20 @@ end
 			if type(payloadOrCode.progression) == "table" then
 				setProgressionValue(payloadOrCode.progression)
 			end
+			if type(payloadOrCode.panelState) == "table" then
+				local panelState = payloadOrCode.panelState
+				if panelState.overrideId == "none" then
+					currentAdminEventLabel = "Event Mode: Disabled"
+				elseif type(panelState.activeEventName) == "string" and panelState.activeEventName ~= "" then
+					if panelState.overrideId and panelState.overrideId ~= "" then
+						currentAdminEventLabel = ("Event Mode: %s"):format(panelState.activeEventName)
+					else
+						currentAdminEventLabel = ("Event Mode: Auto Rotation (%s)"):format(panelState.activeEventName)
+					end
+				else
+					currentAdminEventLabel = "Event Mode: Auto Rotation"
+				end
+			end
 		elseif success then
 			currentAdminStatus = "Owner command completed."
 		elseif payloadOrCode == "unauthorized" then
@@ -2689,10 +3064,20 @@ end
 			currentAdminStatus = "Character unavailable for heal."
 		elseif payloadOrCode == "no_downed_targets" then
 			currentAdminStatus = "No downed squad members to revive."
+		elseif payloadOrCode == "missing_target" then
+			currentAdminStatus = "Select a valid server target first."
 		else
 			currentAdminStatus = "Owner command unavailable."
 		end
 		updateLobbyText()
+	end
+
+	local function requestAdminTargetCommand(commandId)
+		local targetPlayer = getAdminTargetPlayer()
+		requestAdminCommand({
+			commandId = commandId,
+			targetUserId = targetPlayer and targetPlayer.UserId or player.UserId,
+		})
 	end
 
 	local function respondToInvite(acceptInvite)
@@ -2931,165 +3316,6 @@ end
 		clearGeneratedChildren(ui.Lobby.ShopItemsFrame)
 
 		local category = Theme.ShopTabToCategory[currentShopTab]
-		if currentShopTab == "Skill Tree" then
-			local skillTree = progression.skillTree or {}
-			local availablePoints = skillTree.skillPoints or 0
-			ui.Lobby.ShopEmptyLabel.Visible = false
-
-			for index, skill in ipairs(SkillTreeConfig.getOrderedSkills()) do
-				local currentRank = tonumber(skillTree.skills and skillTree.skills[skill.Id]) or 0
-				local maxRank = tonumber(skill.MaxRank) or 1
-				local prereqMet = true
-				local prereqName = nil
-				if skill.Prerequisite then
-					local prereqDefinition = SkillTreeConfig.getSkillDefinition(skill.Prerequisite)
-					prereqName = prereqDefinition and prereqDefinition.DisplayName or skill.Prerequisite
-					prereqMet = (tonumber(skillTree.skills and skillTree.skills[skill.Prerequisite]) or 0) > 0
-				end
-				local canUnlock = availablePoints > 0 and currentRank < maxRank and prereqMet and spendingSkillId == nil
-				local branchColor = skill.Branch == "Survivor" and Color3.fromRGB(110, 179, 92)
-					or (skill.Branch == "Combat" and Color3.fromRGB(214, 124, 92) or Color3.fromRGB(92, 160, 214))
-
-				local card = makeListCard(ui.Lobby.ShopItemsFrame, "Skill_" .. index, 132)
-				card.LayoutOrder = index
-				card.BackgroundColor3 = Color3.fromRGB(68, 82, 98)
-
-				local accentBar = new("Frame", {
-					Name = "AccentBar",
-					BackgroundColor3 = canUnlock and branchColor or Theme.Colors.AccentWarm,
-					BorderSizePixel = 0,
-					Position = UDim2.new(0.02, 0, 0.12, 0),
-					Size = UDim2.new(0, 4, 0.76, 0),
-					Parent = card,
-				})
-				addCorner(accentBar, UDim.new(0, 4))
-
-				local infoPane = new("Frame", {
-					Name = "InfoPane",
-					BackgroundTransparency = 1,
-					Position = UDim2.new(0.06, 0, 0.1, 0),
-					Size = UDim2.new(0.64, 0, 0.8, 0),
-					Parent = card,
-				})
-
-				new("TextLabel", {
-					Name = "Title",
-					BackgroundTransparency = 1,
-					Position = UDim2.new(0, 0, 0, 0),
-					Size = UDim2.new(1, 0, 0, 22),
-					Text = skill.DisplayName,
-					TextColor3 = Theme.Colors.Text,
-					TextScaled = false,
-					TextSize = 19,
-					TextXAlignment = Enum.TextXAlignment.Left,
-					Font = Theme.Fonts.Heading,
-					Parent = infoPane,
-				})
-				new("TextLabel", {
-					Name = "Branch",
-					BackgroundTransparency = 1,
-					Position = UDim2.new(0, 0, 0, 22),
-					Size = UDim2.new(1, 0, 0, 14),
-					Text = ("%s | Tier %d"):format(skill.Branch or "General", tonumber(skill.Tier) or 1),
-					TextColor3 = branchColor,
-					TextScaled = false,
-					TextSize = 11,
-					TextXAlignment = Enum.TextXAlignment.Left,
-					Font = Theme.Fonts.Heading,
-					Parent = infoPane,
-				})
-				new("TextLabel", {
-					Name = "Details",
-					BackgroundTransparency = 1,
-					Position = UDim2.new(0, 0, 0, 40),
-					Size = UDim2.new(1, 0, 0, 36),
-					Text = skill.Description,
-					TextColor3 = Theme.Colors.Muted,
-					TextScaled = false,
-					TextSize = 12,
-					TextWrapped = true,
-					TextXAlignment = Enum.TextXAlignment.Left,
-					TextYAlignment = Enum.TextYAlignment.Top,
-					Font = Theme.Fonts.Body,
-					Parent = infoPane,
-				})
-				new("TextLabel", {
-					Name = "Prerequisite",
-					BackgroundTransparency = 1,
-					Position = UDim2.new(0, 0, 0, 80),
-					Size = UDim2.new(1, 0, 0, 14),
-					Text = prereqName and ("Requires: " .. prereqName) or "Root node",
-					TextColor3 = prereqMet and Theme.Colors.AccentSoft or Color3.fromRGB(255, 168, 140),
-					TextScaled = false,
-					TextSize = 11,
-					TextXAlignment = Enum.TextXAlignment.Left,
-					Font = Theme.Fonts.Body,
-					Parent = infoPane,
-				})
-				local badge = new("TextLabel", {
-					Name = "Bonus",
-					BackgroundColor3 = Color3.fromRGB(112, 84, 54),
-					BorderSizePixel = 0,
-					Position = UDim2.new(0, 0, 1, -22),
-					Size = UDim2.new(0, 180, 0, 20),
-					Text = skill.BonusLabel,
-					TextColor3 = Theme.Colors.Text,
-					TextScaled = false,
-					TextSize = 11,
-					Font = Theme.Fonts.Heading,
-					Parent = infoPane,
-				})
-				addCorner(badge, UDim.new(0, 8))
-
-				new("TextLabel", {
-					Name = "Rank",
-					BackgroundTransparency = 1,
-					Position = UDim2.new(0.74, 0, 0.16, 0),
-					Size = UDim2.new(0.16, 0, 0.18, 0),
-					Text = ("Rank %d/%d"):format(currentRank, maxRank),
-					TextColor3 = Theme.Colors.AccentSoft,
-					TextScaled = false,
-					TextSize = 12,
-					TextWrapped = true,
-					TextXAlignment = Enum.TextXAlignment.Right,
-					Font = Theme.Fonts.Heading,
-					Parent = card,
-				})
-
-				local buttonText = "Spend Point"
-				local buttonColor = Theme.Colors.Accent
-				if spendingSkillId == skill.Id then
-					buttonText = "Applying..."
-				elseif currentRank >= maxRank then
-					buttonText = "Maxed"
-					buttonColor = Theme.Colors.Backdrop
-				elseif not prereqMet then
-					local prereq = SkillTreeConfig.getSkillDefinition(skill.Prerequisite)
-					buttonText = prereq and ("Need " .. prereq.DisplayName) or "Locked"
-					buttonColor = Theme.Colors.Backdrop
-				elseif availablePoints <= 0 then
-					buttonText = "No Points"
-					buttonColor = Theme.Colors.Backdrop
-				end
-
-				local button = makeListButton(
-					card,
-					"SpendButton",
-					buttonText,
-					UDim2.new(0.84, 0, 0.66, 0),
-					UDim2.new(0.2, 0, 0.3, 0),
-					buttonColor
-				)
-				button.TextSize = 15
-				setButtonEnabled(button, canUnlock, buttonColor)
-				button.MouseButton1Click:Connect(function()
-					requestSpendSkillPoint(skill.Id)
-				end)
-			end
-
-			return
-		end
-
 		local items = {}
 		for _, item in ipairs(shopCatalog[category] or {}) do
 			if matchesRarityFilter(item.Rarity, currentShopRarityFilter)
@@ -3113,37 +3339,92 @@ end
 		ui.Lobby.ShopEmptyLabel.Visible = #items == 0
 
 		for index, item in ipairs(items) do
-			local card = makeListCard(ui.Lobby.ShopItemsFrame, "Item_" .. index, 132)
+			local card = makeListCard(ui.Lobby.ShopItemsFrame, "Item_" .. index, 178)
 			card.LayoutOrder = index
 			local isSubscriptionItem = type(item.SubscriptionId) == "string" and item.SubscriptionId ~= ""
 			local isGamePassItem = type(item.GamePassId) == "number" and item.GamePassId > 0
 			local isPremiumPack = not isSubscriptionItem and not isGamePassItem and (item.CostType == "Robux" or category == Theme.ShopTabToCategory["Deploy Tokens"])
 			local premiumAccent = isSubscriptionItem and Color3.fromRGB(214, 182, 96)
 				or (isGamePassItem and Color3.fromRGB(104, 168, 232) or (isPremiumPack and Color3.fromRGB(104, 214, 164) or Theme.Colors.AccentWarm))
-			local premiumPanel = isSubscriptionItem and Color3.fromRGB(86, 72, 46)
-				or (isGamePassItem and Color3.fromRGB(52, 68, 94) or (isPremiumPack and Color3.fromRGB(40, 78, 72) or Color3.fromRGB(68, 82, 98)))
+			local premiumPanel = isSubscriptionItem and Color3.fromRGB(60, 54, 40)
+				or (isGamePassItem and Color3.fromRGB(42, 54, 76) or (isPremiumPack and Color3.fromRGB(36, 58, 60) or Color3.fromRGB(36, 46, 58)))
 			local premiumLabel = isSubscriptionItem and "SUBSCRIPTION"
 				or (isGamePassItem and "GAME PASS" or (isPremiumPack and "PRODUCT" or nil))
 			card.BackgroundColor3 = premiumPanel
+			local cardGradient = Instance.new("UIGradient")
+			cardGradient.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, premiumPanel:Lerp(Color3.fromRGB(255, 255, 255), 0.04)),
+				ColorSequenceKeypoint.new(1, premiumPanel:Lerp(Color3.fromRGB(0, 0, 0), 0.12)),
+			})
+			cardGradient.Rotation = 0
+			cardGradient.Parent = card
 
 			local accentBar = new("Frame", {
 				Name = "AccentBar",
 				BackgroundColor3 = premiumAccent,
 				BorderSizePixel = 0,
-				Position = UDim2.new(0.02, 0, 0.1, 0),
+				Position = UDim2.new(0.02, 0, 0.12, 0),
 				Size = UDim2.new(0, 4, 0.8, 0),
 				Parent = card,
 			})
 			addCorner(accentBar, UDim.new(0, 4))
 			addStroke(card, premiumAccent, 0.14, 1)
 
+			local topRule = new("Frame", {
+				Name = "TopRule",
+				BackgroundColor3 = premiumAccent,
+				BackgroundTransparency = 0.4,
+				BorderSizePixel = 0,
+				Position = UDim2.new(0, 16, 0, 12),
+				Size = UDim2.new(0, 82, 0, 2),
+				Parent = card,
+			})
+			addCorner(topRule, UDim.new(0, 4))
+
+			local featuredEvent = item.SeasonalEvent and seasonalEventState and seasonalEventState.Id == item.SeasonalEvent
+			local eventRibbonText = featuredEvent and ((seasonalEventState and seasonalEventState.DisplayName) or "EVENT LIVE")
+				or (item.SeasonalEvent and "SEASONAL CACHE" or (item.DropOnly and "MISSION DROP" or nil))
+			if eventRibbonText then
+				local ribbonColor = featuredEvent and Color3.fromRGB(132, 196, 118)
+					or (item.SeasonalEvent and Color3.fromRGB(178, 122, 214) or Color3.fromRGB(86, 156, 214))
+				local ribbon = new("TextLabel", {
+					Name = "EventRibbon",
+					BackgroundColor3 = ribbonColor:Lerp(Color3.fromRGB(18, 22, 30), 0.2),
+					BackgroundTransparency = 0.08,
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, -18, 0, 10),
+					Size = UDim2.new(0, 118, 0, 20),
+					Text = string.upper(eventRibbonText),
+					TextColor3 = Theme.Colors.Text,
+					TextScaled = false,
+					TextSize = 9,
+					Font = Theme.Fonts.Heading,
+					Parent = card,
+				})
+				addCorner(ribbon, UDim.new(0, 8))
+				addStroke(ribbon, ribbonColor, 0.12, 1)
+			end
+
 			local infoPane = new("Frame", {
 				Name = "InfoPane",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0.06, 0, 0.1, 0),
-				Size = UDim2.new(0.62, 0, 0.82, 0),
+				Position = UDim2.new(0, 22, 0, 18),
+				Size = UDim2.new(1, -214, 1, -34),
 				Parent = card,
 			})
+
+			local rightPane = new("Frame", {
+				Name = "RightPane",
+				BackgroundColor3 = Color3.fromRGB(26, 32, 40),
+				BackgroundTransparency = 0.1,
+				BorderSizePixel = 0,
+				Position = UDim2.new(1, -182, 0, 14),
+				Size = UDim2.new(0, 164, 1, -28),
+				Parent = card,
+			})
+			addCorner(rightPane, UDim.new(0, 14))
+			addStroke(rightPane, premiumAccent, 0.18, 1)
 
 			local title = new("TextLabel", {
 				Name = "Title",
@@ -3153,37 +3434,105 @@ end
 				Text = tostring(item.DisplayName or item.Id),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
-				TextSize = 20,
+				TextSize = 21,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Theme.Fonts.Heading,
 				Parent = infoPane,
 			})
+			local laneText = premiumLabel
+				or ((category == Theme.ShopTabToCategory.Weapons and "ARMORY STOCK")
+				or (category == Theme.ShopTabToCategory.Upgrades and "FIELD UPGRADE")
+				or (category == Theme.ShopTabToCategory.Cosmetics and "COSMETIC SKIN")
+				or "DEPLOY STOCK")
+			local laneTag = new("TextLabel", {
+				Name = "LaneTag",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 0, 0, 28),
+				Size = UDim2.new(1, 0, 0, 14),
+				Text = laneText,
+				TextColor3 = premiumAccent,
+				TextScaled = false,
+				TextSize = 10,
+				Font = Theme.Fonts.Heading,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Parent = infoPane,
+			})
+			local featuredBlock = new("Frame", {
+				Name = "FeaturedBlock",
+				BackgroundColor3 = featuredEvent and Color3.fromRGB(38, 60, 48)
+					or (item.SeasonalEvent and Color3.fromRGB(48, 42, 66)
+					or (item.DropOnly and Color3.fromRGB(34, 50, 68) or Color3.fromRGB(28, 36, 46))),
+				BackgroundTransparency = 0.08,
+				BorderSizePixel = 0,
+				Position = UDim2.new(0, 0, 0, 52),
+				Size = UDim2.new(0, 98, 0, 46),
+				Parent = infoPane,
+			})
+			addCorner(featuredBlock, UDim.new(0, 14))
+			addStroke(
+				featuredBlock,
+				featuredEvent and Color3.fromRGB(132, 196, 118)
+					or (item.SeasonalEvent and Color3.fromRGB(178, 122, 214)
+					or (item.DropOnly and Color3.fromRGB(86, 156, 214) or premiumAccent)),
+				0.14,
+				1
+			)
+			local featuredMark = new("TextLabel", {
+				Name = "FeaturedMark",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 12, 0, 10),
+				Size = UDim2.new(1, -24, 0, 14),
+				Text = item.DropOnly and "FIELD FIND" or (item.SeasonalEvent and "EVENT ISSUE" or "STOCK"),
+				TextColor3 = Theme.Colors.Text,
+				TextScaled = false,
+				TextSize = 9,
+				Font = Theme.Fonts.Heading,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Parent = featuredBlock,
+			})
+			local featuredGlyph = new("TextLabel", {
+				Name = "FeaturedGlyph",
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, 0, 0.62, 0),
+				Size = UDim2.new(1, -20, 0, 26),
+				Text = item.SeasonalEvent and "FEATURED" or (item.DropOnly and "DROP CACHE" or "STANDARD"),
+				TextColor3 = featuredEvent and Color3.fromRGB(198, 255, 188)
+					or (item.SeasonalEvent and Color3.fromRGB(224, 186, 255)
+					or (item.DropOnly and Color3.fromRGB(172, 218, 255) or premiumAccent)),
+				TextScaled = false,
+				TextSize = 12,
+				Font = Theme.Fonts.Heading,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Parent = featuredBlock,
+			})
 			local details = new("TextLabel", {
 				Name = "Details",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 0, 0, 36),
-				Size = UDim2.new(1, 0, 0, 38),
+				Position = UDim2.new(0, 110, 0, 52),
+				Size = UDim2.new(1, -110, 0, 58),
 				Text = tostring(item.Description or "No description set."),
-				TextColor3 = Theme.Colors.Muted,
+				TextColor3 = Color3.fromRGB(194, 204, 216),
 				TextScaled = false,
-				TextSize = 14,
+				TextSize = 13,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextYAlignment = Enum.TextYAlignment.Top,
 				Font = Theme.Fonts.Body,
 				Parent = infoPane,
 			})
-			new("TextLabel", {
+			local intelLine = new("TextLabel", {
 				Name = "DropChance",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 0, 0, 78),
-				Size = UDim2.new(1, 0, 0, 14),
+				Position = UDim2.new(0, 0, 1, -52),
+				Size = UDim2.new(1, 0, 0, 26),
 				Text = getDropChanceText(item, seasonalEventState),
-				TextColor3 = Theme.Colors.AccentSoft,
+				TextColor3 = Color3.fromRGB(150, 200, 170),
 				TextScaled = false,
 				TextSize = 11,
 				TextXAlignment = Enum.TextXAlignment.Left,
+				TextWrapped = true,
 				Font = Theme.Fonts.Body,
 				Parent = infoPane,
 			})
@@ -3203,15 +3552,13 @@ end
 				priceText = "Robux product"
 			end
 
-			local badgeText = premiumLabel
-				or (isSubscriptionItem and "SUPPORTER")
-				or string.upper((category == Theme.ShopTabToCategory.Weapons and "ARMORY") or (category == Theme.ShopTabToCategory.Upgrades and "UPGRADE") or (category == Theme.ShopTabToCategory.Cosmetics and "COSMETIC") or "TOKEN")
+			local badgeText = string.upper(rarityLabel)
 			local badge = new("TextLabel", {
 				Name = "CategoryBadge",
-				BackgroundColor3 = premiumAccent:Lerp(Color3.fromRGB(42, 48, 56), 0.35),
+				BackgroundColor3 = rarityColor,
 				BorderSizePixel = 0,
-				Position = UDim2.new(0, 0, 1, -24),
-				Size = UDim2.new(0, premiumLabel and 120 or 108, 0, 20),
+				Position = UDim2.new(0, 0, 1, -20),
+				Size = UDim2.new(0, 92, 0, 20),
 				Text = badgeText,
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
@@ -3221,12 +3568,12 @@ end
 			})
 			addCorner(badge, UDim.new(0, 8))
 			local rarityBadge = new("TextLabel", {
-				Name = "RarityBadge",
-				BackgroundColor3 = rarityColor,
+				Name = "TypeBadge",
+				BackgroundColor3 = Color3.fromRGB(46, 56, 70),
 				BorderSizePixel = 0,
-				Position = UDim2.new(0, premiumLabel and 128 or 116, 1, -24),
-				Size = UDim2.new(0, 88, 0, 20),
-				Text = string.upper(rarityLabel),
+				Position = UDim2.new(0, 100, 1, -20),
+				Size = UDim2.new(0, premiumLabel and 118 or 102, 0, 20),
+				Text = string.upper(premiumLabel or ((category == Theme.ShopTabToCategory.Weapons and "ARMORY") or (category == Theme.ShopTabToCategory.Upgrades and "UPGRADE") or (category == Theme.ShopTabToCategory.Cosmetics and "COSMETIC") or "TOKEN")),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
 				TextSize = 11,
@@ -3238,35 +3585,47 @@ end
 			local price = new("TextLabel", {
 				Name = "Price",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0.72, 0, 0.12, 0),
-				Size = UDim2.new(0.22, 0, 0.18, 0),
+				Position = UDim2.new(0, 14, 0, 16),
+				Size = UDim2.new(1, -28, 0, 30),
 				Text = priceText,
-				TextColor3 = premiumAccent:Lerp(Theme.Colors.Text, 0.18),
+				TextColor3 = premiumAccent:Lerp(Theme.Colors.Text, 0.26),
 				TextScaled = false,
-				TextSize = 13,
+				TextSize = 16,
 				TextWrapped = true,
-				TextXAlignment = Enum.TextXAlignment.Right,
+				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Theme.Fonts.Heading,
-				Parent = card,
+				Parent = rightPane,
 			})
-			if premiumLabel then
-				local premiumChip = new("TextLabel", {
-					Name = "PremiumChip",
-					BackgroundColor3 = premiumAccent,
-					BackgroundTransparency = 0.08,
-					BorderSizePixel = 0,
-					Position = UDim2.new(0.74, 0, 0.38, 0),
-					Size = UDim2.new(0, 94, 0, 18),
-					Text = premiumLabel,
-					TextColor3 = Theme.Colors.Text,
-					TextScaled = false,
-					TextSize = 10,
-					Font = Theme.Fonts.Heading,
-					Parent = card,
-				})
-				addCorner(premiumChip, UDim.new(0, 8))
-				addStroke(premiumChip, premiumAccent, 0.14, 1)
-			end
+			local priceMeta = new("TextLabel", {
+				Name = "PriceMeta",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 14, 0, 44),
+				Size = UDim2.new(1, -28, 0, 28),
+				Text = premiumLabel and "Premium access item" or (item.DropOnly and "Mission reward only" or "Quartermaster stock"),
+				TextColor3 = Theme.Colors.Muted,
+				TextScaled = false,
+				TextSize = 11,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextWrapped = true,
+				Font = Theme.Fonts.Body,
+				Parent = rightPane,
+			})
+			local premiumChip = new("TextLabel", {
+				Name = "PremiumChip",
+				BackgroundColor3 = premiumAccent:Lerp(Color3.fromRGB(30, 38, 50), 0.22),
+				BackgroundTransparency = premiumLabel and 0.12 or 0.18,
+				BorderSizePixel = 0,
+				Position = UDim2.new(0, 14, 0, 78),
+				Size = UDim2.new(0, premiumLabel and 110 or 92, 0, 20),
+				Text = premiumLabel or "STANDARD",
+				TextColor3 = Theme.Colors.Text,
+				TextScaled = false,
+				TextSize = 10,
+				Font = Theme.Fonts.Heading,
+				Parent = rightPane,
+			})
+			addCorner(premiumChip, UDim.new(0, 8))
+			addStroke(premiumChip, premiumAccent, 0.14, 1)
 			local ownedAttribute = ("ShopUnlocked_%s_%s"):format(category, item.Id)
 			local isOwned = (isGamePassItem and player:GetAttribute("GamePassOwned_" .. tostring(item.GamePassKey or "")) == true)
 				or player:GetAttribute(ownedAttribute) == true
@@ -3336,11 +3695,11 @@ end
 				card,
 				"PurchaseButton",
 				buttonText,
-				UDim2.new(0.91, 0, 0.7, 0),
-				UDim2.new(0.22, 0, 0.3, 0),
+				UDim2.new(1, -18, 1, -18),
+				UDim2.new(0, 118, 0, 36),
 				buttonColor
 			)
-			button.TextSize = 16
+			button.TextSize = 15
 			setButtonEnabled(button, canPurchase or isRobuxItem, buttonColor)
 			button.MouseButton1Click:Connect(function()
 				if isOwned and (category == Theme.ShopTabToCategory.Weapons or category == Theme.ShopTabToCategory.Cosmetics) then
@@ -4054,6 +4413,108 @@ end
 		end
 	end
 
+	renderAdminTargetList = function()
+		if not ui.Lobby.AdminTargetList then
+			return
+		end
+
+		clearGeneratedChildren(ui.Lobby.AdminTargetList)
+		local playersList = Players:GetPlayers()
+		table.sort(playersList, function(a, b)
+			if a == player then
+				return true
+			end
+			if b == player then
+				return false
+			end
+			return tostring(a.DisplayName or a.Name) < tostring(b.DisplayName or b.Name)
+		end)
+
+		for index, candidate in ipairs(playersList) do
+			local card = makeListCard(ui.Lobby.AdminTargetList, "AdminTarget_" .. tostring(candidate.UserId), 68)
+			card.LayoutOrder = index
+			card.BackgroundColor3 = candidate == player and Color3.fromRGB(64, 54, 38) or Color3.fromRGB(42, 36, 30)
+
+			local selected = (candidate == player and not selectedAdminTargetUserId) or (selectedAdminTargetUserId == candidate.UserId)
+			local accentBar = new("Frame", {
+				Name = "AccentBar",
+				BackgroundColor3 = selected and Color3.fromRGB(214, 182, 116) or Color3.fromRGB(106, 92, 74),
+				BorderSizePixel = 0,
+				Position = UDim2.new(0.02, 0, 0.14, 0),
+				Size = UDim2.new(0, 4, 0.72, 0),
+				Parent = card,
+			})
+			addCorner(accentBar, UDim.new(0, 4))
+
+			local selectButton = new("TextButton", {
+				Name = "SelectButton",
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				Size = UDim2.fromScale(1, 1),
+				Text = "",
+				Parent = card,
+			})
+
+			local identityTitle = tostring(candidate:GetAttribute("PlayerTitle") or "Survivor")
+			local levelValue = math.max(1, tonumber(candidate:GetAttribute("SkillTreeLevel")) or 1)
+			local title = new("TextLabel", {
+				Name = "Title",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 18, 0, 10),
+				Size = UDim2.new(0.62, 0, 0, 22),
+				Text = candidate == player and ("Self • " .. tostring(candidate.DisplayName or candidate.Name)) or tostring(candidate.DisplayName or candidate.Name),
+				TextColor3 = Theme.Colors.Text,
+				TextScaled = false,
+				TextSize = 16,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Theme.Fonts.Heading,
+				Parent = card,
+			})
+			local meta = new("TextLabel", {
+				Name = "Meta",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 18, 0, 34),
+				Size = UDim2.new(0.62, 0, 0, 16),
+				Text = ("%s | Lv.%d"):format(identityTitle, levelValue),
+				TextColor3 = Color3.fromRGB(214, 196, 172),
+				TextScaled = false,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Theme.Fonts.Body,
+				Parent = card,
+			})
+			local stateChip = new("TextLabel", {
+				Name = "StateChip",
+				BackgroundColor3 = selected and Color3.fromRGB(132, 98, 52) or Color3.fromRGB(58, 48, 36),
+				BackgroundTransparency = 0.08,
+				BorderSizePixel = 0,
+				Position = UDim2.new(1, -92, 0.5, -14),
+				Size = UDim2.new(0, 76, 0, 28),
+				Text = selected and "Selected" or "Target",
+				TextColor3 = Theme.Colors.Text,
+				TextScaled = false,
+				TextSize = 13,
+				Font = Theme.Fonts.Heading,
+				Parent = card,
+			})
+			addCorner(stateChip, UDim.new(0, 10))
+			addStroke(stateChip, Color3.fromRGB(196, 166, 108), 0.2, 1)
+
+			selectButton.MouseButton1Click:Connect(function()
+				if candidate == player then
+					selectedAdminTargetUserId = nil
+				else
+					selectedAdminTargetUserId = candidate.UserId
+				end
+				updateAdminTargetSummary()
+				updateAdminControls()
+				renderAdminTargetList()
+			end)
+		end
+
+		updateAdminTargetSummary()
+	end
+
 	renderInvitePlayerList = function()
 		clearGeneratedChildren(ui.Lobby.InvitePlayerList)
 		ui.Lobby.InvitePlayerEmpty.Visible = #inviteablePlayers == 0
@@ -4248,7 +4709,7 @@ end
 		updateLobbyText()
 	end
 
-	local function setLobbyValue(payload)
+	setLobbyValue = function(payload)
 		if type(payload) ~= "table" then
 			return
 		end
@@ -4263,6 +4724,48 @@ end
 
 		if payload.social or payload.announcement then
 			currentSocialMessage = tostring(payload.social or payload.announcement)
+		end
+
+		if type(payload.nextMissionPreview) == "table" then
+			nextMissionPreview = {
+				scenarioName = tostring(payload.nextMissionPreview.scenarioName or nextMissionPreview.scenarioName),
+				scenarioDescription = tostring(payload.nextMissionPreview.scenarioDescription or nextMissionPreview.scenarioDescription),
+				layoutName = tostring(payload.nextMissionPreview.layoutName or nextMissionPreview.layoutName),
+				layoutDescription = tostring(payload.nextMissionPreview.layoutDescription or nextMissionPreview.layoutDescription),
+				modifierName = tostring(payload.nextMissionPreview.modifierName or nextMissionPreview.modifierName),
+				modifierDescription = tostring(payload.nextMissionPreview.modifierDescription or nextMissionPreview.modifierDescription),
+			}
+		end
+		if type(payload.nextMissionVote) == "table" then
+			local incomingSessionId = tonumber(payload.nextMissionVote.sessionId) or 0
+			if incomingSessionId ~= currentVoteSessionId then
+				currentVoteSessionId = incomingSessionId
+				currentVoteOptionId = nil
+			end
+			nextMissionVoteOptions = {}
+			leadingMissionVoteOptionId = type(payload.nextMissionVote.leadingOptionId) == "string" and payload.nextMissionVote.leadingOptionId or nil
+			for index, option in ipairs(payload.nextMissionVote.options or {}) do
+				nextMissionVoteOptions[index] = {
+					optionId = tostring(option.optionId or ("map_" .. tostring(index))),
+					scenarioName = tostring(option.scenarioName or "Hold The Core"),
+					layoutName = tostring(option.layoutName or "Breach Yard"),
+					modifierName = tostring(option.modifierName or "Standard Ops"),
+					modifierDescription = tostring(option.modifierDescription or ""),
+					voteCount = tonumber(option.voteCount) or 0,
+				}
+			end
+			if currentVoteOptionId then
+				local voteStillExists = false
+				for _, option in ipairs(nextMissionVoteOptions) do
+					if option.optionId == currentVoteOptionId then
+						voteStillExists = true
+						break
+					end
+				end
+				if not voteStillExists then
+					currentVoteOptionId = nil
+				end
+			end
 		end
 
 		local shopTab = normalizeShopTab(payload.shopTab)
@@ -4291,6 +4794,7 @@ end
 	end
 
 	setPageVisibility(ui, "Home")
+	animateHomeScreen(true)
 	for _, popup in pairs(ui.Lobby.Popups) do
 		popup.Visible = false
 	end
@@ -4306,6 +4810,7 @@ end
 	styleButton(ui.Lobby.RefreshBoardButton, Theme.Colors.AccentWarm)
 	styleButton(ui.Lobby.ShopQuickButton, Theme.Colors.AccentWarm)
 	styleButton(ui.Lobby.InventoryQuickButton, Color3.fromRGB(86, 122, 176))
+	styleButton(ui.Lobby.SkillTreeQuickButton, Color3.fromRGB(118, 132, 166))
 	styleButton(ui.Lobby.SquadQuickButton, Color3.fromRGB(92, 146, 214))
 	styleButton(ui.Lobby.InviteQuickButton, Color3.fromRGB(76, 158, 136))
 	styleButton(ui.Lobby.SettingsQuickButton, Theme.Colors.Backdrop)
@@ -4330,6 +4835,11 @@ end
 	styleButton(ui.Lobby.AcceptInviteButton, Theme.Colors.Accent)
 	styleButton(ui.Lobby.DeclineInviteButton, Theme.Colors.Backdrop)
 	styleButton(ui.Lobby.DeployButton, Theme.Colors.AccentWarm)
+	if ui.Lobby.MissionVoteButtons then
+		for _, button in ipairs(ui.Lobby.MissionVoteButtons) do
+			styleButton(button, Theme.Colors.Backdrop)
+		end
+	end
 	if ui.Lobby.SkillTreeFilterButtons then
 		for filterName, button in pairs(ui.Lobby.SkillTreeFilterButtons) do
 			local branchTheme = Theme.SkillTreeBranches[filterName]
@@ -4399,6 +4909,14 @@ end
 		end
 	end)
 
+	ui.Lobby.SkillTreeQuickButton.MouseButton1Click:Connect(function()
+		if state == "Lobby" then
+			setActivePopup("SkillTree")
+			currentSkillTreeStatus = "Allocate points to unlock deeper branch nodes."
+			updateLobbyText()
+		end
+	end)
+
 	ui.Lobby.SquadQuickButton.MouseButton1Click:Connect(function()
 		if state == "Lobby" then
 			setActivePopup("Squad")
@@ -4433,6 +4951,18 @@ end
 			requestDeploy()
 		end
 	end)
+	if ui.Lobby.MissionVoteButtons then
+		for _, button in ipairs(ui.Lobby.MissionVoteButtons) do
+			button.MouseButton1Click:Connect(function()
+				if state == "Lobby" then
+					local optionId = button:GetAttribute("VoteOptionId")
+					if type(optionId) == "string" and optionId ~= "" then
+						requestMapVote(optionId)
+					end
+				end
+			end)
+		end
+	end
 
 	ui.Lobby.InventoryWeaponTab.MouseButton1Click:Connect(function()
 		if state == "Lobby" then
@@ -4498,6 +5028,12 @@ end
 			setActivePopup("Social")
 			refreshSquadDirectory()
 			refreshInviteablePlayers()
+		elseif panelName == "Inventory" then
+			setInventoryTab("Weapons")
+			setActivePopup("Inventory")
+		elseif panelName == "SkillTree" then
+			setActivePopup("SkillTree")
+			currentSkillTreeStatus = "Allocate points to unlock deeper branch nodes."
 		elseif panelName == "Squad" then
 			setActivePopup("Squad")
 			refreshSquadDirectory()
@@ -4552,8 +5088,15 @@ end
 	end)
 
 	ui.Lobby.AdminButton.MouseButton1Click:Connect(function()
-		if progression.identity and (progression.identity.isAdmin == true or progression.identity.isOwner == true) then
+		if progression.identity and (progression.identity.isModerator == true or progression.identity.isAdmin == true or progression.identity.isOwner == true) then
+			setAdminTab("Session")
 			setActivePopup("Admin")
+			requestAdminCommand({
+				commandId = "get_panel_state",
+			})
+			if renderAdminTargetList then
+				renderAdminTargetList()
+			end
 			updateLobbyText()
 		end
 	end)
@@ -4594,8 +5137,127 @@ end
 		requestAdminCommand("refresh_access")
 	end)
 
+	ui.Lobby.AdminGrantTokensTargetButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("grant_tokens_target")
+	end)
+
+	ui.Lobby.AdminGrantXpTargetButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("grant_xp_target")
+	end)
+
+	ui.Lobby.AdminHealTargetButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("heal_target")
+	end)
+
+	ui.Lobby.AdminGrantWeaponsButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("unlock_all_weapons_target")
+	end)
+
+	ui.Lobby.AdminGrantCosmeticsButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("unlock_all_cosmetics_target")
+	end)
+
+	ui.Lobby.AdminTerminateButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("terminate_player")
+	end)
+
+	ui.Lobby.AdminRoleModButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("promote_moderator")
+	end)
+
+	ui.Lobby.AdminRoleAdminButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("promote_admin")
+	end)
+
+	ui.Lobby.AdminRoleClearButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("clear_access")
+	end)
+
+	ui.Lobby.AdminBanButton.MouseButton1Click:Connect(function()
+		requestAdminTargetCommand("ban_player")
+	end)
+
+	ui.Lobby.AdminEventAutoButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("event_auto")
+	end)
+
+	ui.Lobby.AdminEventOffButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("event_none")
+	end)
+
+	ui.Lobby.AdminEventSpringButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("event_spring")
+	end)
+
+	ui.Lobby.AdminEventHarvestButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("event_harvest")
+	end)
+
+	ui.Lobby.AdminEventWinterButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("event_winter")
+	end)
+
+	ui.Lobby.AdminSkipWaveButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("skip_wave")
+	end)
+
+	ui.Lobby.AdminForceBossButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("force_boss")
+	end)
+
+	ui.Lobby.AdminRefillAmmoButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("refill_ammo")
+	end)
+
+	ui.Lobby.AdminTeleportSquadButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("teleport_squad")
+	end)
+
+	ui.Lobby.AdminSpawnBruteButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("spawn_brute")
+	end)
+
+	ui.Lobby.AdminSpawnRunnerButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("spawn_runner")
+	end)
+
+	ui.Lobby.AdminGiveDropsButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("give_all_drops")
+	end)
+
+	ui.Lobby.AdminSpawnSupportBotsButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("spawn_support_bots")
+	end)
+
+	ui.Lobby.AdminToggleSupportBotsButton.MouseButton1Click:Connect(function()
+		requestAdminCommand("toggle_support_bots_auto")
+	end)
+
+	if ui.Lobby.AdminTabs then
+		for tabKey, tabButton in pairs(ui.Lobby.AdminTabs) do
+			tabButton.MouseButton1Click:Connect(function()
+				setAdminTab(tabKey)
+			end)
+		end
+	end
+
 	ui.Lobby.CloseAdminButton.MouseButton1Click:Connect(function()
 		setActivePopup(nil)
+	end)
+
+	Players.PlayerAdded:Connect(function()
+		if renderAdminTargetList then
+			renderAdminTargetList()
+		end
+	end)
+
+	Players.PlayerRemoving:Connect(function(leavingPlayer)
+		if selectedAdminTargetUserId == leavingPlayer.UserId then
+			selectedAdminTargetUserId = nil
+		end
+		if renderAdminTargetList then
+			renderAdminTargetList()
+		end
 	end)
 
 	ui.Lobby.AcceptInviteButton.MouseButton1Click:Connect(function()
@@ -4713,6 +5375,12 @@ end
 			return
 		end
 
+		local duelAction = prompt:GetAttribute("DuelAction")
+		if duelAction ~= nil then
+			requestDuel(duelAction)
+			return
+		end
+
 		if prompt.Name == "LobbyNpcPrompt" or prompt:GetAttribute("NpcDialogueTitle") ~= nil then
 			pendingNpcDialogue = {
 				title = prompt:GetAttribute("NpcDialogueTitle"),
@@ -4755,6 +5423,12 @@ end
 			candidate:GetAttributeChangedSignal("SkillTreeLevel"):Connect(updateLobbyText),
 			candidate:GetAttributeChangedSignal("MissionsCompleted"):Connect(updateLobbyText),
 			candidate:GetAttributeChangedSignal("ZombiesDefeated"):Connect(updateLobbyText),
+			candidate:GetAttributeChangedSignal("AllTimeMissionsCompleted"):Connect(updateLobbyText),
+			candidate:GetAttributeChangedSignal("AllTimeZombiesDefeated"):Connect(updateLobbyText),
+			candidate:GetAttributeChangedSignal("WeeklyMissionsCompleted"):Connect(updateLobbyText),
+			candidate:GetAttributeChangedSignal("WeeklyZombiesDefeated"):Connect(updateLobbyText),
+			candidate:GetAttributeChangedSignal("DailyMissionsCompleted"):Connect(updateLobbyText),
+			candidate:GetAttributeChangedSignal("DailyZombiesDefeated"):Connect(updateLobbyText),
 			candidate:GetAttributeChangedSignal("LeaderboardRank"):Connect(updateLobbyText),
 		}
 	end

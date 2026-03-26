@@ -1,6 +1,6 @@
 local SubscriptionConfig = require(script.Parent.SubscriptionConfig)
 
-export type TokenSource = "GroupJoin" | "DailyReward" | "RobuxPurchase" | "DeploySpend" | "MissionReward" | "SubscriptionReward"
+export type TokenSource = "GroupJoin" | "DailyReward" | "RobuxPurchase" | "DeploySpend" | "MissionReward" | "SubscriptionReward" | "ActivityReward"
 export type ShopCategory = "DeployTokens" | "Upgrades" | "Weapons" | "Cosmetics"
 
 local TokenEconomy = {
@@ -239,7 +239,7 @@ local TokenEconomy = {
 			{
 				Id = "cosmetic_field_cap",
 				DisplayName = "Field Cap",
-				Description = "Simple cosmetic placeholder for the shop.",
+				Description = "Basic fieldwear cosmetic for survivors who want a lighter locker look.",
 				CostType = "Tokens",
 				Rarity = "Common",
 				Cost = 8,
@@ -247,8 +247,8 @@ local TokenEconomy = {
 			},
 			{
 				Id = "cosmetic_neon_outline",
-				DisplayName = "Neon Outline",
-				Description = "Adds a bunker-grade survivor outline.",
+				DisplayName = "Galaxy Skin",
+				Description = "Animated galaxy weapon finish with shifting cosmic color bands.",
 				CostType = "Tokens",
 				Rarity = "Rare",
 				Cost = 14,
@@ -256,8 +256,8 @@ local TokenEconomy = {
 			},
 			{
 				Id = "cosmetic_bunker_glow",
-				DisplayName = "Bunker Glow",
-				Description = "Cold blue outline for cleaner command-deck presence.",
+				DisplayName = "Bunker Steel Skin",
+				Description = "Cold steel-blue weapon finish tuned for bunker-issued hardware.",
 				CostType = "Tokens",
 				Rarity = "Uncommon",
 				Cost = 18,
@@ -265,8 +265,8 @@ local TokenEconomy = {
 			},
 			{
 				Id = "cosmetic_ember_trace",
-				DisplayName = "Ember Trace",
-				Description = "Warm ember edge lighting for aggressive breach runs.",
+				DisplayName = "Ember Skin",
+				Description = "Heated ember-metal weapon skin with a live furnace color shift.",
 				CostType = "Tokens",
 				Rarity = "Epic",
 				Cost = 20,
@@ -274,8 +274,8 @@ local TokenEconomy = {
 			},
 			{
 				Id = "cosmetic_medic_aura",
-				DisplayName = "Medic Aura",
-				Description = "Soft rescue-green outline for support-focused survivors.",
+				DisplayName = "Medic Skin",
+				Description = "Clean rescue-green weapon finish for support-focused loadouts.",
 				CostType = "Tokens",
 				Rarity = "Uncommon",
 				Cost = 16,
@@ -283,8 +283,8 @@ local TokenEconomy = {
 			},
 			{
 				Id = "cosmetic_vernal_glow",
-				DisplayName = "Vernal Glow",
-				Description = "Spring event outline with bright command-deck green edges.",
+				DisplayName = "Vernal Skin",
+				Description = "Seasonal spring weapon skin with bright fresh bunker tones.",
 				CostType = "Tokens",
 				Rarity = "Rare",
 				Cost = 0,
@@ -295,6 +295,8 @@ local TokenEconomy = {
 		},
 	},
 }
+
+local seasonalEventOverrideId = nil
 
 local function isMonthDayOnOrAfter(month, day, targetMonth, targetDay)
 	if month ~= targetMonth then
@@ -353,7 +355,47 @@ function TokenEconomy.getCategoryItems(category: ShopCategory)
 	return TokenEconomy.ShopCatalog[category] or {}
 end
 
+function TokenEconomy.getSeasonalEventById(eventId)
+	local normalizedId = tostring(eventId or "")
+	for _, event in ipairs(TokenEconomy.SeasonalEvents) do
+		if event.Id == normalizedId then
+			return event
+		end
+	end
+	return nil
+end
+
+function TokenEconomy.setSeasonalEventOverride(eventId)
+	if eventId == nil or eventId == "" or eventId == "auto" then
+		seasonalEventOverrideId = nil
+		return true
+	end
+	if eventId == "none" then
+		seasonalEventOverrideId = "none"
+		return true
+	end
+	if TokenEconomy.getSeasonalEventById(eventId) then
+		seasonalEventOverrideId = tostring(eventId)
+		return true
+	end
+	return false
+end
+
+function TokenEconomy.clearSeasonalEventOverride()
+	seasonalEventOverrideId = nil
+end
+
+function TokenEconomy.getSeasonalEventOverrideId()
+	return seasonalEventOverrideId
+end
+
 function TokenEconomy.getActiveSeasonalEvent(nowTable)
+	if seasonalEventOverrideId == "none" then
+		return nil
+	end
+	if seasonalEventOverrideId then
+		return TokenEconomy.getSeasonalEventById(seasonalEventOverrideId)
+	end
 	local current = nowTable or os.date("*t")
 	local month = tonumber(current.month) or 1
 	local day = tonumber(current.day) or 1
