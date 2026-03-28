@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 
 local InstanceDeploymentService = {}
@@ -433,6 +434,28 @@ function InstanceDeploymentService:DeployPartyToMissionInstance(squad, party, pr
 			lootMultiplier = profile.lootMultiplier,
 		})
 
+		if RunService:IsStudio() then
+			self:_setPlayersPending(party, false)
+			if self._flowService then
+				self._flowService:StartMissionInstance({
+					squadId = squadId,
+					party = party,
+					profile = profile,
+					preview = preview,
+				})
+				self._flowService:UnlockSquadAfterDispatch(squadId)
+			end
+			if self._missionService then
+				self._missionService:StartMission({
+					squadId = squadId,
+					party = party,
+					profile = profile,
+					preview = preview,
+				})
+			end
+			return
+		end
+
 		local ok, accessCodeOrError = pcall(function()
 			local accessCode = TeleportService:ReserveServer(game.PlaceId)
 			local options = Instance.new("TeleportOptions")
@@ -468,6 +491,14 @@ function InstanceDeploymentService:DeployPartyToMissionInstance(squad, party, pr
 end
 
 function InstanceDeploymentService:ReturnPartyToLobby(party, status)
+	if RunService:IsStudio() then
+		self:_setPlayersPending(party, false)
+		self:_setPlayerState(party, "Lobby")
+		if self._flowService then
+			return self._flowService:ReturnPlayersToLobby(party, status or "Back in the bunker.")
+		end
+		return true
+	end
 	self:_setPlayersPending(party, false)
 	self:_setPlayerState(party, "Returning")
 	self:_broadcastDeployState(party, {

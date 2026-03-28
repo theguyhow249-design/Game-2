@@ -1,4 +1,5 @@
 local CollectionService = game:GetService("CollectionService")
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
@@ -25,6 +26,7 @@ function FlowService.new(context)
 	self._scalingService = context.ScalingService
 	self._tokenService = context.TokenService
 	self._tokenEconomy = context.TokenEconomy
+	self._antiExploitService = context.AntiExploitService
 	self._state = {
 		phase = "Lobby",
 		activeRequest = nil,
@@ -32,6 +34,8 @@ function FlowService.new(context)
 		intermissionEndsAt = 0,
 	}
 	self._registeredPads = {}
+	self._registeredVotePads = {}
+	self._voteTouchDebounce = {}
 	self._deployPadLocked = false
 	self._nextMissionPreview = nil
 	self._mapVote = nil
@@ -74,9 +78,15 @@ function FlowService:Start()
 	for _, instance in ipairs(CollectionService:GetTagged("DeployPad")) do
 		self:RegisterDeployPad(instance)
 	end
+	for _, instance in ipairs(CollectionService:GetTagged("MapVotePad")) do
+		self:RegisterMapVotePad(instance)
+	end
 
 	CollectionService:GetInstanceAddedSignal("DeployPad"):Connect(function(instance)
 		self:RegisterDeployPad(instance)
+	end)
+	CollectionService:GetInstanceAddedSignal("MapVotePad"):Connect(function(instance)
+		self:RegisterMapVotePad(instance)
 	end)
 
 	self._squadService.SquadChanged:Connect(function()
@@ -392,11 +402,128 @@ function FlowService:_broadcastLobbyState()
 	Workspace:SetAttribute("ActiveSquads", lobbyState.activeSquads)
 	Workspace:SetAttribute("ShopOpen", lobbyState.shopOpen)
 	Workspace:SetAttribute("DeployPadLocked", lobbyState.deployPadLocked)
+	self:_updateDeployVoteBoard(lobbyState.nextMissionVote)
 	if self._remotes then
 		self._remotes:FireEvent(self._remoteNames.Events.LobbyStateChanged, lobbyState)
 	end
 
 	return lobbyState
+end
+
+function FlowService:_getDeployVoteBoards()
+	local lobbyRoot = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
+	local plaza = lobbyRoot and lobbyRoot:FindFirstChild("OpenSkyLobby")
+	local deployDeck = plaza and plaza:FindFirstChild("DeployVoteDeck")
+	local board = deployDeck and deployDeck:FindFirstChild("VoteBoard")
+	local frames = {}
+	if board then
+		for _, child in ipairs(board:GetChildren()) do
+			if child:IsA("SurfaceGui") and (child.Name == "BoardGui" or child.Name == "BoardGuiMirror") then
+				local frame = child:FindFirstChild("Frame")
+				if frame and frame:IsA("Frame") then
+					table.insert(frames, frame)
+				end
+			end
+		end
+	end
+	return frames
+end
+
+function FlowService:_updateDeployVoteBoard(votePayload)
+	local padBaseColors = {
+		[1] = Color3.fromRGB(104, 184, 124),
+		[2] = Color3.fromRGB(90, 146, 218),
+		[3] = Color3.fromRGB(208, 164, 94),
+	}
+	for _, frame in ipairs(self:_getDeployVoteBoards()) do
+		local title = frame:FindFirstChild("Title")
+		local subtitle = frame:FindFirstChild("Subtitle")
+		if title and title:IsA("TextLabel") then
+			title.Text = "Vote For The Next Run"
+		end
+		if subtitle and subtitle:IsA("TextLabel") then
+			subtitle.Text = self._state.phase == "Lobby"
+				and "Step on a floor pad to cast your vote."
+				or "Voting locks while the server is deploying."
+		end
+
+		for index = 1, 3 do
+			local option = votePayload and votePayload.options and votePayload.options[index] or nil
+			local optionFrame = frame:FindFirstChild("Option" .. tostring(index))
+			if optionFrame and optionFrame:IsA("Frame") then
+				optionFrame.Visible = option ~= nil
+				local mapLabel = optionFrame:FindFirstChild("MapName")
+				local scenarioLabel = optionFrame:FindFirstChild("Scenario")
+				local votesLabel = optionFrame:FindFirstChild("Votes")
+				local padLabel = optionFrame:FindFirstChild("PadLabel")
+				local leadingChip = optionFrame:FindFirstChild("LeadingChip")
+				if mapLabel and mapLabel:IsA("TextLabel") then
+					mapLabel.Text = option and tostring(option.layoutName or "Unknown Map") or ""
+				end
+				if scenarioLabel and scenarioLabel:IsA("TextLabel") then
+					scenarioLabel.Text = option and tostring(option.scenarioName or "Mission") or ""
+				end
+				if votesLabel and votesLabel:IsA("TextLabel") then
+					local count = option and math.max(0, tonumber(option.voteCount) or 0) or 0
+					votesLabel.Text = ("%d vote%s"):format(count, count == 1 and "" or "s")
+				end
+				if padLabel and padLabel:IsA("TextLabel") then
+					padLabel.Text = ("PAD %d"):format(index)
+				end
+
+				local isLeading = option ~= nil and votePayload and option.optionId == votePayload.leadingOptionId
+				if leadingChip and leadingChip:IsA("TextLabel") then
+					leadingChip.Visible = isLeading
+				end
+				local stroke = optionFrame:FindFirstChildOfClass("UIStroke")
+				if stroke then
+					stroke.Color = isLeading and Color3.fromRGB(120, 212, 140) or Color3.fromRGB(112, 98, 78)
+					stroke.Transparency = isLeading and 0.06 or 0.22
+				end
+				optionFrame.BackgroundColor3 = isLeading and Color3.fromRGB(244, 245, 232) or Color3.fromRGB(234, 229, 218)
+			end
+		end
+	end
+
+	for index = 1, 3 do
+		local option = votePayload and votePayload.options and votePayload.options[index] or nil
+
+		for _, pad in ipairs(CollectionService:GetTagged("MapVotePad")) do
+			if pad:IsA("BasePart") and math.floor(tonumber(pad:GetAttribute("VoteOptionIndex")) or 0) == index then
+				local prompt = pad:FindFirstChildOfClass("ProximityPrompt")
+				if prompt then
+					prompt.ObjectText = option and tostring(option.layoutName or "Map Vote") or "Map Vote"
+				end
+				local sign = pad:FindFirstChild("WorldText")
+				local label = sign and sign:FindFirstChildWhichIsA("TextLabel")
+				if label then
+					local count = option and math.max(0, tonumber(option.voteCount) or 0) or 0
+					local mapName = option and tostring(option.layoutName or ("PAD " .. tostring(index))) or ("PAD " .. tostring(index))
+					label.Text = string.format("%s\n%d vote%s", mapName, count, count == 1 and "" or "s")
+				end
+				local isLeading = votePayload and option and option.optionId == votePayload.leadingOptionId
+				pad.Color = isLeading and Color3.fromRGB(108, 182, 112) or (padBaseColors[index] or pad.Color)
+				local glow = pad.Parent and pad.Parent:FindFirstChild("VotePadGlow" .. tostring(index))
+				if glow and glow:IsA("BasePart") then
+					glow.Transparency = isLeading and 0.18 or 0.58
+					glow.Color = isLeading and Color3.fromRGB(214, 255, 176) or ({
+						[1] = Color3.fromRGB(178, 255, 154),
+						[2] = Color3.fromRGB(158, 212, 255),
+						[3] = Color3.fromRGB(255, 212, 156),
+					})[index] or glow.Color
+				end
+				local ring = pad.Parent and pad.Parent:FindFirstChild("VotePadRing" .. tostring(index))
+				if ring and ring:IsA("BasePart") then
+					ring.Transparency = isLeading and 0.14 or 0.86
+					ring.Color = isLeading and Color3.fromRGB(242, 255, 196) or ({
+						[1] = Color3.fromRGB(178, 255, 154),
+						[2] = Color3.fromRGB(158, 212, 255),
+						[3] = Color3.fromRGB(255, 212, 156),
+					})[index] or ring.Color
+				end
+			end
+		end
+	end
 end
 
 function FlowService:_setPlayerState(players, stateName, profile)
@@ -618,7 +745,63 @@ function FlowService:RegisterDeployPad(instance)
 	end)
 end
 
+function FlowService:RegisterMapVotePad(instance)
+	if self._registeredVotePads[instance] then
+		return
+	end
+
+	local pad = instance
+	if not pad:IsA("BasePart") then
+		pad = pad:FindFirstChildWhichIsA("BasePart", true)
+	end
+	if not pad or not pad:IsA("BasePart") then
+		return
+	end
+
+	self._registeredVotePads[instance] = true
+	self:_updateDeployVoteBoard(self:_buildVotePayload())
+
+	local function castVote(player)
+		if not player or player.Parent ~= Players or self._state.phase ~= "Lobby" then
+			return
+		end
+		local optionIndex = math.max(1, math.floor(tonumber(pad:GetAttribute("VoteOptionIndex")) or 1))
+		local option = self._mapVote and self._mapVote.options and self._mapVote.options[optionIndex] or nil
+		if option and option.optionId then
+			self:RequestMapVote(player, option.optionId)
+		end
+	end
+
+	pad.Touched:Connect(function(hit)
+		local character = hit and hit.Parent
+		local player = character and Players:GetPlayerFromCharacter(character)
+		if not player then
+			return
+		end
+
+		local debounceKey = tostring(player.UserId) .. ":" .. tostring(pad:GetFullName())
+		local now = os.clock()
+		if self._voteTouchDebounce[debounceKey] and (now - self._voteTouchDebounce[debounceKey]) < 1.25 then
+			return
+		end
+		self._voteTouchDebounce[debounceKey] = now
+		castVote(player)
+	end)
+
+	local prompt = pad:FindFirstChildOfClass("ProximityPrompt")
+	if prompt then
+		prompt.Triggered:Connect(castVote)
+	end
+end
+
 function FlowService:RequestDeployment(requestingPlayer, pad)
+	if self._antiExploitService and not self._antiExploitService:AllowRequest(requestingPlayer, "DeployWorldAction", 3, 2.5) then
+		return false, "rate_limited", nil
+	end
+	if pad and self._antiExploitService and not self._antiExploitService:RequireProximity(requestingPlayer, pad, 18, "deploy_pad_distance") then
+		return false, "too_far", nil
+	end
+
 	if self._instanceDeploymentService and not self._instanceDeploymentService:IsMissionInstanceServer() then
 		local squad, party = self:_buildParty(requestingPlayer)
 		if not squad or not party then
@@ -921,6 +1104,9 @@ function FlowService:GetMapVoteState()
 end
 
 function FlowService:RequestMapVote(player, optionId)
+	if self._antiExploitService and not self._antiExploitService:AllowRequest(player, "MapVoteAction", 6, 2) then
+		return false, "rate_limited"
+	end
 	if self._state.phase ~= "Lobby" then
 		return false, "busy"
 	end

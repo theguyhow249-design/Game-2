@@ -133,6 +133,23 @@ export type ProgressionProfile = {
 		nodes: { SkillTreeNodeState }?,
 	},
 	subscription: SubscriptionProfile?,
+	activities: {
+		parkourBestMs: number,
+		rangeBestScore: number,
+		salvageBestMs: number,
+		trainingBestScore: number,
+		parkourClears: number,
+		rangeRuns: number,
+		salvageClears: number,
+		trainingClears: number,
+		parkourLevel: number,
+		rangeLevel: number,
+		salvageLevel: number,
+		trainingLevel: number,
+		secrets: { [string]: boolean }?,
+		achievements: { [string]: boolean }?,
+		rewards: { [string]: boolean }?,
+	},
 }
 
 local Contracts = {}
@@ -225,7 +242,7 @@ function Contracts.makeShopPurchaseRequest(
 	}
 end
 
-function Contracts.makeProgressionProfile(equippedWeapon: string, equippedCosmetic: string?, unlocks, weaponExperience, stats, skillTree, subscription, identity): ProgressionProfile
+function Contracts.makeProgressionProfile(equippedWeapon: string, equippedCosmetic: string?, unlocks, weaponExperience, stats, skillTree, subscription, identity, activities): ProgressionProfile
 	return {
 		equippedWeapon = equippedWeapon,
 		equippedCosmetic = equippedCosmetic,
@@ -248,6 +265,23 @@ function Contracts.makeProgressionProfile(equippedWeapon: string, equippedCosmet
 			nodes = skillTree and skillTree.nodes or {},
 		},
 		subscription = subscription,
+		activities = activities or {
+			parkourBestMs = 0,
+			rangeBestScore = 0,
+			salvageBestMs = 0,
+			trainingBestScore = 0,
+			parkourClears = 0,
+			rangeRuns = 0,
+			salvageClears = 0,
+			trainingClears = 0,
+			parkourLevel = 0,
+			rangeLevel = 0,
+			salvageLevel = 0,
+			trainingLevel = 0,
+			secrets = {},
+			achievements = {},
+			rewards = {},
+		},
 	}
 end
 

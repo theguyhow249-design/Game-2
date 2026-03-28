@@ -10,12 +10,17 @@ function GamePassService.new(context)
 	self._inventoryService = nil
 	self._persistenceService = context.PersistenceService
 	self._roleService = context.RoleService
+	self._subscriptionService = nil
 	self._ownership = {}
 	return self
 end
 
 function GamePassService:SetInventoryService(inventoryService)
 	self._inventoryService = inventoryService
+end
+
+function GamePassService:SetSubscriptionService(subscriptionService)
+	self._subscriptionService = subscriptionService
 end
 
 function GamePassService:Start()
@@ -41,15 +46,30 @@ function GamePassService:_getFlags(player)
 	return flags
 end
 
+function GamePassService:_isVipEffective(player, flags)
+	local ownsVipPass = flags and flags.vip_operation == true
+	local supporterActive = self._subscriptionService and self._subscriptionService:IsActive(player) or false
+	return ownsVipPass or supporterActive
+end
+
 function GamePassService:_setPlayerAttributes(player, flags)
+	local effectiveVip = self:_isVipEffective(player, flags)
 	player:SetAttribute("GamePassSkillTreeDouble", flags.skill_tree_double == true)
-	player:SetAttribute("GamePassVipOperation", flags.vip_operation == true)
+	player:SetAttribute("GamePassVipOperation", effectiveVip)
 	player:SetAttribute("GamePassStarterLoadout", flags.starter_loadout == true)
 	player:SetAttribute("GamePassDoubleDropChance", flags.double_drop_chance == true)
 	player:SetAttribute("GamePassOwned_skill_tree_double", flags.skill_tree_double == true)
-	player:SetAttribute("GamePassOwned_vip_operation", flags.vip_operation == true)
+	player:SetAttribute("GamePassOwned_vip_operation", effectiveVip)
 	player:SetAttribute("GamePassOwned_starter_loadout", flags.starter_loadout == true)
 	player:SetAttribute("GamePassOwned_double_drop_chance", flags.double_drop_chance == true)
+end
+
+function GamePassService:RefreshDerivedState(player)
+	if not player or not player.Parent then
+		return
+	end
+	local flags = self._ownership[player.UserId] or self:_getFlags(player)
+	self:_setPlayerAttributes(player, flags)
 end
 
 function GamePassService:_grantStarterLoadout(player, flags)
@@ -119,6 +139,9 @@ function GamePassService:HasPass(player, key)
 	local flags = self._ownership[player.UserId]
 	if not flags then
 		flags = self:Refresh(player)
+	end
+	if key == "vip_operation" then
+		return self:_isVipEffective(player, flags)
 	end
 	return flags[key] == true
 end

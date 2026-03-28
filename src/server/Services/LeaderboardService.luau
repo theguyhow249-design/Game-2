@@ -103,6 +103,43 @@ local function safeNumber(value, fallback)
 	return parsed
 end
 
+local function clampName(name, maxLength)
+	local value = tostring(name or "Operator")
+	if #value <= maxLength then
+		return value
+	end
+	return string.sub(value, 1, maxLength - 1) .. "…"
+end
+
+local function monoPadRight(value, width)
+	local text = tostring(value or "")
+	if #text >= width then
+		return text
+	end
+	return text .. string.rep(" ", width - #text)
+end
+
+local function monoPadLeft(value, width)
+	local text = tostring(value or "")
+	if #text >= width then
+		return text
+	end
+	return string.rep(" ", width - #text) .. text
+end
+
+local function getUserHeadshot(userId)
+	if not userId or userId <= 0 then
+		return ""
+	end
+	local ok, image = pcall(function()
+		return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+	end)
+	if ok then
+		return image
+	end
+	return ""
+end
+
 function LeaderboardService:_buildEntries()
 	local entries = {}
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -263,6 +300,25 @@ function LeaderboardService:_getWorldBoardFrame()
 	return boardGui and boardGui:FindFirstChild("Frame")
 end
 
+function LeaderboardService:_hasWorldBoardFrame()
+	return self:_getWorldBoardFrame() ~= nil
+end
+
+function LeaderboardService:_ensureWorldBoardReady()
+	if self:_hasWorldBoardFrame() then
+		return true
+	end
+
+	for _ = 1, 40 do
+		task.wait(0.25)
+		if self:_hasWorldBoardFrame() then
+			return true
+		end
+	end
+
+	return false
+end
+
 function LeaderboardService:_setMasterBoardTabState(frame, categoryKey)
 	if not frame then
 		return
@@ -319,8 +375,8 @@ function LeaderboardService:_setMasterWorldBoard(categoryKey, headerText, subhea
 	local header = frame:FindFirstChild("Header")
 	local subheader = frame:FindFirstChild("Subheader")
 	local listHeader = frame:FindFirstChild("ListHeader")
-	local body = frame:FindFirstChild("Body")
 	local bodyScroll = frame:FindFirstChild("BodyScroll")
+	local body = bodyScroll and bodyScroll:FindFirstChild("Body")
 	if header and header:IsA("TextLabel") then
 		header.Text = headerText
 	end
@@ -328,7 +384,7 @@ function LeaderboardService:_setMasterWorldBoard(categoryKey, headerText, subhea
 		subheader.Text = subheaderText
 	end
 	if listHeader and listHeader:IsA("TextLabel") then
-		listHeader.Text = string.format("#   Username                              %s", valueHeaderText)
+		listHeader.Text = string.format("%s  %s  %s", monoPadRight("#", 2), monoPadRight("USERNAME", 24), string.upper(valueHeaderText))
 	end
 	if body and body:IsA("TextLabel") then
 		body.Text = bodyText
@@ -345,6 +401,58 @@ function LeaderboardService:_setMasterWorldBoard(categoryKey, headerText, subhea
 	self:_setMasterBoardWindowState(frame, self._worldBoardWindow)
 end
 
+function LeaderboardService:_setMasterPodiumCards(entries, formatter)
+	local frame = self:_getWorldBoardFrame()
+	if not frame then
+		return
+	end
+
+	local podium = frame:FindFirstChild("TopThree")
+	if not podium then
+		return
+	end
+
+	local cardMap = {
+		{ name = "FirstCard", index = 1 },
+		{ name = "SecondCard", index = 2 },
+		{ name = "ThirdCard", index = 3 },
+	}
+	local categoryKey = self._worldBoardCycle[self._worldBoardIndex] or "Levels"
+	local valueLabels = {
+		Levels = "TRACKED LEVEL",
+		Runs = "TRACKED RUNS",
+		Kills = "TRACKED KILLS",
+	}
+	for _, info in ipairs(cardMap) do
+		local card = podium:FindFirstChild(info.name)
+		if card then
+			local title = card:FindFirstChild("Title")
+			local subtitle = card:FindFirstChild("Subtitle")
+			local value = card:FindFirstChild("Value")
+			local valueLabel = card:FindFirstChild("ValueLabel")
+			local avatarFrame = card:FindFirstChild("AvatarFrame")
+			local avatar = avatarFrame and avatarFrame:FindFirstChild("Avatar")
+			local entry = entries[info.index]
+			card.Visible = not (info.index > 1 and not entry)
+			if title and title:IsA("TextLabel") then
+				title.Text = entry and clampName(entry.name or ("User " .. tostring(entry.userId or 0)), info.index == 1 and 20 or 16) or "Awaiting Operator"
+			end
+			if subtitle and subtitle:IsA("TextLabel") then
+				subtitle.Text = entry and (TOP_RANK_TITLES[info.index] or "") or "No record yet"
+			end
+			if value and value:IsA("TextLabel") then
+				value.Text = entry and formatter(safeNumber(entry.value, 0)) or "-"
+			end
+			if valueLabel and valueLabel:IsA("TextLabel") then
+				valueLabel.Text = valueLabels[categoryKey] or "TRACKED VALUE"
+			end
+			if avatar and avatar:IsA("ImageLabel") then
+				avatar.Image = entry and getUserHeadshot(entry.userId) or ""
+			end
+		end
+	end
+end
+
 function LeaderboardService:_setWorldBoardCountdown(secondsRemaining)
 	local frame = self:_getWorldBoardFrame()
 	local countdownText = ("REFRESH IN %02ds"):format(math.max(0, math.floor(secondsRemaining or 0)))
@@ -357,21 +465,18 @@ end
 function LeaderboardService:_formatSingleBoardLines(entries, formatter)
 	local lines = {}
 	local maxEntries = 100
-	for index = 1, maxEntries do
+	for index = 4, maxEntries do
 		local entry = entries[index]
-		local nameText = entry and tostring(entry.name or ("User " .. tostring(entry.userId or 0))) or "Awaiting operator"
+		local nameText = entry and clampName(entry.name or ("User " .. tostring(entry.userId or 0)), 24) or "Awaiting operator"
 		local valueText = entry and formatter(safeNumber(entry.value, 0)) or "No record yet"
-		local titleText = TOP_RANK_TITLES[index]
-		local line = titleText
-			and ("%d. %s\n%s\n%s"):format(index, nameText, titleText, valueText)
-			or ("%d. %s\n%s"):format(index, nameText, valueText)
-		local theme = TOP_RANK_THEMES[index]
-		if theme then
-			line = ("<font color=\"#%s\">%s</font>"):format(colorToHex(theme.primary), line)
-		elseif not entry then
-			line = ("<font color=\"#8A93A2\">%s</font>"):format(line)
+		local indexText = monoPadLeft(index, 2)
+		local nameColumn = monoPadRight(nameText, 24)
+		local baseLine = ("%s  %s  %s"):format(indexText, nameColumn, valueText)
+		local line = baseLine
+		if not entry then
+			line = ("<font color=\"#8A93A2\">%s</font>"):format(baseLine)
 		end
-		lines[index] = line
+		lines[#lines + 1] = line
 	end
 	return table.concat(lines, "\n\n")
 end
@@ -530,11 +635,18 @@ function LeaderboardService:_primeWorldBoardData()
 end
 
 function LeaderboardService:_refreshGlobalWorldBoards()
+	if not self:_hasWorldBoardFrame() then
+		return
+	end
+
 	local categoryKey = self._worldBoardCycle[self._worldBoardIndex] or "Levels"
 	local windowName = WINDOW_CONFIG[self._worldBoardWindow] and self._worldBoardWindow or "allTime"
 	local entries = (self._globalEntriesCache and self._globalEntriesCache[windowName] and self._globalEntriesCache[windowName][categoryKey]) or {}
 	local windowLabel = WINDOW_CONFIG[windowName] and WINDOW_CONFIG[windowName].label or "ALL TIME"
 	if categoryKey == "Levels" then
+		self:_setMasterPodiumCards(entries, function(value)
+			return ("Level %d"):format(value)
+		end)
 		self:_setMasterWorldBoard(
 			"Levels",
 			"Top Operators",
@@ -545,6 +657,9 @@ function LeaderboardService:_refreshGlobalWorldBoards()
 			"Level"
 		)
 	elseif categoryKey == "Runs" then
+		self:_setMasterPodiumCards(entries, function(value)
+			return ("%d run%s"):format(value, value == 1 and "" or "s")
+		end)
 		self:_setMasterWorldBoard(
 			"Runs",
 			"Top Operators",
@@ -555,6 +670,9 @@ function LeaderboardService:_refreshGlobalWorldBoards()
 			"Runs"
 		)
 	else
+		self:_setMasterPodiumCards(entries, function(value)
+			return ("%d kill%s"):format(value, value == 1 and "" or "s")
+		end)
 		self:_setMasterWorldBoard(
 			"Kills",
 			"Top Operators",
@@ -634,6 +752,10 @@ function LeaderboardService:_bindWorldBoardControls()
 end
 
 function LeaderboardService:RefreshWorldBoard(windowName)
+	if not self:_hasWorldBoardFrame() then
+		return
+	end
+
 	local entries = self:_buildEntries()
 	self:_applyTopRanks(entries)
 	local targetWindow = WINDOW_CONFIG[windowName] and windowName or (self._currentWindow or "allTime")
@@ -762,6 +884,7 @@ function LeaderboardService:Start()
 	end
 
 	task.defer(function()
+		self:_ensureWorldBoardReady()
 		self:_bindWorldBoardControls()
 		self:_primeWorldBoardData()
 		self:RefreshWorldBoard()

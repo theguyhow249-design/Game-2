@@ -137,6 +137,51 @@ function MissionService:_getMissionAnchorCFrame()
 	return spawn and spawn.CFrame or nil
 end
 
+function MissionService:_getPlayerMissionSpawnCFrame()
+	local anchor = self:_getMissionAnchorCFrame()
+	local layout = self:_getActiveLayout()
+	if not anchor then
+		return nil
+	end
+
+	if layout and layout.PlayerSpawnOffset then
+		local basePosition = (anchor * CFrame.new(layout.PlayerSpawnOffset)).Position
+		local lookOffset = layout.PlayerSpawnLookOffset or Vector3.new(0, 0, 18)
+		local lookPosition = (anchor * CFrame.new(layout.PlayerSpawnOffset + lookOffset)).Position
+		return CFrame.lookAt(basePosition, lookPosition)
+	end
+
+	return anchor
+end
+
+function MissionService:_grantSpawnProtection(player)
+	if not player then
+		return
+	end
+
+	local protectionSeconds = self._missionConfig.Mission.SpawnProtectionSeconds or 0
+	local expiresAt = os.clock() + protectionSeconds
+	player:SetAttribute("MissionSpawnProtectedUntil", expiresAt)
+
+	local character = player.Character
+	if character and character.Parent then
+		character:SetAttribute("MissionSpawnProtectedUntil", expiresAt)
+	end
+end
+
+function MissionService:_isSpawnProtected(player, character)
+	if not player then
+		return false
+	end
+
+	local expiresAt = player:GetAttribute("MissionSpawnProtectedUntil")
+	if type(expiresAt) ~= "number" and character then
+		expiresAt = character:GetAttribute("MissionSpawnProtectedUntil")
+	end
+
+	return type(expiresAt) == "number" and os.clock() < expiresAt
+end
+
 function MissionService:_getLobbySpawn()
 	local root = self:_getLobbyRoot()
 	return root and root:FindFirstChild("LobbySpawn")
@@ -471,6 +516,7 @@ end
 function MissionService:_buildMissionPayload(player, status)
 	local mission = self._activeMission
 	local weaponState = player and self._weaponState[player.UserId] or nil
+	local weaponDefinition = weaponState and weaponState.weaponId and self._inventoryService and self._inventoryService:GetWeaponDefinition(weaponState.weaponId) or nil
 	local objective = self:_getMissionObjective()
 	local objectiveHealth = objective and objective:GetAttribute("ObjectiveHealth") or self._missionConfig.Mission.ObjectiveMaxHealth
 	local objectivePercent = math.floor((objectiveHealth / self._missionConfig.Mission.ObjectiveMaxHealth) * 100)
@@ -483,8 +529,11 @@ function MissionService:_buildMissionPayload(player, status)
 		wave = mission and mission.wave or 0,
 		totalWaves = self._missionConfig.Mission.WaveCount,
 		objectiveHealthPercent = objectivePercent,
+		weaponName = weaponDefinition and weaponDefinition.DisplayName or nil,
+		weaponType = weaponDefinition and weaponDefinition.WeaponType or nil,
 		currentAmmo = weaponState and weaponState.currentAmmo or nil,
 		reserveAmmo = weaponState and weaponState.reserveAmmo or nil,
+		reloading = weaponState and weaponState.reloading or false,
 	}
 end
 
@@ -631,29 +680,51 @@ function MissionService:_decorateMissionRuntime(runtime)
 		floorTrim.CFrame = anchor * CFrame.new(0, -0.05, -12)
 
 		for _, side in ipairs({ -1, 1 }) do
-			local wall = createRuntimePart(shell, side < 0 and "TunnelWallLeft" or "TunnelWallRight", Vector3.new(3.6, 10, 198), anchor * CFrame.new(side * 41, 4.5, -12), Color3.fromRGB(34, 38, 44), Enum.Material.Metal)
+			local wall = createRuntimePart(shell, side < 0 and "TunnelWallLeft" or "TunnelWallRight", Vector3.new(2.6, 6.8, 186), anchor * CFrame.new(side * 40.6, 2.9, -12), Color3.fromRGB(48, 56, 68), Enum.Material.Metal)
 			wall.CanQuery = false
-			local strip = createRuntimeGlow(shell, side < 0 and "TunnelStripLeft" or "TunnelStripRight", Vector3.new(0.18, 3.4, 154), anchor * CFrame.new(side * 39.2, 3.8, -10), Color3.fromRGB(104, 154, 204), 0.78)
+			local topRail = createRuntimePart(shell, side < 0 and "TunnelTopRailLeft" or "TunnelTopRailRight", Vector3.new(3.4, 0.42, 178), anchor * CFrame.new(side * 39.8, 6.12, -12), Color3.fromRGB(74, 84, 98), Enum.Material.Metal)
+			topRail.CanQuery = false
+			local strip = createRuntimeGlow(shell, side < 0 and "TunnelStripLeft" or "TunnelStripRight", Vector3.new(0.14, 1.5, 142), anchor * CFrame.new(side * 39.2, 2.7, -10), Color3.fromRGB(132, 184, 232), 0.88)
 			strip.CanQuery = false
-			local curb = createRuntimePart(shell, side < 0 and "TunnelCurbLeft" or "TunnelCurbRight", Vector3.new(4, 0.55, 198), anchor * CFrame.new(side * 36.5, 0.28, -12), Color3.fromRGB(66, 72, 82), Enum.Material.Metal)
+			local curb = createRuntimePart(shell, side < 0 and "TunnelCurbLeft" or "TunnelCurbRight", Vector3.new(3.2, 0.48, 188), anchor * CFrame.new(side * 36.8, 0.24, -12), Color3.fromRGB(88, 98, 112), Enum.Material.Metal)
 			curb.CanQuery = false
-		end
-
-		local bulkhead = createRuntimePart(shell, "TunnelBackBulkhead", Vector3.new(86, 10, 3.2), anchor * CFrame.new(0, 4.5, 84), Color3.fromRGB(30, 34, 38), Enum.Material.Metal)
-		bulkhead.CanQuery = false
-		local frame = createRuntimePart(shell, "TunnelFrontFrame", Vector3.new(86, 7, 1.6), anchor * CFrame.new(0, 3.5, -92), Color3.fromRGB(40, 44, 50), Enum.Material.Metal)
-		frame.CanQuery = false
-
-		for _, z in ipairs({ -30, 18 }) do
-			for _, x in ipairs({ -16, 16 }) do
-				local cover = createRuntimePart(shell, ("TunnelCover_%d_%d"):format(x, z), Vector3.new(7.5, 2.8, 3.2), anchor * CFrame.new(x, 1.4, z), Color3.fromRGB(78, 86, 96), Enum.Material.Metal)
-				cover.CanQuery = false
+			for _, z in ipairs({ -54, -8, 38 }) do
+				local inset = createRuntimePart(shell, ("TunnelInset_%d_%d"):format(side, z), Vector3.new(1.1, 2.8, 18), anchor * CFrame.new(side * 39.3, 1.7, z), Color3.fromRGB(58, 66, 78), Enum.Material.Metal)
+				inset.CanQuery = false
 			end
 		end
 
-		createRuntimeGlow(shell, "TunnelLaneGlow", Vector3.new(6.5, 0.12, 112), anchor * CFrame.new(0, 0.08, -8), Color3.fromRGB(112, 144, 176), 0.8)
-		createRuntimeGlow(shell, "TunnelLaneGlowLeft", Vector3.new(4, 0.08, 108), anchor * CFrame.new(-15, 0.05, -8), Color3.fromRGB(184, 116, 82), 0.9)
-		createRuntimeGlow(shell, "TunnelLaneGlowRight", Vector3.new(4, 0.08, 108), anchor * CFrame.new(15, 0.05, -8), Color3.fromRGB(184, 116, 82), 0.9)
+		local bulkhead = createRuntimePart(shell, "TunnelBackBulkhead", Vector3.new(74, 7.2, 2.6), anchor * CFrame.new(0, 3.2, 84), Color3.fromRGB(42, 48, 56), Enum.Material.Metal)
+		bulkhead.CanQuery = false
+		local frame = createRuntimePart(shell, "TunnelFrontFrame", Vector3.new(72, 5.6, 1.2), anchor * CFrame.new(0, 2.9, -92), Color3.fromRGB(66, 74, 84), Enum.Material.Metal)
+		frame.CanQuery = false
+		local frameHeader = createRuntimePart(shell, "TunnelFrontHeader", Vector3.new(48, 0.44, 1.6), anchor * CFrame.new(0, 5.76, -92), Color3.fromRGB(98, 112, 132), Enum.Material.Metal)
+		frameHeader.CanQuery = false
+		for _, x in ipairs({ -18, 18 }) do
+			local pipe = createRuntimePart(shell, ("TunnelPipe_%d"):format(x), Vector3.new(0.72, 0.72, 176), anchor * CFrame.new(x, 6.7, -12), Color3.fromRGB(96, 108, 122), Enum.Material.Metal)
+			pipe.Shape = Enum.PartType.Cylinder
+			pipe.Orientation = Vector3.new(0, 0, 90)
+			pipe.CanQuery = false
+			local pipeGlow = createRuntimeGlow(shell, ("TunnelPipeGlow_%d"):format(x), Vector3.new(0.18, 0.18, 148), anchor * CFrame.new(x, 6.32, -12), Color3.fromRGB(126, 188, 244), 0.62)
+			pipeGlow.CanQuery = false
+		end
+		for _, z in ipairs({ -54, -10, 34 }) do
+			local truss = createRuntimePart(shell, ("TunnelTruss_%d"):format(z), Vector3.new(54, 0.3, 0.9), anchor * CFrame.new(0, 6.34, z), Color3.fromRGB(86, 96, 112), Enum.Material.Metal)
+			truss.CanQuery = false
+		end
+
+		for _, z in ipairs({ -34, 12 }) do
+			for _, x in ipairs({ -15, 15 }) do
+				local cover = createRuntimePart(shell, ("TunnelCover_%d_%d"):format(x, z), Vector3.new(6.4, 2.4, 2.8), anchor * CFrame.new(x, 1.2, z), Color3.fromRGB(92, 102, 116), Enum.Material.Metal)
+				cover.CanQuery = false
+				local cap = createRuntimeGlow(shell, ("TunnelCoverCap_%d_%d"):format(x, z), Vector3.new(4.8, 0.08, 0.54), anchor * CFrame.new(x, 2.46, z), Color3.fromRGB(146, 192, 236), 0.52)
+				cap.CanQuery = false
+			end
+		end
+
+		createRuntimeGlow(shell, "TunnelLaneGlow", Vector3.new(5.2, 0.08, 104), anchor * CFrame.new(0, 0.06, -8), Color3.fromRGB(136, 170, 206), 0.9)
+		createRuntimeGlow(shell, "TunnelLaneGlowLeft", Vector3.new(2.2, 0.06, 96), anchor * CFrame.new(-14.2, 0.04, -8), Color3.fromRGB(196, 132, 94), 0.95)
+		createRuntimeGlow(shell, "TunnelLaneGlowRight", Vector3.new(2.2, 0.06, 96), anchor * CFrame.new(14.2, 0.04, -8), Color3.fromRGB(196, 132, 94), 0.95)
 	elseif layout.Id == "arena_crossroads" then
 		floor.Size = Vector3.new(176, 1.2, 176)
 		floor.CFrame = anchor * CFrame.new(0, -0.75, 0)
@@ -716,7 +787,7 @@ function MissionService:_applyHazardDamage(mission, zone, damage, color)
 			local localPoint = zone.CFrame:PointToObjectSpace(rootPart.Position)
 			local half = zone.Size * 0.5
 			local inside = math.abs(localPoint.X) <= half.X and math.abs(localPoint.Y) <= 6 and math.abs(localPoint.Z) <= half.Z
-			if inside and not self:_isCharacterDashing(character) and not self:_isCharacterDowned(character) then
+			if inside and not self:_isCharacterDashing(character) and not self:_isCharacterDowned(character) and not self:_isSpawnProtected(player, character) then
 				local key = ("%d_%s"):format(player.UserId, zone.Name)
 				if not mission.hazardCooldowns[key] or now - mission.hazardCooldowns[key] >= 1 then
 					mission.hazardCooldowns[key] = now
@@ -857,7 +928,7 @@ function MissionService:_damageZombie(zombieModel, damage, attacker)
 	local rootPart = zombieModel.PrimaryPart
 	if rootPart and attacker and attacker.Character and attacker.Character:FindFirstChild("HumanoidRootPart") then
 		local impulseDirection = (rootPart.Position - attacker.Character.HumanoidRootPart.Position).Unit
-		rootPart.AssemblyLinearVelocity = impulseDirection * 18 + Vector3.new(0, 12, 0)
+		rootPart.AssemblyLinearVelocity = impulseDirection * 13 + Vector3.new(0, 8, 0)
 	end
 
 	local flash = zombieModel:FindFirstChild("DamageHighlight")
@@ -879,6 +950,16 @@ function MissionService:_damageZombie(zombieModel, damage, attacker)
 	end)
 
 	humanoid:TakeDamage(damage)
+	if humanoid and humanoid.Parent and humanoid.Health > 0 then
+		local originalWalkSpeed = humanoid.WalkSpeed
+		local staggerSpeed = math.max(4, originalWalkSpeed * 0.72)
+		humanoid.WalkSpeed = math.min(humanoid.WalkSpeed, staggerSpeed)
+		task.delay(zombieModel:GetAttribute("Brute") and 0.18 or 0.12, function()
+			if humanoid and humanoid.Parent and humanoid.Health > 0 then
+				humanoid.WalkSpeed = math.max(humanoid.WalkSpeed, originalWalkSpeed)
+			end
+		end)
+	end
 	if attacker then
 		attacker:SetAttribute("LastHitZombie", zombieModel.Name)
 		self:_fireCombatFeedback(attacker, {
@@ -1020,9 +1101,13 @@ function MissionService:_emitMuzzleFlash(handle, color, weaponType, weapon)
 	if not size then
 		size = weaponType == "Spread" and Vector3.new(1.6, 1.6, 1.6) or Vector3.new(1.1, 1.1, 1.1)
 	end
-	local flash = self:_emitPulse(handle.CFrame * CFrame.new(offset), size, color, 0.18, 0.08)
+	local flash = self:_emitPulse(handle.CFrame * CFrame.new(offset), size, color, 0.14, 0.07)
 	if flash then
 		flash.Shape = Enum.PartType.Ball
+	end
+	local streak = self:_emitPulse(handle.CFrame * CFrame.new(offset) * CFrame.Angles(0, 0, math.rad(90)), Vector3.new(0.16, size.Y * 0.9, size.Z * 1.4), color:Lerp(Color3.fromRGB(255, 236, 188), 0.35), 0.26, 0.06)
+	if streak then
+		streak.Material = Enum.Material.Neon
 	end
 end
 
@@ -1044,9 +1129,13 @@ function MissionService:_emitReloadEffect(handle, color)
 		return
 	end
 
-	local pulse = self:_emitPulse(handle.CFrame, Vector3.new(1.4, 4.4, 1.4), color, 0.72, 0.18)
+	local pulse = self:_emitPulse(handle.CFrame, Vector3.new(1.2, 3.6, 1.2), color, 0.76, 0.14)
 	if pulse then
 		pulse.Material = Enum.Material.ForceField
+	end
+	local ring = self:_emitPulse(handle.CFrame, Vector3.new(1.8, 0.18, 1.8), color:Lerp(Color3.fromRGB(255, 248, 214), 0.2), 0.62, 0.16)
+	if ring then
+		ring.Material = Enum.Material.Neon
 	end
 end
 
@@ -1142,32 +1231,78 @@ function MissionService:_buildWeaponVisual(tool, handle, weapon)
 	end
 
 	if style == "Pistol" then
-		self:_attachWeaponPart(tool, handle, "Slide", Vector3.new(0.8, 0.42, 1.6), CFrame.new(0, 0.48, -0.15), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.22, 0.22, 1.1), CFrame.new(0, 0.34, -1.25), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Frame", Vector3.new(0.56, 0.4, 1.34), CFrame.new(0, 0.16, -0.04), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "Slide", Vector3.new(0.7, 0.24, 1.54), CFrame.new(0, 0.5, -0.14), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SlideCap", Vector3.new(0.48, 0.06, 1.08), CFrame.new(0, 0.66, -0.12), Color3.fromRGB(84, 94, 108), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "DustTop", Vector3.new(0.26, 0.05, 0.86), CFrame.new(0, 0.68, 0.08), Color3.fromRGB(112, 120, 134), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.14, 0.14, 1.08), CFrame.new(0, 0.34, -1.18), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MuzzleBrake", Vector3.new(0.2, 0.2, 0.16), CFrame.new(0, 0.34, -1.78), Color3.fromRGB(92, 98, 110), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "TriggerGuard", Vector3.new(0.32, 0.16, 0.3), CFrame.new(0, -0.1, -0.22), Color3.fromRGB(62, 68, 80), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Trigger", Vector3.new(0.05, 0.18, 0.08), CFrame.new(0, -0.04, -0.12), Color3.fromRGB(38, 42, 50), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MagWell", Vector3.new(0.32, 0.16, 0.26), CFrame.new(0, -0.18, 0.12), Color3.fromRGB(54, 60, 70), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "GripPlateLeft", Vector3.new(0.08, 0.72, 0.56), CFrame.new(-0.21, -0.2, 0.08), accentColor:Lerp(Color3.fromRGB(255, 255, 255), 0.1), Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "GripPlateRight", Vector3.new(0.08, 0.72, 0.56), CFrame.new(0.21, -0.2, 0.08), accentColor:Lerp(Color3.fromRGB(255, 255, 255), 0.1), Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "Ejector", Vector3.new(0.06, 0.08, 0.22), CFrame.new(0.26, 0.48, -0.18), Color3.fromRGB(198, 206, 214), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSight", Vector3.new(0.08, 0.12, 0.08), CFrame.new(0, 0.68, -0.9), Color3.fromRGB(236, 242, 250), Enum.Material.Neon)
+		self:_attachWeaponPart(tool, handle, "RearSight", Vector3.new(0.14, 0.08, 0.1), CFrame.new(0, 0.66, 0.26), Color3.fromRGB(66, 74, 86), Enum.Material.Metal)
 		return
 	end
 
 	if style == "Carbine" then
-		self:_attachWeaponPart(tool, handle, "Receiver", Vector3.new(0.95, 0.55, 2.2), CFrame.new(0, 0.42, -0.15), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.24, 0.24, 2.3), CFrame.new(0, 0.32, -2.4), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Stock", Vector3.new(0.55, 0.75, 1.55), CFrame.new(0, 0.08, 1.4), weapon.HandleColor, Enum.Material.SmoothPlastic)
-		self:_attachWeaponPart(tool, handle, "Magazine", Vector3.new(0.38, 1.05, 0.5), CFrame.new(0, -0.62, -0.2), weapon.HandleColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "LowerReceiver", Vector3.new(0.68, 0.4, 1.08), CFrame.new(0, 0.16, 0.2), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "UpperReceiver", Vector3.new(0.78, 0.24, 1.26), CFrame.new(0, 0.54, -0.06), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "DustCover", Vector3.new(0.42, 0.1, 0.58), CFrame.new(0.18, 0.46, -0.02), Color3.fromRGB(72, 80, 92), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.14, 0.14, 2.56), CFrame.new(0, 0.32, -2.48), Color3.fromRGB(72, 80, 92), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MuzzleDevice", Vector3.new(0.2, 0.2, 0.24), CFrame.new(0, 0.32, -3.82), Color3.fromRGB(108, 116, 126), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "StockTube", Vector3.new(0.18, 0.18, 1.24), CFrame.new(0, 0.28, 1.46), Color3.fromRGB(78, 86, 96), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Stock", Vector3.new(0.42, 0.64, 1.16), CFrame.new(0, 0.08, 1.98), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "ButtPad", Vector3.new(0.44, 0.58, 0.12), CFrame.new(0, 0.08, 2.58), Color3.fromRGB(36, 40, 48), Enum.Material.Rubber)
+		self:_attachWeaponPart(tool, handle, "Magazine", Vector3.new(0.26, 0.86, 0.38), CFrame.new(0, -0.58, -0.12) * CFrame.Angles(math.rad(14), 0, 0), weapon.HandleColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MagWell", Vector3.new(0.34, 0.18, 0.3), CFrame.new(0, -0.2, 0.08), Color3.fromRGB(54, 62, 74), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "TopRail", Vector3.new(0.24, 0.05, 1.66), CFrame.new(0, 0.72, -0.08), Color3.fromRGB(78, 88, 102), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "RearSight", Vector3.new(0.16, 0.14, 0.14), CFrame.new(0, 0.8, 0.52), Color3.fromRGB(76, 86, 98), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSight", Vector3.new(0.08, 0.26, 0.08), CFrame.new(0, 0.76, -2.2), Color3.fromRGB(228, 238, 248), Enum.Material.Neon)
+		self:_attachWeaponPart(tool, handle, "Handguard", Vector3.new(0.4, 0.3, 1.74), CFrame.new(0, 0.18, -1.68), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "HandguardTop", Vector3.new(0.28, 0.06, 1.42), CFrame.new(0, 0.36, -1.68), Color3.fromRGB(84, 94, 106), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SideRailLeft", Vector3.new(0.05, 0.16, 1.04), CFrame.new(-0.22, 0.18, -1.68), Color3.fromRGB(70, 78, 90), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SideRailRight", Vector3.new(0.05, 0.16, 1.04), CFrame.new(0.22, 0.18, -1.68), Color3.fromRGB(70, 78, 90), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Foregrip", Vector3.new(0.12, 0.52, 0.14), CFrame.new(0, -0.04, -1.44), Color3.fromRGB(58, 66, 78), Enum.Material.Metal)
 		return
 	end
 
 	if style == "SMG" then
-		self:_attachWeaponPart(tool, handle, "Receiver", Vector3.new(0.82, 0.48, 1.75), CFrame.new(0, 0.38, -0.08), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.2, 0.2, 1.35), CFrame.new(0, 0.28, -1.8), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Magazine", Vector3.new(0.34, 1.2, 0.46), CFrame.new(0, -0.75, -0.12), weapon.HandleColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Stock", Vector3.new(0.48, 0.42, 0.9), CFrame.new(0, 0.16, 1.06), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "Receiver", Vector3.new(0.68, 0.36, 1.38), CFrame.new(0, 0.36, -0.04), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "DustCover", Vector3.new(0.56, 0.1, 1), CFrame.new(0, 0.58, -0.02), Color3.fromRGB(80, 88, 100), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "ChargingTube", Vector3.new(0.1, 0.1, 1.08), CFrame.new(0, 0.5, 0.2), Color3.fromRGB(68, 74, 84), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.14, 0.14, 1.34), CFrame.new(0, 0.24, -1.68), Color3.fromRGB(70, 78, 90), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Muzzle", Vector3.new(0.2, 0.2, 0.16), CFrame.new(0, 0.24, -2.44), Color3.fromRGB(110, 118, 130), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Magazine", Vector3.new(0.24, 1.02, 0.34), CFrame.new(0, -0.7, -0.02), weapon.HandleColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MagWell", Vector3.new(0.28, 0.16, 0.22), CFrame.new(0, -0.18, 0.12), Color3.fromRGB(58, 66, 74), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "StockArm", Vector3.new(0.12, 0.12, 1), CFrame.new(0, 0.38, 1.02), Color3.fromRGB(78, 86, 96), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "StockPad", Vector3.new(0.34, 0.3, 0.18), CFrame.new(0, 0.38, 1.54), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "TopRail", Vector3.new(0.2, 0.05, 0.94), CFrame.new(0, 0.66, -0.02), Color3.fromRGB(76, 84, 98), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "RearSight", Vector3.new(0.14, 0.1, 0.12), CFrame.new(0, 0.72, 0.28), Color3.fromRGB(76, 84, 98), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSight", Vector3.new(0.06, 0.18, 0.06), CFrame.new(0, 0.64, -1.36), Color3.fromRGB(230, 236, 246), Enum.Material.Neon)
+		self:_attachWeaponPart(tool, handle, "Foregrip", Vector3.new(0.12, 0.4, 0.14), CFrame.new(0, -0.02, -0.72), weapon.HandleColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SideShroudLeft", Vector3.new(0.05, 0.18, 0.88), CFrame.new(-0.2, 0.18, -0.84), Color3.fromRGB(66, 74, 86), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SideShroudRight", Vector3.new(0.05, 0.18, 0.88), CFrame.new(0.2, 0.18, -0.84), Color3.fromRGB(66, 74, 86), Enum.Material.Metal)
 		return
 	end
 
 	if style == "Shotgun" then
-		self:_attachWeaponPart(tool, handle, "Receiver", Vector3.new(0.95, 0.52, 1.9), CFrame.new(0, 0.42, -0.15), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.24, 0.24, 2.8), CFrame.new(0, 0.33, -2.65), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Pump", Vector3.new(0.55, 0.42, 0.82), CFrame.new(0, 0.1, -1.45), weapon.HandleColor, Enum.Material.WoodPlanks)
-		self:_attachWeaponPart(tool, handle, "Stock", Vector3.new(0.65, 0.78, 1.6), CFrame.new(0, 0.02, 1.36), weapon.HandleColor, Enum.Material.WoodPlanks)
+		self:_attachWeaponPart(tool, handle, "Receiver", Vector3.new(0.8, 0.4, 1.54), CFrame.new(0, 0.38, -0.08), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "EjectionPort", Vector3.new(0.06, 0.12, 0.34), CFrame.new(0.28, 0.42, -0.18), Color3.fromRGB(198, 206, 214), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.16, 0.16, 2.94), CFrame.new(0, 0.3, -2.58), Color3.fromRGB(82, 70, 58), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Tube", Vector3.new(0.12, 0.12, 2.38), CFrame.new(0, 0.04, -2.12), Color3.fromRGB(108, 94, 76), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Pump", Vector3.new(0.42, 0.3, 1.02), CFrame.new(0, 0.08, -1.52), weapon.HandleColor, Enum.Material.WoodPlanks)
+		self:_attachWeaponPart(tool, handle, "PumpRailLeft", Vector3.new(0.04, 0.16, 0.82), CFrame.new(-0.18, 0.08, -1.52), Color3.fromRGB(82, 70, 58), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "PumpRailRight", Vector3.new(0.04, 0.16, 0.82), CFrame.new(0.18, 0.08, -1.52), Color3.fromRGB(82, 70, 58), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "HeatShield", Vector3.new(0.36, 0.1, 1.34), CFrame.new(0, 0.48, -1.76), Color3.fromRGB(76, 64, 54), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Stock", Vector3.new(0.5, 0.62, 1.28), CFrame.new(0, 0.02, 1.58), weapon.HandleColor, Enum.Material.WoodPlanks)
+		self:_attachWeaponPart(tool, handle, "StockComb", Vector3.new(0.24, 0.14, 0.68), CFrame.new(0, 0.34, 1.22), Color3.fromRGB(120, 94, 72), Enum.Material.WoodPlanks)
+		self:_attachWeaponPart(tool, handle, "ButtPad", Vector3.new(0.42, 0.54, 0.12), CFrame.new(0, 0.02, 2.28), Color3.fromRGB(40, 34, 30), Enum.Material.Rubber)
+		self:_attachWeaponPart(tool, handle, "FrontBead", Vector3.new(0.06, 0.12, 0.06), CFrame.new(0, 0.54, -3.9), Color3.fromRGB(246, 226, 168), Enum.Material.Neon)
+		self:_attachWeaponPart(tool, handle, "ReceiverRail", Vector3.new(0.2, 0.05, 0.76), CFrame.new(0, 0.62, -0.06), Color3.fromRGB(74, 64, 54), Enum.Material.Metal)
 	end
 end
 
@@ -1403,7 +1538,7 @@ function MissionService:_enterDownedState(player, mission, character, humanoid)
 	prompt:SetAttribute("MissionPrompt", true)
 	prompt.RequiresLineOfSight = false
 	prompt.HoldDuration = self._skillTreeService and self._skillTreeService:GetReviveHoldDuration(player, self._missionConfig.Mission.ReviveHoldDuration) or self._missionConfig.Mission.ReviveHoldDuration
-	prompt.MaxActivationDistance = 10
+	prompt.MaxActivationDistance = self._missionConfig.Mission.RevivePromptDistance or 12
 	prompt.Parent = rootPart
 
 	local state = {
@@ -1485,7 +1620,7 @@ function MissionService:_bossSlam(zombie, root, scaledStats)
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
-		if humanoid and humanoid.Health > 0 and targetRoot and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) then
+		if humanoid and humanoid.Health > 0 and targetRoot and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) and not self:_isSpawnProtected(player, character) then
 			local offset = targetRoot.Position - root.Position
 			local distance = offset.Magnitude
 			if distance <= radius then
@@ -1523,7 +1658,7 @@ function MissionService:_bruteImpact(zombie, root, scaledStats)
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
-		if humanoid and humanoid.Health > 0 and targetRoot and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) then
+		if humanoid and humanoid.Health > 0 and targetRoot and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) and not self:_isSpawnProtected(player, character) then
 			local offset = targetRoot.Position - root.Position
 			local distance = offset.Magnitude
 			if distance <= radius then
@@ -1797,7 +1932,7 @@ function MissionService:_spawnPowerCell(runtime, position, cellId)
 	prompt:SetAttribute("MissionPrompt", true)
 	prompt.RequiresLineOfSight = false
 	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = 10
+	prompt.MaxActivationDistance = self._missionConfig.Mission.SupplyPickupPromptDistance or 14
 	prompt.Parent = cell
 
 	prompt.Triggered:Connect(function(player)
@@ -1863,7 +1998,7 @@ function MissionService:_spawnPowerCellObjective(runtime, objective)
 		prompt:SetAttribute("MissionPrompt", true)
 		prompt.RequiresLineOfSight = false
 		prompt.HoldDuration = 0
-		prompt.MaxActivationDistance = 10
+		prompt.MaxActivationDistance = self._missionConfig.Mission.ObjectivePromptDistance or 14
 		prompt.Parent = socket
 
 		prompt.Triggered:Connect(function(player)
@@ -1978,8 +2113,8 @@ function MissionService:_spawnNest(runtime, position, nestId)
 	prompt.ObjectText = "Infected Nest"
 	prompt:SetAttribute("MissionPrompt", true)
 	prompt.RequiresLineOfSight = false
-	prompt.HoldDuration = 0.6
-	prompt.MaxActivationDistance = 10
+	prompt.HoldDuration = self._missionConfig.Mission.NestBurnHoldDuration or 0.35
+	prompt.MaxActivationDistance = self._missionConfig.Mission.ObjectivePromptDistance or 14
 	prompt.Parent = mound
 
 	prompt.Triggered:Connect(function(player)
@@ -2057,6 +2192,8 @@ function MissionService:_createWeaponTool(player)
 	handle.Color = weapon.HandleColor
 	handle.CanCollide = false
 	handle.Massless = true
+	handle.Transparency = 1
+	handle.CastShadow = false
 	handle.Parent = tool
 
 	self:_buildWeaponVisual(tool, handle, weapon)
@@ -2087,6 +2224,10 @@ function MissionService:_createWeaponTool(player)
 		state.reloadToken = (state.reloadToken or 0) + 1
 		local reloadToken = state.reloadToken
 		self:_emitReloadEffect(handle, weapon.HandleColor)
+		self:_fireCombatFeedback(player, {
+			kind = "reload_start",
+			weaponId = weapon.Id,
+		})
 		if weapon.WeaponType == "Spread" then
 			task.spawn(function()
 				while true do
@@ -2098,6 +2239,10 @@ function MissionService:_createWeaponTool(player)
 					if (currentState.reserveAmmo or 0) <= 0 or (currentState.currentAmmo or 0) >= (weapon.MagazineSize or 0) then
 						currentState.reloading = false
 						self:_emitReloadEffect(handle, weapon.HandleColor:Lerp(Color3.fromRGB(255, 255, 255), 0.2))
+						self:_fireCombatFeedback(player, {
+							kind = "reload_complete",
+							weaponId = weapon.Id,
+						})
 						self:_fireMissionState({ player }, "Weapon ready")
 						return
 					end
@@ -2105,9 +2250,19 @@ function MissionService:_createWeaponTool(player)
 					currentState.currentAmmo += 1
 					currentState.reserveAmmo -= 1
 					self:_emitReloadEffect(handle, weapon.HandleColor)
+					self:_fireCombatFeedback(player, {
+						kind = "reload_insert",
+						weaponId = weapon.Id,
+						currentAmmo = currentState.currentAmmo,
+						reserveAmmo = currentState.reserveAmmo,
+					})
 					if currentState.currentAmmo >= (weapon.MagazineSize or 0) or (currentState.reserveAmmo or 0) <= 0 then
 						currentState.reloading = false
 						self:_emitReloadEffect(handle, weapon.HandleColor:Lerp(Color3.fromRGB(255, 255, 255), 0.2))
+						self:_fireCombatFeedback(player, {
+							kind = "reload_complete",
+							weaponId = weapon.Id,
+						})
 						self:_fireMissionState({ player }, "Weapon ready")
 						return
 					end
@@ -2129,6 +2284,12 @@ function MissionService:_createWeaponTool(player)
 				currentState.reserveAmmo = (currentState.reserveAmmo or 0) - loaded
 				currentState.reloading = false
 				self:_emitReloadEffect(handle, weapon.HandleColor:Lerp(Color3.fromRGB(255, 255, 255), 0.2))
+				self:_fireCombatFeedback(player, {
+					kind = "reload_complete",
+					weaponId = weapon.Id,
+					currentAmmo = currentState.currentAmmo,
+					reserveAmmo = currentState.reserveAmmo,
+				})
 				self:_fireMissionState({ player }, "Weapon ready")
 			end)
 		end
@@ -2176,6 +2337,10 @@ function MissionService:_createWeaponTool(player)
 			if (state.currentAmmo or 0) <= 0 then
 				if (state.reserveAmmo or 0) <= 0 then
 					self:_ensureFistsFallback(player)
+					self:_fireCombatFeedback(player, {
+						kind = "dry_fire",
+						weaponId = weapon.Id,
+					})
 					self:_fireMissionState({ player }, "Out of ammo. Switched to fists")
 					return
 				end
@@ -2247,9 +2412,19 @@ function MissionService:_createWeaponTool(player)
 					reloadWeapon()
 				else
 					self:_ensureFistsFallback(player)
+					self:_fireCombatFeedback(player, {
+						kind = "dry_fire",
+						weaponId = weapon.Id,
+					})
 					self:_fireMissionState({ player }, "Out of ammo. Switched to fists")
 				end
 			elseif (state.currentAmmo or 0) <= math.max(1, math.floor((weapon.MagazineSize or 1) * 0.3)) then
+				self:_fireCombatFeedback(player, {
+					kind = "low_ammo",
+					weaponId = weapon.Id,
+					currentAmmo = state.currentAmmo,
+					reserveAmmo = state.reserveAmmo,
+				})
 				self:_fireMissionState({ player }, ("Low ammo: %d/%d"):format(state.currentAmmo, state.reserveAmmo or 0))
 			else
 				self:_fireMissionState({ player }, "Weapon ready")
@@ -2501,8 +2676,7 @@ function MissionService:_bindCharacter(player)
 		return
 	end
 
-	local connection = player.CharacterAdded:Connect(function()
-		task.wait(0.25)
+	local function placeCurrentCharacter()
 		if self._activeMission ~= mission then
 			return
 		end
@@ -2511,15 +2685,22 @@ function MissionService:_bindCharacter(player)
 			return
 		end
 
-		local spawn = self:_getMissionSpawn()
+		local spawn = self:_getPlayerMissionSpawnCFrame()
 		local character = player.Character
 		if spawn and character then
-			character:PivotTo(spawn.CFrame + Vector3.new(0, 4, 0))
+			character:PivotTo(spawn + Vector3.new(0, 4, 0))
 		end
+		self:_grantSpawnProtection(player)
 		self:_equipPlayer(player)
+	end
+
+	local connection = player.CharacterAdded:Connect(function()
+		task.wait(0.25)
+		placeCurrentCharacter()
 	end)
 
 	table.insert(mission.connections, connection)
+	task.defer(placeCurrentCharacter)
 end
 
 function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
@@ -2561,6 +2742,32 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 	head.Color = isBoss and Color3.fromRGB(222, 118, 118) or (isElite and Color3.fromRGB(210, 116, 116) or (isBrute and Color3.fromRGB(210, 168, 128) or (isRunner and Color3.fromRGB(182, 204, 136) or Color3.fromRGB(142, 167, 128))))
 	head.Parent = zombie
 
+	local leftArm = Instance.new("Part")
+	leftArm.Name = "LeftArm"
+	leftArm.Size = isBoss and Vector3.new(1.2, 4.4, 1.2) or (isBrute and Vector3.new(0.95, 3.2, 0.95) or (isRunner and Vector3.new(0.45, 2.6, 0.45) or Vector3.new(0.62, 2.8, 0.62)))
+	leftArm.CFrame = torso.CFrame * CFrame.new(-(torso.Size.X * 0.5 + leftArm.Size.X * 0.35), 0.05, 0)
+	leftArm.Material = Enum.Material.SmoothPlastic
+	leftArm.Color = torso.Color:Lerp(Color3.fromRGB(38, 42, 48), isRunner and 0.18 or 0.1)
+	leftArm.Parent = zombie
+
+	local rightArm = Instance.new("Part")
+	rightArm.Name = "RightArm"
+	rightArm.Size = leftArm.Size
+	rightArm.CFrame = torso.CFrame * CFrame.new(torso.Size.X * 0.5 + rightArm.Size.X * 0.35, 0.05, 0)
+	rightArm.Material = Enum.Material.SmoothPlastic
+	rightArm.Color = leftArm.Color
+	rightArm.Parent = zombie
+
+	local leftArmWeld = Instance.new("WeldConstraint")
+	leftArmWeld.Part0 = torso
+	leftArmWeld.Part1 = leftArm
+	leftArmWeld.Parent = torso
+
+	local rightArmWeld = Instance.new("WeldConstraint")
+	rightArmWeld.Part0 = torso
+	rightArmWeld.Part1 = rightArm
+	rightArmWeld.Parent = torso
+
 	local rootWeld = Instance.new("WeldConstraint")
 	rootWeld.Part0 = root
 	rootWeld.Part1 = torso
@@ -2570,6 +2777,34 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 	headWeld.Part0 = torso
 	headWeld.Part1 = head
 	headWeld.Parent = torso
+
+	local eyeGlow = Instance.new("Part")
+	eyeGlow.Name = "EyeGlow"
+	eyeGlow.Size = isBoss and Vector3.new(0.7, 0.16, 0.16) or (isBrute and Vector3.new(0.46, 0.12, 0.12) or Vector3.new(0.34, 0.1, 0.1))
+	eyeGlow.Anchored = false
+	eyeGlow.CanCollide = false
+	eyeGlow.CanQuery = false
+	eyeGlow.Material = Enum.Material.Neon
+	eyeGlow.Color = isBoss and Color3.fromRGB(255, 138, 118) or (isBrute and Color3.fromRGB(255, 196, 132) or (isRunner and Color3.fromRGB(198, 255, 142) or Color3.fromRGB(208, 228, 255)))
+	eyeGlow.CFrame = head.CFrame * CFrame.new(0, 0.08, -(head.Size.Z * 0.48))
+	eyeGlow.Parent = zombie
+
+	local eyeWeld = Instance.new("WeldConstraint")
+	eyeWeld.Part0 = head
+	eyeWeld.Part1 = eyeGlow
+	eyeWeld.Parent = head
+
+	local spinePlate = Instance.new("Part")
+	spinePlate.Name = "SpinePlate"
+	spinePlate.Size = isBoss and Vector3.new(0.42, 3.1, 0.32) or (isBrute and Vector3.new(0.32, 2.3, 0.24) or Vector3.new(0.18, 1.7, 0.18))
+	spinePlate.Material = Enum.Material.Metal
+	spinePlate.Color = isBoss and Color3.fromRGB(144, 82, 82) or (isBrute and Color3.fromRGB(156, 128, 88) or (isRunner and Color3.fromRGB(158, 204, 112) or Color3.fromRGB(112, 126, 108)))
+	spinePlate.CFrame = torso.CFrame * CFrame.new(0, 0.1, torso.Size.Z * 0.5 + 0.08)
+	spinePlate.Parent = zombie
+	local spinePlateWeld = Instance.new("WeldConstraint")
+	spinePlateWeld.Part0 = torso
+	spinePlateWeld.Part1 = spinePlate
+	spinePlateWeld.Parent = torso
 
 	local humanoid = Instance.new("Humanoid")
 	humanoid.Name = "Humanoid"
@@ -2658,6 +2893,28 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 		aura.OutlineTransparency = 0.04
 		aura.DepthMode = Enum.HighlightDepthMode.Occluded
 		aura.Parent = zombie
+		local chestPlate = Instance.new("Part")
+		chestPlate.Name = "ChestPlate"
+		chestPlate.Size = Vector3.new(2.4, 1.2, 0.28)
+		chestPlate.Material = Enum.Material.Metal
+		chestPlate.Color = Color3.fromRGB(148, 118, 84)
+		chestPlate.CFrame = torso.CFrame * CFrame.new(0, 0.2, -(torso.Size.Z * 0.5 + 0.1))
+		chestPlate.Parent = zombie
+		local chestWeld = Instance.new("WeldConstraint")
+		chestWeld.Part0 = torso
+		chestWeld.Part1 = chestPlate
+		chestWeld.Parent = torso
+		local shoulderPad = Instance.new("Part")
+		shoulderPad.Name = "ShoulderPad"
+		shoulderPad.Size = Vector3.new(3.2, 0.44, 0.8)
+		shoulderPad.Material = Enum.Material.Metal
+		shoulderPad.Color = Color3.fromRGB(168, 132, 88)
+		shoulderPad.CFrame = torso.CFrame * CFrame.new(0, torso.Size.Y * 0.38, -(torso.Size.Z * 0.18))
+		shoulderPad.Parent = zombie
+		local shoulderWeld = Instance.new("WeldConstraint")
+		shoulderWeld.Part0 = torso
+		shoulderWeld.Part1 = shoulderPad
+		shoulderWeld.Parent = torso
 	elseif isRunner then
 		local aura = Instance.new("Highlight")
 		aura.Name = "RunnerAura"
@@ -2667,6 +2924,18 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 		aura.OutlineTransparency = 0.16
 		aura.DepthMode = Enum.HighlightDepthMode.Occluded
 		aura.Parent = zombie
+		local runnerSpine = Instance.new("Part")
+		runnerSpine.Name = "RunnerSpine"
+		runnerSpine.Size = Vector3.new(0.18, 1.4, 0.18)
+		runnerSpine.Material = Enum.Material.Neon
+		runnerSpine.Color = Color3.fromRGB(172, 236, 124)
+		runnerSpine.Transparency = 0.18
+		runnerSpine.CFrame = torso.CFrame * CFrame.new(0, 0.1, torso.Size.Z * 0.5 + 0.08)
+		runnerSpine.Parent = zombie
+		local spineWeld = Instance.new("WeldConstraint")
+		spineWeld.Part0 = torso
+		spineWeld.Part1 = runnerSpine
+		spineWeld.Parent = torso
 	end
 
 	local hitCooldowns = {}
@@ -2689,7 +2958,7 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 		hitCooldowns[player.UserId] = now
 
 		local targetHumanoid = character:FindFirstChildOfClass("Humanoid")
-		if targetHumanoid and targetHumanoid.Health > 0 and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) then
+		if targetHumanoid and targetHumanoid.Health > 0 and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) and not self:_isSpawnProtected(player, character) then
 			targetHumanoid:TakeDamage(zombie:GetAttribute("ZombieDamage") or scaledStats.damage)
 			self:_emitPlayerHitEffect(character, isBoss and Color3.fromRGB(255, 98, 98) or (isElite and Color3.fromRGB(255, 112, 112) or (isBrute and Color3.fromRGB(236, 174, 118) or (isRunner and Color3.fromRGB(196, 236, 124) or Color3.fromRGB(182, 214, 255)))))
 		end
@@ -2704,7 +2973,7 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 				local character = player.Character
 				local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
 				local targetHumanoid = character and character:FindFirstChildOfClass("Humanoid")
-				if targetRoot and targetHumanoid and targetHumanoid.Health > 0 and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) then
+				if targetRoot and targetHumanoid and targetHumanoid.Health > 0 and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) and not self:_isSpawnProtected(player, character) then
 					local distance = (targetRoot.Position - root.Position).Magnitude
 					if distance < nearestDistance then
 						nearestDistance = distance
@@ -2735,6 +3004,7 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 					runnerBurstReadyAt = now + self._missionConfig.Mission.RunnerBurstCooldown
 					local burstDirection = targetRoot.Position - root.Position
 					if burstDirection.Magnitude > 0.01 then
+						self:_emitPulse(root.CFrame, Vector3.new(1.6, 1.6, 1.6), Color3.fromRGB(212, 248, 148), 0.38, 0.08)
 						root.AssemblyLinearVelocity = burstDirection.Unit * self._missionConfig.Mission.RunnerBurstSpeed + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
 						self:_emitPulse(root.CFrame, Vector3.new(2.4, 2.4, 2.4), Color3.fromRGB(192, 236, 124), 0.45, 0.1)
 					end
@@ -2742,6 +3012,7 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 
 				if isBrute and targetDistance <= self._missionConfig.Mission.BruteImpactRadius and now >= bruteImpactReadyAt then
 					bruteImpactReadyAt = now + self._missionConfig.Mission.BruteImpactCooldown
+					self:_emitPulse(root.CFrame * CFrame.new(0, -1.2, 0), Vector3.new(3.2, 0.18, 3.2), Color3.fromRGB(224, 176, 112), 0.26, 0.12)
 					self:_bruteImpact(zombie, root, scaledStats)
 				end
 
@@ -2888,11 +3159,11 @@ function MissionService:_createObjective(runtime)
 	glow.CFrame = core.CFrame * CFrame.new(0, -5.1, 0)
 	glow.Parent = runtime
 
-	local marker, _ = self:_createWorldMarker(runtime, "ObjectiveMarker", "DEFEND CORE", Color3.fromRGB(184, 228, 255), Vector2.new(180, 36), 16)
-	marker.CFrame = core.CFrame * CFrame.new(0, 8.5, 0)
+	local marker, _ = self:_createWorldMarker(runtime, "ObjectiveMarker", "DEFEND CORE", Color3.fromRGB(184, 228, 255), Vector2.new(156, 30), 14)
+	marker.CFrame = core.CFrame * CFrame.new(0, 7.2, 0)
 	local objectiveGui = marker:FindFirstChildOfClass("BillboardGui")
 	if objectiveGui then
-		objectiveGui.MaxDistance = 56
+		objectiveGui.MaxDistance = 42
 	end
 	if self:_isPowerCellScenario() then
 		self:_spawnPowerCellObjective(runtime, core)

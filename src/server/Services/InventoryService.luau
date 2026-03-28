@@ -220,11 +220,11 @@ local function getShowcaseMount(weapon)
 			attachmentName = "BodyBackAttachment",
 			fallbackName = "Torso",
 			useTorsoBackAnchor = true,
-			backOffset = Vector3.new(0, -0.18, 0.16),
-			offset = CFrame.Angles(0, 0, math.rad(90)),
-			handleOffset = CFrame.Angles(0, 0, 0),
+			backOffset = Vector3.new(0.34, -0.02, 0.08),
+			offset = CFrame.Angles(math.rad(10), math.rad(90), math.rad(28)),
+			handleOffset = CFrame.new(0, -0.08, 0),
 			visualStyle = "PistolBack",
-			scale = 0.44,
+			scale = 1.18,
 		}
 	elseif style == "SMG" then
 		return {
@@ -232,11 +232,11 @@ local function getShowcaseMount(weapon)
 			attachmentName = "BodyBackAttachment",
 			fallbackName = "Torso",
 			useTorsoBackAnchor = true,
-			backOffset = Vector3.new(-0.08, -0.02, 0.18),
-			offset = CFrame.Angles(0, 0, math.rad(90)),
-			handleOffset = CFrame.new(),
+			backOffset = Vector3.new(-0.18, 0.12, 0.08),
+			offset = CFrame.Angles(math.rad(18), math.rad(90), math.rad(48)),
+			handleOffset = CFrame.new(0, -0.16, 0),
 			visualStyle = "SMGBack",
-			scale = 0.5,
+			scale = 1.24,
 		}
 	elseif style == "Carbine" then
 		return {
@@ -244,11 +244,11 @@ local function getShowcaseMount(weapon)
 			attachmentName = "BodyBackAttachment",
 			fallbackName = "Torso",
 			useTorsoBackAnchor = true,
-			backOffset = Vector3.new(-0.12, 0.08, 0.18),
-			offset = CFrame.Angles(0, 0, math.rad(90)),
-			handleOffset = CFrame.new(),
+			backOffset = Vector3.new(-0.22, 0.18, 0.08),
+			offset = CFrame.Angles(math.rad(22), math.rad(90), math.rad(54)),
+			handleOffset = CFrame.new(0, -0.22, 0),
 			visualStyle = "CarbineBack",
-			scale = 0.46,
+			scale = 1.2,
 		}
 	elseif style == "Shotgun" then
 		return {
@@ -256,32 +256,32 @@ local function getShowcaseMount(weapon)
 			attachmentName = "BodyBackAttachment",
 			fallbackName = "Torso",
 			useTorsoBackAnchor = true,
-			backOffset = Vector3.new(-0.1, 0.04, 0.2),
-			offset = CFrame.Angles(0, 0, math.rad(90)),
-			handleOffset = CFrame.new(),
+			backOffset = Vector3.new(-0.2, 0.16, 0.06),
+			offset = CFrame.Angles(math.rad(24), math.rad(90), math.rad(52)),
+			handleOffset = CFrame.new(0, -0.24, 0),
 			visualStyle = "ShotgunBack",
-			scale = 0.44,
+			scale = 1.16,
 		}
 	elseif style == "Blade" then
 		return {
 			anchorName = "UpperTorso",
 			fallbackName = "Torso",
-			offset = CFrame.new(-0.86, -0.34, 0.8) * CFrame.Angles(math.rad(24), math.rad(-10), math.rad(150)),
-			scale = 0.68,
+			offset = CFrame.new(-0.72, -0.12, 0.72) * CFrame.Angles(math.rad(32), math.rad(-8), math.rad(138)),
+			scale = 1.06,
 		}
 	elseif style == "Crowbar" then
 		return {
 			anchorName = "UpperTorso",
 			fallbackName = "Torso",
-			offset = CFrame.new(-0.8, -0.3, 0.76) * CFrame.Angles(math.rad(16), math.rad(-8), math.rad(142)),
-			scale = 0.72,
+			offset = CFrame.new(-0.68, -0.1, 0.74) * CFrame.Angles(math.rad(22), math.rad(-6), math.rad(136)),
+			scale = 1.08,
 		}
 	elseif style == "Axe" then
 		return {
 			anchorName = "UpperTorso",
 			fallbackName = "Torso",
-			offset = CFrame.new(0.98, -0.42, 0.54) * CFrame.Angles(math.rad(-12), math.rad(34), math.rad(88)),
-			scale = 0.5,
+			offset = CFrame.new(0.82, -0.12, 0.46) * CFrame.Angles(math.rad(-6), math.rad(28), math.rad(94)),
+			scale = 0.96,
 		}
 	elseif style == "Fists" then
 		return {
@@ -294,8 +294,8 @@ local function getShowcaseMount(weapon)
 	return {
 		anchorName = "UpperTorso",
 		fallbackName = "Torso",
-		offset = CFrame.new(-0.14, 0.12, 0.86) * CFrame.Angles(math.rad(12), math.rad(4), math.rad(126)),
-		scale = 0.8,
+		offset = CFrame.new(-0.18, 0.12, 0.76) * CFrame.Angles(math.rad(18), math.rad(8), math.rad(132)),
+		scale = 1.04,
 	}
 end
 
@@ -637,6 +637,7 @@ function InventoryService:BuildProgressionPayload(player)
 		stats = profile.stats,
 		skillTree = self._skillTreeService and self._skillTreeService:BuildPayload(player) or nil,
 		subscription = self._subscriptionService and self._subscriptionService:GetState(player) or nil,
+		activities = self._persistenceService:GetActivityStats(player),
 	}
 end
 

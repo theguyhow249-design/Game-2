@@ -17,6 +17,7 @@ function DuelService.new(context)
 	self._remoteNames = context.RemoteNames
 	self._remotes = context.Remotes
 	self._flowService = context.FlowService
+	self._antiExploitService = context.AntiExploitService
 	self._queuedCorners = {
 		red = nil,
 		blue = nil,
@@ -383,12 +384,16 @@ function DuelService:RequestDuel(player, action)
 		return false, "corner_taken"
 	end
 
+	local targetPart = self:_getDuelPart(normalizedAction == "red" and "RedCornerPad" or "BlueCornerPad")
+	if self._antiExploitService and not self._antiExploitService:RequireProximity(player, targetPart, 20, "duel_corner_distance") then
+		return false, "too_far"
+	end
+
 	self:_clearQueuePlayer(player)
 	self._queuedCorners[normalizedAction] = player
 	player:SetAttribute("DuelCorner", normalizedAction)
 	player:SetAttribute("InDuelQueue", true)
 
-	local targetPart = self:_getDuelPart(normalizedAction == "red" and "RedCornerPad" or "BlueCornerPad")
 	if targetPart then
 		self:_teleportPlayer(player, targetPart, Vector3.new(0, 4, 0))
 	end

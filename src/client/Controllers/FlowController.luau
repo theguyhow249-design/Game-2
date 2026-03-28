@@ -7,6 +7,7 @@ local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+local GuiService = game:GetService("GuiService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local MissionConfig = require(Shared:WaitForChild("MissionConfig"))
@@ -84,6 +85,434 @@ local function clearGeneratedChildren(parent)
 	for _, child in ipairs(parent:GetChildren()) do
 		if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
 			child:Destroy()
+		end
+	end
+end
+
+local SHOP_WEAPON_SKIN_PROFILES = {
+	cosmetic_field_cap = {
+		base = Color3.fromRGB(108, 118, 86),
+		accent = Color3.fromRGB(142, 156, 106),
+		grip = Color3.fromRGB(84, 90, 72),
+		material = Enum.Material.SmoothPlastic,
+	},
+	cosmetic_neon_outline = {
+		base = Color3.fromRGB(28, 34, 52),
+		accent = Color3.fromRGB(116, 92, 255),
+		grip = Color3.fromRGB(46, 54, 82),
+		material = Enum.Material.SmoothPlastic,
+	},
+	cosmetic_bunker_glow = {
+		base = Color3.fromRGB(76, 104, 152),
+		accent = Color3.fromRGB(114, 162, 232),
+		grip = Color3.fromRGB(58, 74, 108),
+		material = Enum.Material.Metal,
+	},
+	cosmetic_ember_trace = {
+		base = Color3.fromRGB(126, 62, 44),
+		accent = Color3.fromRGB(224, 112, 74),
+		grip = Color3.fromRGB(82, 46, 32),
+		material = Enum.Material.Metal,
+	},
+	cosmetic_medic_aura = {
+		base = Color3.fromRGB(82, 126, 104),
+		accent = Color3.fromRGB(136, 218, 170),
+		grip = Color3.fromRGB(68, 104, 86),
+		material = Enum.Material.SmoothPlastic,
+	},
+	cosmetic_vernal_glow = {
+		base = Color3.fromRGB(86, 132, 88),
+		accent = Color3.fromRGB(168, 232, 156),
+		grip = Color3.fromRGB(74, 108, 70),
+		material = Enum.Material.SmoothPlastic,
+	},
+	cosmetic_cadet_stripe = {
+		base = Color3.fromRGB(166, 144, 92),
+		accent = Color3.fromRGB(246, 220, 138),
+		grip = Color3.fromRGB(112, 94, 64),
+		material = Enum.Material.Metal,
+	},
+	cosmetic_rooftop_glow = {
+		base = Color3.fromRGB(100, 132, 168),
+		accent = Color3.fromRGB(178, 214, 255),
+		grip = Color3.fromRGB(74, 96, 126),
+		material = Enum.Material.Metal,
+	},
+	cosmetic_deadeye_trace = {
+		base = Color3.fromRGB(78, 118, 108),
+		accent = Color3.fromRGB(154, 238, 214),
+		grip = Color3.fromRGB(58, 84, 78),
+		material = Enum.Material.Metal,
+	},
+	cosmetic_salvage_signal = {
+		base = Color3.fromRGB(146, 108, 76),
+		accent = Color3.fromRGB(244, 200, 132),
+		grip = Color3.fromRGB(92, 66, 48),
+		material = Enum.Material.Metal,
+	},
+	cosmetic_cipher_sigil = {
+		base = Color3.fromRGB(112, 86, 154),
+		accent = Color3.fromRGB(214, 162, 255),
+		grip = Color3.fromRGB(76, 58, 106),
+		material = Enum.Material.Metal,
+	},
+}
+
+local function scaleVector3(vector, scale)
+	return Vector3.new(vector.X * scale, vector.Y * scale, vector.Z * scale)
+end
+
+local function attachPreviewWeaponPart(parent, handle, name, size, offset, color, material, shape)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.Material = material or Enum.Material.Metal
+	part.Color = color
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+	part.Anchored = false
+	part.Massless = true
+	part.CFrame = handle.CFrame * offset
+	if shape then
+		part.Shape = shape
+	end
+	part.Parent = parent
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = handle
+	weld.Part1 = part
+	weld.Parent = part
+	return part
+end
+
+local function classifyPreviewWeaponPart(part)
+	local name = string.lower(part.Name)
+	if string.find(name, "barrel", 1, true) or string.find(name, "tube", 1, true) then
+		return "barrel"
+	end
+	if string.find(name, "receiver", 1, true) or string.find(name, "slide", 1, true) or string.find(name, "shroud", 1, true) then
+		return "body"
+	end
+	if string.find(name, "stock", 1, true) or string.find(name, "pump", 1, true) or string.find(name, "guard", 1, true) or name == "handle" then
+		return "grip"
+	end
+	return "detail"
+end
+
+local function buildPreviewWeaponVisual(parent, handle, weapon, scale)
+	scale = scale or 1
+	local accentColor = weapon.AccentColor or weapon.HandleColor:Lerp(Color3.fromRGB(255, 255, 255), 0.25)
+	local style = weapon.ModelStyle or weapon.WeaponType
+
+	if style == "Blade" then
+		attachPreviewWeaponPart(parent, handle, "Blade", scaleVector3(Vector3.new(0.28, 3.8, 0.8), scale), CFrame.new(0, 1.9 * scale, 0), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Guard", scaleVector3(Vector3.new(1.1, 0.2, 0.35), scale), CFrame.new(0, 0.25 * scale, 0), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		return
+	end
+	if style == "Crowbar" then
+		attachPreviewWeaponPart(parent, handle, "CrowbarHook", scaleVector3(Vector3.new(0.35, 0.35, 1.2), scale), CFrame.new(0, 1.55 * scale, -0.2 * scale) * CFrame.Angles(math.rad(28), 0, 0), accentColor, Enum.Material.Metal)
+		return
+	end
+	if style == "Axe" then
+		attachPreviewWeaponPart(parent, handle, "AxeHead", scaleVector3(Vector3.new(1.5, 0.9, 0.28), scale), CFrame.new(0.48 * scale, 1.3 * scale, 0), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "AxeBack", scaleVector3(Vector3.new(0.42, 0.55, 0.24), scale), CFrame.new(-0.42 * scale, 1.22 * scale, 0), accentColor, Enum.Material.Metal)
+		return
+	end
+	if style == "Pistol" then
+		handle.Size = scaleVector3(Vector3.new(0.26, 0.92, 0.54), scale)
+		attachPreviewWeaponPart(parent, handle, "Frame", scaleVector3(Vector3.new(0.24, 0.36, 0.66), scale), CFrame.new(0, 0.02 * scale, 0.04 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Slide", scaleVector3(Vector3.new(0.32, 0.2, 1.08), scale), CFrame.new(0, 0.3 * scale, -0.12 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.14, 0.14, 0.88), scale), CFrame.new(0, 0.22 * scale, -0.88 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Muzzle", scaleVector3(Vector3.new(0.16, 0.16, 0.12), scale), CFrame.new(0, 0.22 * scale, -1.38 * scale), Color3.fromRGB(26, 26, 30), Enum.Material.Metal)
+		return
+	end
+	if style == "Carbine" then
+		handle.Size = scaleVector3(Vector3.new(0.22, 1.02, 0.34), scale)
+		attachPreviewWeaponPart(parent, handle, "UpperReceiver", scaleVector3(Vector3.new(0.34, 0.26, 1.24), scale), CFrame.new(0, 0.34 * scale, -0.16 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "LowerReceiver", scaleVector3(Vector3.new(0.28, 0.34, 0.82), scale), CFrame.new(0, 0.08 * scale, 0.02 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 0.1, 1.84), scale), CFrame.new(0, 0.32 * scale, -1.62 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.24, 0.46, 0.96), scale), CFrame.new(0, 0.02 * scale, 0.88 * scale), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		attachPreviewWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.18, 0.52, 0.22), scale), CFrame.new(0, -0.42 * scale, -0.08 * scale) * CFrame.Angles(math.rad(-8), 0, 0), weapon.HandleColor, Enum.Material.Metal)
+		return
+	end
+	if style == "SMG" then
+		handle.Size = scaleVector3(Vector3.new(0.24, 0.9, 0.32), scale)
+		attachPreviewWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.32, 0.24, 1.02), scale), CFrame.new(0, 0.28 * scale, -0.08 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 0.1, 1.02), scale), CFrame.new(0, 0.22 * scale, -1.06 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.16, 0.72, 0.2), scale), CFrame.new(0, -0.5 * scale, -0.06 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Stock", scaleVector3(Vector3.new(0.18, 0.18, 0.72), scale), CFrame.new(0, 0.18 * scale, 0.72 * scale), Color3.fromRGB(26, 28, 32), Enum.Material.Metal)
+		return
+	end
+	if style == "Shotgun" then
+		handle.Size = scaleVector3(Vector3.new(0.26, 1, 0.34), scale)
+		attachPreviewWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.36, 0.24, 1.08), scale), CFrame.new(0, 0.28 * scale, -0.1 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 0.1, 2.02), scale), CFrame.new(0, 0.22 * scale, -1.76 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Pump", scaleVector3(Vector3.new(0.22, 0.18, 0.58), scale), CFrame.new(0, 0.08 * scale, -0.98 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		attachPreviewWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.24, 0.42, 0.92), scale), CFrame.new(0, 0.02 * scale, 0.86 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		return
+	end
+end
+
+local function getShopPreviewScale(weapon)
+	if not weapon then
+		return 1.55
+	end
+
+	local style = weapon.ModelStyle or weapon.WeaponType
+	if style == "Blade" or style == "Crowbar" or style == "Axe" then
+		return 2.15
+	end
+	if style == "Pistol" then
+		return 1.95
+	end
+	if style == "SMG" then
+		return 1.85
+	end
+	if style == "Carbine" then
+		return 1.92
+	end
+	if style == "Shotgun" then
+		return 1.88
+	end
+	return 1.7
+end
+
+local function createFlowCleanup(
+	inputConnection,
+	promptConnection,
+	promptShownConnection,
+	leaderboardPlayerAddedConnection,
+	leaderboardPlayerRemovingConnection,
+	leaderboardPlayerConnections,
+	unbindLeaderboardPlayer,
+	promptTween,
+	subscriptionPromptConnection,
+	remoteCleanup
+)
+	return function()
+		if inputConnection then
+			inputConnection:Disconnect()
+		end
+		if promptConnection then
+			promptConnection:Disconnect()
+		end
+		if promptShownConnection then
+			promptShownConnection:Disconnect()
+		end
+		if leaderboardPlayerAddedConnection then
+			leaderboardPlayerAddedConnection:Disconnect()
+		end
+		if leaderboardPlayerRemovingConnection then
+			leaderboardPlayerRemovingConnection:Disconnect()
+		end
+		for candidate in pairs(leaderboardPlayerConnections) do
+			unbindLeaderboardPlayer(candidate)
+		end
+		if promptTween then
+			promptTween:Cancel()
+		end
+		if subscriptionPromptConnection then
+			subscriptionPromptConnection:Disconnect()
+		end
+		if remoteCleanup then
+			remoteCleanup()
+		end
+	end
+end
+
+local LEADERBOARD_PLAYER_ATTRIBUTES = {
+	"SkillTreeLevel",
+	"MissionsCompleted",
+	"ZombiesDefeated",
+	"AllTimeMissionsCompleted",
+	"AllTimeZombiesDefeated",
+	"WeeklyMissionsCompleted",
+	"WeeklyZombiesDefeated",
+	"DailyMissionsCompleted",
+	"DailyZombiesDefeated",
+	"LeaderboardRank",
+}
+
+local function createLeaderboardPlayerBindings(updateLobbyText)
+	local leaderboardPlayerConnections = {}
+
+	local function bindLeaderboardPlayer(candidate)
+		if leaderboardPlayerConnections[candidate] then
+			return
+		end
+
+		local connections = table.create(#LEADERBOARD_PLAYER_ATTRIBUTES)
+		for _, attributeName in ipairs(LEADERBOARD_PLAYER_ATTRIBUTES) do
+			table.insert(connections, candidate:GetAttributeChangedSignal(attributeName):Connect(updateLobbyText))
+		end
+		leaderboardPlayerConnections[candidate] = connections
+	end
+
+	local function unbindLeaderboardPlayer(candidate)
+		local connections = leaderboardPlayerConnections[candidate]
+		if not connections then
+			return
+		end
+		for _, connection in ipairs(connections) do
+			connection:Disconnect()
+		end
+		leaderboardPlayerConnections[candidate] = nil
+	end
+
+	for _, candidate in ipairs(Players:GetPlayers()) do
+		bindLeaderboardPlayer(candidate)
+	end
+
+	local leaderboardPlayerAddedConnection = Players.PlayerAdded:Connect(function(candidate)
+		bindLeaderboardPlayer(candidate)
+		updateLobbyText()
+	end)
+	local leaderboardPlayerRemovingConnection = Players.PlayerRemoving:Connect(function(candidate)
+		unbindLeaderboardPlayer(candidate)
+		updateLobbyText()
+	end)
+
+	return leaderboardPlayerConnections, leaderboardPlayerAddedConnection, leaderboardPlayerRemovingConnection, unbindLeaderboardPlayer
+end
+
+local function handleNotificationRemote(message, deps)
+	local player = deps.player
+	if type(message) == "table" then
+		if message.userId and message.userId ~= player.UserId then
+			return
+		end
+		if message.kind == "Results" then
+			deps.showResultsPopup(message)
+			return
+		elseif message.kind == "DailyOpsProgress" then
+			local lines = type(message.lines) == "table" and message.lines or {}
+			for _, line in ipairs(lines) do
+				if type(line) == "table" then
+					local title = line.complete and "Daily Op Complete" or "Daily Op Updated"
+					local progressText = ("%d/%d"):format(tonumber(line.progress) or 0, tonumber(line.goal) or 1)
+					local body = ("%s • %s"):format(tostring(line.displayName or "Daily Op"), progressText)
+					local rewardText = nil
+					if line.complete then
+						rewardText = ("+%dT +%dXP"):format(
+							tonumber(line.rewardTokens) or 0,
+							tonumber(line.rewardExperience) or 0
+						)
+					end
+					deps.pushMissionToast(
+						title,
+						body,
+						line.complete and Color3.fromRGB(188, 214, 128) or Color3.fromRGB(122, 170, 220),
+						line.complete == true,
+						rewardText
+					)
+				end
+			end
+			return
+		elseif message.kind == "Invite" then
+			deps.setPendingInvite(message)
+			deps.setCurrentSocialMessage(tostring(message.message or deps.getCurrentSocialMessage()))
+			deps.playUiSound(SOUND_IDS.Alert, 0.32, 1.02)
+			deps.updateLobbyText()
+			return
+		end
+		local nextMessage = tostring(message.message or message.status or deps.getCurrentSocialMessage())
+		deps.setCurrentSocialMessage(nextMessage)
+		if string.find(nextMessage, "Warning", 1, true) then
+			deps.playUiSound(SOUND_IDS.Alert, 0.28, 0.98)
+		end
+		deps.updateLobbyText()
+	elseif typeof(message) == "string" then
+		deps.setCurrentSocialMessage(message)
+		if string.find(message, "Warning", 1, true) then
+			deps.playUiSound(SOUND_IDS.Alert, 0.28, 0.98)
+		end
+		deps.updateLobbyText()
+	end
+end
+
+local function handleShopStateChangedRemote(payload, deps)
+	if type(payload) == "table" then
+		local shopTab = normalizeShopTab(payload.tab or payload.category)
+		if shopTab and Theme.ShopCopy[shopTab] then
+			deps.setCurrentShopTab(shopTab)
+			local category = Theme.ShopTabToCategory[shopTab]
+			local item = findShopItem(category, payload.itemId)
+			if item then
+				local isEquipUpdate = payload.equippedWeapon ~= nil or payload.equippedCosmetic ~= nil
+				local status = isEquipUpdate
+					and ("Equipped %s."):format(item.DisplayName or item.Id)
+					or ("Unlocked %s."):format(item.DisplayName or item.Id)
+				deps.setCurrentShopStatus(status)
+				if isEquipUpdate then
+					deps.setCurrentInventoryStatus(status)
+				end
+			end
+			if payload.equippedWeapon then
+				deps.progression.equippedWeapon = tostring(payload.equippedWeapon)
+				deps.setCurrentInventoryTab("Weapons")
+			end
+			if payload.equippedCosmetic ~= nil then
+				deps.progression.equippedCosmetic = payload.equippedCosmetic ~= "" and tostring(payload.equippedCosmetic) or nil
+				if deps.progression.equippedCosmetic then
+					deps.setCurrentInventoryTab("Cosmetics")
+				end
+			end
+			if deps.getActivePopup() == "Inventory" and (payload.equippedWeapon ~= nil or payload.equippedCosmetic ~= nil) then
+				deps.setActivePopup("Inventory")
+			else
+				deps.setActivePopup("Shop")
+			end
+			deps.updateLobbyText()
+		end
+	elseif typeof(payload) == "string" then
+		local shopTab = normalizeShopTab(payload)
+		if shopTab and Theme.ShopCopy[shopTab] then
+			deps.setCurrentShopTab(shopTab)
+			deps.setCurrentShopStatus(Theme.ShopCopy[shopTab])
+			deps.setActivePopup("Shop")
+			deps.updateLobbyText()
+		end
+	end
+end
+
+local function bindFlowRemoteHandlers(deps)
+	return Remotes.bind({
+		[RemoteNames.Events.LobbyStateChanged] = deps.setLobbyValue,
+		[RemoteNames.Events.TokenBalanceChanged] = deps.setTokenValue,
+		[RemoteNames.Events.SquadUpdated] = deps.setSquadValue,
+		[RemoteNames.Events.DeployStateChanged] = deps.setDeployValue,
+		[RemoteNames.Events.CombatFeedback] = deps.handleCombatFeedback,
+		[RemoteNames.Events.Notification] = function(message)
+			handleNotificationRemote(message, deps)
+		end,
+		[RemoteNames.Events.ShopStateChanged] = function(payload)
+			handleShopStateChangedRemote(payload, deps)
+		end,
+		[RemoteNames.Events.ProgressionUpdated] = deps.setProgressionValue,
+		[RemoteNames.Events.SubscriptionStateChanged] = deps.setSubscriptionStateValue,
+		[RemoteNames.Events.PersistenceStateChanged] = deps.setPersistenceStateValue,
+	})
+end
+
+local function applyPreviewSkin(model, cosmeticId)
+	local profile = SHOP_WEAPON_SKIN_PROFILES[cosmeticId]
+	if not profile or not model then
+		return
+	end
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("BasePart") and descendant.Name ~= "Handle" then
+			local group = classifyPreviewWeaponPart(descendant)
+			if group == "body" or group == "barrel" then
+				descendant.Color = profile.base
+				descendant.Material = profile.material
+			elseif group == "grip" then
+				descendant.Color = profile.grip
+				descendant.Material = Enum.Material.SmoothPlastic
+			else
+				descendant.Color = profile.accent
+				descendant.Material = Enum.Material.Metal
+			end
 		end
 	end
 end
@@ -225,6 +654,144 @@ local function normalizeSubscriptionState(payload)
 		dailyBonusTokens = tonumber(payload.dailyBonusTokens or payload.DailyBonusTokens) or 0,
 		extraInventorySlots = tonumber(payload.extraInventorySlots or payload.ExtraInventorySlots) or 0,
 	}
+end
+
+local function ensureResponsiveScale(target, name)
+	local scale = target:FindFirstChild(name)
+	if scale and scale:IsA("UIScale") then
+		return scale
+	end
+	scale = new("UIScale", {
+		Name = name,
+		Scale = 1,
+		Parent = target,
+	})
+	return scale
+end
+
+local function captureResponsiveBaseline(frame)
+	if not frame or frame:GetAttribute("ResponsiveBaseWidth") then
+		return
+	end
+	frame:SetAttribute("ResponsiveBaseWidth", frame.Size.X.Offset)
+	frame:SetAttribute("ResponsiveBaseHeight", frame.Size.Y.Offset)
+	frame:SetAttribute("ResponsiveBaseXScale", frame.Position.X.Scale)
+	frame:SetAttribute("ResponsiveBaseXOffset", frame.Position.X.Offset)
+	frame:SetAttribute("ResponsiveBaseYScale", frame.Position.Y.Scale)
+	frame:SetAttribute("ResponsiveBaseYOffset", frame.Position.Y.Offset)
+end
+
+local function applyPopupResponsiveLayout(popup, viewportX, viewportY, mobileLayout)
+	if not popup or not popup:IsA("Frame") then
+		return
+	end
+	local insetTopLeft, insetBottomRight = GuiService:GetGuiInset()
+	local safeLeft = insetTopLeft.X
+	local safeTop = insetTopLeft.Y
+	local safeRight = insetBottomRight.X
+	local safeBottom = insetBottomRight.Y
+	captureResponsiveBaseline(popup)
+	local baseWidth = tonumber(popup:GetAttribute("ResponsiveBaseWidth")) or popup.Size.X.Offset
+	local baseHeight = tonumber(popup:GetAttribute("ResponsiveBaseHeight")) or popup.Size.Y.Offset
+	local baseXScale = tonumber(popup:GetAttribute("ResponsiveBaseXScale"))
+	local baseXOffset = tonumber(popup:GetAttribute("ResponsiveBaseXOffset")) or popup.Position.X.Offset
+	local baseYScale = tonumber(popup:GetAttribute("ResponsiveBaseYScale"))
+	local baseYOffset = tonumber(popup:GetAttribute("ResponsiveBaseYOffset")) or popup.Position.Y.Offset
+	local responsiveScale = ensureResponsiveScale(popup, "ResponsiveScale")
+	if mobileLayout then
+		local horizontalMargin = 12
+		local topMargin = 12
+		local bottomMargin = 20
+		local availableWidth = math.max(260, viewportX - safeLeft - safeRight - (horizontalMargin * 2))
+		local availableHeight = math.max(220, viewportY - safeTop - safeBottom - topMargin - bottomMargin)
+		local safeCenterX = safeLeft + (availableWidth * 0.5)
+		local safeCenterY = safeTop + topMargin + (availableHeight * 0.5)
+		responsiveScale.Scale = math.min(1, availableWidth / math.max(1, baseWidth), availableHeight / math.max(1, baseHeight))
+		if popup.Name == "ShopPopup" then
+			responsiveScale.Scale *= 0.92
+		end
+		popup.Position = UDim2.new(0, math.floor(safeCenterX - (baseWidth * 0.5)), 0, math.floor(safeCenterY - (baseHeight * 0.5)))
+	else
+		responsiveScale.Scale = 1
+		popup.Position = UDim2.new(baseXScale or popup.Position.X.Scale, baseXOffset, baseYScale or popup.Position.Y.Scale, baseYOffset)
+	end
+	popup:SetAttribute("OpenY", popup.Position.Y.Offset)
+	popup:SetAttribute("ClosedY", popup.Position.Y.Offset + 14)
+
+	for _, child in ipairs(popup:GetChildren()) do
+		if child:IsA("UIPadding") then
+			if child:GetAttribute("ResponsiveBasePaddingTop") == nil then
+				child:SetAttribute("ResponsiveBasePaddingTop", child.PaddingTop.Offset)
+				child:SetAttribute("ResponsiveBasePaddingBottom", child.PaddingBottom.Offset)
+				child:SetAttribute("ResponsiveBasePaddingLeft", child.PaddingLeft.Offset)
+				child:SetAttribute("ResponsiveBasePaddingRight", child.PaddingRight.Offset)
+			end
+			local basePaddingTop = tonumber(child:GetAttribute("ResponsiveBasePaddingTop")) or child.PaddingTop.Offset
+			local basePaddingBottom = tonumber(child:GetAttribute("ResponsiveBasePaddingBottom")) or child.PaddingBottom.Offset
+			local basePaddingLeft = tonumber(child:GetAttribute("ResponsiveBasePaddingLeft")) or child.PaddingLeft.Offset
+			local basePaddingRight = tonumber(child:GetAttribute("ResponsiveBasePaddingRight")) or child.PaddingRight.Offset
+			if mobileLayout then
+				child.PaddingTop = UDim.new(0, math.max(basePaddingTop, 18))
+				child.PaddingBottom = UDim.new(0, math.max(basePaddingBottom, 18))
+				child.PaddingLeft = UDim.new(0, math.max(basePaddingLeft, 18))
+				child.PaddingRight = UDim.new(0, math.max(basePaddingRight, 18))
+			else
+				child.PaddingTop = UDim.new(0, basePaddingTop)
+				child.PaddingBottom = UDim.new(0, basePaddingBottom)
+				child.PaddingLeft = UDim.new(0, basePaddingLeft)
+				child.PaddingRight = UDim.new(0, basePaddingRight)
+			end
+		end
+	end
+
+	for _, descendant in ipairs(popup:GetDescendants()) do
+		if descendant:IsA("ScrollingFrame") then
+			if descendant:GetAttribute("ResponsiveBaseScrollBarThickness") == nil then
+				descendant:SetAttribute("ResponsiveBaseScrollBarThickness", descendant.ScrollBarThickness)
+			end
+			descendant.Active = true
+			descendant.ScrollingDirection = Enum.ScrollingDirection.XY
+			descendant.ScrollBarThickness = mobileLayout and math.max(12, descendant.ScrollBarThickness) or (tonumber(descendant:GetAttribute("ResponsiveBaseScrollBarThickness")) or descendant.ScrollBarThickness)
+			descendant.ElasticBehavior = mobileLayout and Enum.ElasticBehavior.Always or Enum.ElasticBehavior.WhenScrollable
+		elseif descendant:IsA("TextButton") then
+			if descendant:GetAttribute("ResponsiveBaseWidth") == nil then
+				descendant:SetAttribute("ResponsiveBaseWidth", descendant.Size.X.Offset)
+				descendant:SetAttribute("ResponsiveBaseHeight", descendant.Size.Y.Offset)
+				descendant:SetAttribute("ResponsiveBaseTextSize", descendant.TextSize)
+			end
+			local buttonName = descendant.Name
+			local buttonText = descendant.Text
+			local isCloseOrBack = string.find(buttonName, "Close") ~= nil
+				or string.find(buttonName, "Back") ~= nil
+				or buttonText == "Close"
+				or buttonText == "Back To Ops"
+			local baseButtonWidth = tonumber(descendant:GetAttribute("ResponsiveBaseWidth")) or descendant.Size.X.Offset
+			local baseButtonHeight = tonumber(descendant:GetAttribute("ResponsiveBaseHeight")) or descendant.Size.Y.Offset
+			local baseTextSize = tonumber(descendant:GetAttribute("ResponsiveBaseTextSize")) or descendant.TextSize
+			if mobileLayout then
+				local minWidth = isCloseOrBack and 132 or 108
+				local minHeight = isCloseOrBack and 48 or 44
+				descendant.Size = UDim2.new(descendant.Size.X.Scale, math.max(baseButtonWidth, minWidth), descendant.Size.Y.Scale, math.max(baseButtonHeight, minHeight))
+				descendant.TextSize = math.max(baseTextSize, isCloseOrBack and 18 or 16)
+			else
+				descendant.Size = UDim2.new(descendant.Size.X.Scale, baseButtonWidth, descendant.Size.Y.Scale, baseButtonHeight)
+				descendant.TextSize = baseTextSize
+			end
+			if isCloseOrBack then
+				descendant.AutoButtonColor = true
+			end
+		elseif descendant:IsA("TextLabel") then
+			if descendant:GetAttribute("ResponsiveBaseTextSize") == nil then
+				descendant:SetAttribute("ResponsiveBaseTextSize", descendant.TextSize)
+			end
+			local baseTextSize = tonumber(descendant:GetAttribute("ResponsiveBaseTextSize")) or descendant.TextSize
+			if mobileLayout then
+				descendant.TextSize = math.max(baseTextSize, 12)
+			else
+				descendant.TextSize = baseTextSize
+			end
+		end
+	end
 end
 
 local function normalizeSquadSnapshot(payload)
@@ -392,9 +959,45 @@ local function normalizeStationPanelName(panelName)
 	if lowerName == "questboard" or lowerName == "ops" or string.find(lowerName, "operations", 1, true) or string.find(lowerName, "daily", 1, true) then
 		return "QuestBoard"
 	end
+	if lowerName == "activities" or string.find(lowerName, "activity", 1, true) or string.find(lowerName, "training log", 1, true) then
+		return "Activities"
+	end
 
 	return nil
 end
+
+local ACTIVITY_REWARD_LABELS = {
+	cosmetic_cadet_stripe = "Cadet Stripe",
+	cosmetic_rooftop_glow = "Rooftop Glow",
+	cosmetic_deadeye_trace = "Deadeye Trace",
+	cosmetic_salvage_signal = "Salvage Signal",
+	cosmetic_cipher_sigil = "Cipher Sigil",
+}
+
+local ACTIVITY_BADGE_LABELS = {
+	training_clear = "Cadet Operator",
+	parkour_clear = "Rooftop Scout",
+	range_clear = "Range Cadet",
+	range_deadeye = "Deadeye",
+	salvage_clear = "Cache Runner",
+	secret_training_secret = "Hidden Locker",
+	secret_parkour_secret = "Roof Stash",
+	secret_range_secret = "Deadeye Cache",
+	secret_salvage_secret = "Smuggler Crate",
+	secret_mastery = "Secret Mastery",
+	training_level_1 = "TRAINING Lv.1",
+	training_level_2 = "TRAINING Lv.2",
+	training_level_3 = "TRAINING Lv.3",
+	parkour_level_1 = "PARKOUR Lv.1",
+	parkour_level_2 = "PARKOUR Lv.2",
+	parkour_level_3 = "PARKOUR Lv.3",
+	range_level_1 = "RANGE Lv.1",
+	range_level_2 = "RANGE Lv.2",
+	range_level_3 = "RANGE Lv.3",
+	salvage_level_1 = "SALVAGE Lv.1",
+	salvage_level_2 = "SALVAGE Lv.2",
+	salvage_level_3 = "SALVAGE Lv.3",
+}
 
 local function setPageVisibility(ui, activeName)
 	for name, page in pairs(ui.Pages) do
@@ -898,11 +1501,66 @@ function FlowController.start()
 	local playerGui = player:WaitForChild("PlayerGui")
 	ui = UiBuilder.create(playerGui)
 
+	local function hideLocalPlayerTag(character)
+		if not character then
+			return
+		end
+
+		local function hideLocalCosmeticHighlight(instance)
+			if instance and instance:IsA("Highlight") and instance.Name == "EquippedCosmeticHighlight" then
+				instance.Enabled = false
+			end
+		end
+
+		local function applyHiddenTag(head)
+			if not head then
+				return
+			end
+			local tag = head:FindFirstChild("PlayerTag")
+			if tag and tag:IsA("BillboardGui") then
+				tag.Enabled = false
+			end
+			head.ChildAdded:Connect(function(child)
+				if child and child.Name == "PlayerTag" and child:IsA("BillboardGui") then
+					child.Enabled = false
+				end
+			end)
+		end
+
+		hideLocalCosmeticHighlight(character:FindFirstChild("EquippedCosmeticHighlight"))
+		for _, descendant in ipairs(character:GetDescendants()) do
+			hideLocalCosmeticHighlight(descendant)
+		end
+		character.DescendantAdded:Connect(hideLocalCosmeticHighlight)
+
+		local head = character:FindFirstChild("Head")
+		if head then
+			applyHiddenTag(head)
+		else
+			local headConnection
+			headConnection = character.ChildAdded:Connect(function(child)
+				if child and child.Name == "Head" then
+					applyHiddenTag(child)
+					if headConnection then
+						headConnection:Disconnect()
+						headConnection = nil
+					end
+				end
+			end)
+		end
+	end
+
+	if player.Character then
+		task.defer(hideLocalPlayerTag, player.Character)
+	end
+	player.CharacterAdded:Connect(hideLocalPlayerTag)
+
 	local state = "Home"
 	local loadingStartedAt = 0
 	local awaitingContinuePrompt = false
 	local promptTween = nil
 	local activePopup = nil
+	local updateHudVisibility
 	local tokenBalance = Theme.DefaultTokenBalance
 	local currentDeployStatus = Theme.StatusCopy.Lobby
 	local persistenceOnline = true
@@ -913,16 +1571,26 @@ function FlowController.start()
 	local seasonalEventState = nil
 	local currentShopRarityFilter = "All"
 	local currentShopPremiumFilter = "All"
+	local currentShopPreviewItemId = nil
+	local currentShopPreviewSignature = nil
+	local currentShopPreviewModel = nil
+	local currentShopPreviewBaseCFrame = nil
+	local currentShopPreviewAngle = 0
 	local currentInventoryTab = "Weapons"
 	local currentInventoryStatus = "Owned gear appears here. Equip a weapon or cosmetic from the locker."
 	local currentInventoryRarityFilter = "All"
 	local currentSkillTreeStatus = "Allocate points to unlock deeper branch nodes."
 	local currentSkillTreeBranchFilter = "All"
 	local selectedSkillTreeNodeId = nil
+	local premiumUnlockBannerNonce = 0
 	local currentAdminStatus = "Commands ready."
 	local currentAdminEventLabel = "Event Mode: Auto Rotation"
 	local selectedAdminTargetUserId = nil
 	local activeAdminTab = "Session"
+	local nearArchiveLane = false
+	local nearCentralCommand = true
+	local nearDeployPad = false
+	local lobbyZoneSampleTimer = 0
 	local squadSnapshot = nil
 	local squadDirectory = {}
 	local inviteablePlayers = {}
@@ -965,8 +1633,11 @@ function FlowController.start()
 		wave = 0,
 		totalWaves = 0,
 		objectiveHealthPercent = 100,
+		weaponName = "Training Blade",
+		weaponType = "Melee",
 		ammo = nil,
 		reserveAmmo = nil,
+		reloading = false,
 	}
 	local nextMissionPreview = {
 		scenarioName = "Hold The Core",
@@ -996,6 +1667,7 @@ function FlowController.start()
 	local screenShakeEnabled = true
 	local missionToastNonce = 0
 	local suppressedMissionPrompts = {}
+	local overlayTweens = {}
 	SoundService:SetAttribute("UiAudioEnabled", uiAudioEnabled)
 
 	local renderShopItems
@@ -1006,6 +1678,7 @@ function FlowController.start()
 	local renderDailyOpsItems
 	local renderLeaderboardBoard
 	local renderAdminTargetList
+	local getQuickAccessButtons
 	local setLobbyValue
 	local refreshSquadDirectory
 	local refreshInviteablePlayers
@@ -1017,6 +1690,453 @@ function FlowController.start()
 	local homeSignalSweepTween = nil
 	local homeSignalPulseTweens = {}
 	local homeIntroPlayed = false
+	local layoutState = {
+		hudShownPosition = ui.Lobby.HudBar.Position,
+		hudHiddenPosition = ui.Lobby.HudBar.Position - UDim2.fromOffset(0, 18),
+		quickAccessShownPosition = ui.Lobby.QuickAccessBar.Position,
+		quickAccessHiddenPosition = ui.Lobby.QuickAccessBar.Position + UDim2.fromOffset(148, 0),
+		archiveHintShownPosition = ui.Lobby.LeaderboardBoard.Position,
+		archiveHintHiddenPosition = ui.Lobby.LeaderboardBoard.Position - UDim2.fromOffset(156, 0),
+		hudCompactVisibleSize = UDim2.new(0, 160, 0, 46),
+		hudDeployVisibleSize = UDim2.new(0.4, 0, 0, 60),
+		quickAccessExpandedWidth = 154,
+		quickAccessCollapsedWidth = 118,
+		mobileLayout = false,
+	}
+
+	getQuickAccessButtons = function()
+		return {
+			ui.Lobby.ShopQuickButton,
+			ui.Lobby.InventoryQuickButton,
+			ui.Lobby.SkillTreeQuickButton,
+			ui.Lobby.SquadQuickButton,
+			ui.Lobby.InviteQuickButton,
+			ui.Lobby.SettingsQuickButton,
+		}
+	end
+
+	local function applyResponsiveLayout()
+		local camera = Workspace.CurrentCamera
+		local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+		local viewportX = math.max(320, viewport.X)
+		local viewportY = math.max(480, viewport.Y)
+		layoutState.mobileLayout = UserInputService.TouchEnabled and (viewportX <= 1100 or viewportY <= 820)
+
+		if ui.Root then
+			local rootScale = ensureResponsiveScale(ui.Root, "ResponsiveScale")
+			rootScale.Scale = 1
+		end
+
+		if ui.Lobby.HudBar then
+			local sizeConstraint = ui.Lobby.HudBar:FindFirstChildOfClass("UISizeConstraint")
+			if sizeConstraint then
+				sizeConstraint.MaxSize = layoutState.mobileLayout and Vector2.new(2048, 72) or Vector2.new(640, 60)
+			end
+			ui.Lobby.HudBar.Position = layoutState.mobileLayout and UDim2.new(0, 12, 0, 12) or UDim2.new(0, 16, 0, 18)
+			layoutState.hudShownPosition = ui.Lobby.HudBar.Position
+			layoutState.hudHiddenPosition = layoutState.hudShownPosition - UDim2.fromOffset(0, layoutState.mobileLayout and 12 or 18)
+			layoutState.hudCompactVisibleSize = layoutState.mobileLayout and UDim2.new(1, -24, 0, 56) or UDim2.new(0, 160, 0, 46)
+			layoutState.hudDeployVisibleSize = layoutState.mobileLayout and UDim2.new(1, -24, 0, 64) or UDim2.new(0.4, 0, 0, 60)
+
+			local hudModule = ui.Lobby.HudBar:FindFirstChild("HudModule")
+			if hudModule and hudModule:IsA("Frame") then
+					hudModule.Size = layoutState.mobileLayout and UDim2.new(0, 112, 0, 38) or UDim2.new(0, 136, 0, 38)
+					hudModule.Position = layoutState.mobileLayout and UDim2.new(0, 8, 0, 8) or UDim2.new(0, 12, 0, 12)
+				end
+				if ui.Lobby.TokenPill then
+					ui.Lobby.TokenPill.Position = layoutState.mobileLayout and UDim2.new(0, 126, 0, 10) or UDim2.new(0, 154, 0, 12)
+					ui.Lobby.TokenPill.Size = layoutState.mobileLayout and UDim2.new(0, 106, 0, 24) or UDim2.new(0, 132, 0, 20)
+				end
+				if ui.Lobby.DeployStatusPill then
+					ui.Lobby.DeployStatusPill.Position = layoutState.mobileLayout and UDim2.new(0, 238, 0, 10) or UDim2.new(0, 294, 0, 12)
+					ui.Lobby.DeployStatusPill.Size = layoutState.mobileLayout and UDim2.new(0, 100, 0, 24) or UDim2.new(0, 144, 0, 20)
+				end
+				if ui.Lobby.PersistencePill then
+					ui.Lobby.PersistencePill.Position = layoutState.mobileLayout and UDim2.new(0, 126, 0, 38) or UDim2.new(0, 154, 0, 38)
+					ui.Lobby.PersistencePill.Size = layoutState.mobileLayout and UDim2.new(0, 92, 0, 18) or UDim2.new(0, 100, 0, 14)
+				end
+				if ui.Lobby.DeployButton then
+					ui.Lobby.DeployButton.Size = layoutState.mobileLayout and UDim2.new(0, 96, 0, 38) or UDim2.new(0, 100, 0, 30)
+					ui.Lobby.DeployButton.Position = layoutState.mobileLayout and UDim2.new(1, -8, 0.5, 0) or UDim2.new(1, -10, 0.5, 0)
+				end
+			end
+
+		if ui.Lobby.MissionPanel then
+			ui.Lobby.MissionPanel.Position = layoutState.mobileLayout and UDim2.new(0.5, 0, 0, 72) or UDim2.new(0.61, 0, 0, 84)
+			ui.Lobby.MissionPanel.Size = layoutState.mobileLayout and UDim2.new(0, math.min(viewportX - 16, 388), 0, 336) or UDim2.new(0, 430, 0, 236)
+			if ui.Lobby.MissionInfoCard then
+				ui.Lobby.MissionInfoCard.Position = layoutState.mobileLayout and UDim2.new(0, 18, 0, 66) or UDim2.new(0, 16, 0, 64)
+				ui.Lobby.MissionInfoCard.Size = layoutState.mobileLayout and UDim2.new(1, -36, 0, 104) or UDim2.new(0, 166, 0, 118)
+			end
+			if ui.Lobby.MissionVoteDeck then
+				ui.Lobby.MissionVoteDeck.Position = layoutState.mobileLayout and UDim2.new(0, 18, 0, 180) or UDim2.new(0, 194, 0, 64)
+				ui.Lobby.MissionVoteDeck.Size = layoutState.mobileLayout and UDim2.new(1, -36, 0, 100) or UDim2.new(1, -210, 0, 118)
+			end
+		if ui.Lobby.MissionStatus then
+			ui.Lobby.MissionStatus.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 100) or UDim2.new(0, 24, 0, 44)
+			ui.Lobby.MissionStatus.Size = layoutState.mobileLayout and UDim2.new(1, -60, 0, 22) or UDim2.new(0, 124, 0, 34)
+		end
+		if ui.Lobby.MissionMeta then
+			ui.Lobby.MissionMeta.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 126) or UDim2.new(0, 24, 0, 82)
+			ui.Lobby.MissionMeta.Size = layoutState.mobileLayout and UDim2.new(1, -60, 0, 16) or UDim2.new(0, 124, 0, 16)
+		end
+		if ui.Lobby.MissionLoadout then
+			ui.Lobby.MissionLoadout.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 146) or UDim2.new(0, 24, 0, 100)
+			ui.Lobby.MissionLoadout.Size = layoutState.mobileLayout and UDim2.new(1, -60, 0, 16) or UDim2.new(0, 124, 0, 16)
+		end
+		if ui.Lobby.MissionVoteLabel then
+			ui.Lobby.MissionVoteLabel.Position = UDim2.new(0, 12, 0, 30)
+			ui.Lobby.MissionVoteLabel.Size = UDim2.new(1, -24, 0, 14)
+		end
+		if ui.Lobby.MissionVoteButtons then
+			local panelWidth = ui.Lobby.MissionPanel.Size.X.Offset
+			local voteDeckWidth = ui.Lobby.MissionVoteDeck and ui.Lobby.MissionVoteDeck.AbsoluteSize.X > 0 and ui.Lobby.MissionVoteDeck.AbsoluteSize.X or math.max(180, panelWidth - 210)
+			local availableWidth = layoutState.mobileLayout and math.max(240, panelWidth - 36) or math.max(180, voteDeckWidth - 24)
+			local narrowVoteLayout = layoutState.mobileLayout and panelWidth <= 332
+			local gap = layoutState.mobileLayout and 6 or 8
+				local buttonHeight = layoutState.mobileLayout and 38 or 20
+			if narrowVoteLayout then
+				local topWidth = math.floor((availableWidth - gap) / 2)
+				for index, button in ipairs(ui.Lobby.MissionVoteButtons) do
+					if index <= 2 then
+						button.Size = UDim2.new(0, topWidth, 0, buttonHeight)
+						button.Position = UDim2.new(0, 12 + ((index - 1) * (topWidth + gap)), 0, 50)
+					else
+						button.Size = UDim2.new(1, -24, 0, buttonHeight)
+						button.Position = UDim2.new(0, 12, 0, 50 + buttonHeight + gap)
+					end
+				end
+					ui.Lobby.MissionPanel.Size = UDim2.new(0, panelWidth, 0, 336)
+					if ui.Lobby.MissionVoteDeck then
+						ui.Lobby.MissionVoteDeck.Size = UDim2.new(1, -36, 0, 58 + (buttonHeight * 2) + gap)
+					end
+				else
+					if layoutState.mobileLayout then
+						local buttonWidth = math.floor((availableWidth - (gap * 2)) / 3)
+					for index, button in ipairs(ui.Lobby.MissionVoteButtons) do
+						button.Size = UDim2.new(0, buttonWidth, 0, buttonHeight)
+						button.Position = UDim2.new(0, 12 + ((index - 1) * (buttonWidth + gap)), 0, 50)
+						end
+						if ui.Lobby.MissionVoteDeck then
+							ui.Lobby.MissionVoteDeck.Size = UDim2.new(1, -36, 0, 96)
+						end
+				else
+					for index, button in ipairs(ui.Lobby.MissionVoteButtons) do
+						button.Size = UDim2.new(1, -24, 0, buttonHeight)
+						button.Position = UDim2.new(0, 12, 0, 50 + ((index - 1) * (buttonHeight + gap)))
+					end
+					if ui.Lobby.MissionVoteDeck then
+						ui.Lobby.MissionVoteDeck.Size = UDim2.new(1, -210, 0, 118)
+					end
+				end
+			end
+		end
+		if ui.Lobby.MissionCloseButton then
+				ui.Lobby.MissionCloseButton.Position = layoutState.mobileLayout and UDim2.new(1, -144, 1, -14) or UDim2.new(1, -160, 1, -14)
+				ui.Lobby.MissionCloseButton.Size = layoutState.mobileLayout and UDim2.new(0, 100, 0, 40) or UDim2.new(0, 104, 0, 32)
+			end
+			if ui.Lobby.MissionLaunchButton then
+				ui.Lobby.MissionLaunchButton.Position = layoutState.mobileLayout and UDim2.new(1, -18, 1, -14) or UDim2.new(1, -16, 1, -14)
+				ui.Lobby.MissionLaunchButton.Size = layoutState.mobileLayout and UDim2.new(0, 122, 0, 40) or UDim2.new(0, 138, 0, 32)
+			end
+		end
+
+		if ui.Lobby.CombatHud then
+			ui.Lobby.CombatHud.Size = layoutState.mobileLayout and UDim2.new(0, math.min(viewportX - 24, 216), 0, 68) or UDim2.new(0, 236, 0, 74)
+			ui.Lobby.CombatHud.Position = layoutState.mobileLayout and UDim2.new(1, -12, 1, -12) or UDim2.new(1, -18, 1, -18)
+		end
+
+		if ui.Lobby.LeaderboardBoard then
+			ui.Lobby.LeaderboardBoard.Size = layoutState.mobileLayout and UDim2.new(0, 142, 0, 26) or UDim2.new(0, 164, 0, 24)
+			ui.Lobby.LeaderboardBoard.Position = layoutState.mobileLayout and UDim2.new(0, 12, 1, -12) or UDim2.new(0, 16, 1, -16)
+			layoutState.archiveHintShownPosition = ui.Lobby.LeaderboardBoard.Position
+			layoutState.archiveHintHiddenPosition = layoutState.archiveHintShownPosition - UDim2.fromOffset(ui.Lobby.LeaderboardBoard.Size.X.Offset + 18, 0)
+		end
+
+			if ui.Lobby.QuickAccessBar then
+				layoutState.quickAccessCollapsedWidth = layoutState.mobileLayout and 148 or 118
+				layoutState.quickAccessExpandedWidth = layoutState.mobileLayout and 194 or 154
+				ui.Lobby.QuickAccessBar.Size = UDim2.new(0, layoutState.quickAccessCollapsedWidth, 0, layoutState.mobileLayout and 322 or 246)
+				ui.Lobby.QuickAccessBar.Position = layoutState.mobileLayout and UDim2.new(1, -12, 0, 92) or UDim2.new(1, -16, 0, 112)
+			layoutState.quickAccessShownPosition = ui.Lobby.QuickAccessBar.Position
+			layoutState.quickAccessHiddenPosition = layoutState.quickAccessShownPosition + UDim2.fromOffset(layoutState.quickAccessCollapsedWidth + 24, 0)
+			for _, quickButton in ipairs(getQuickAccessButtons()) do
+				if quickButton then
+						quickButton.Size = UDim2.new(1, 0, 0, layoutState.mobileLayout and 40 or 28)
+						local badge = quickButton:FindFirstChild("Badge")
+						if badge and badge:IsA("Frame") then
+							badge.Size = layoutState.mobileLayout and UDim2.new(0, 24, 0, 24) or UDim2.new(0, 18, 0, 18)
+						end
+						local title = quickButton:FindFirstChild("Title")
+						if title and title:IsA("TextLabel") then
+							title.Position = layoutState.mobileLayout and UDim2.new(0, 42, 0, 8) or UDim2.new(0, 32, 0, 7)
+							title.Size = layoutState.mobileLayout and UDim2.new(1, -52, 0, 16) or UDim2.new(1, -40, 0, 12)
+							title.TextSize = layoutState.mobileLayout and 13 or 11
+						end
+						local subtitle = quickButton:FindFirstChild("Subtitle")
+						if subtitle and subtitle:IsA("TextLabel") then
+							subtitle.Position = layoutState.mobileLayout and UDim2.new(0, 42, 0, 22) or UDim2.new(0, 38, 0, 16)
+							subtitle.Size = layoutState.mobileLayout and UDim2.new(1, -58, 0, 12) or UDim2.new(1, -52, 0, 10)
+							subtitle.TextSize = layoutState.mobileLayout and 10 or 8
+						end
+					end
+				end
+		end
+
+		local popupList = {}
+		local function addPopup(popup)
+			if popup then
+				table.insert(popupList, popup)
+			end
+		end
+
+		addPopup(ui.Lobby.NpcDialoguePopup)
+		addPopup(ui.Lobby.QuestBoardPopup)
+		addPopup(ui.Lobby.ActivitiesPopup)
+		addPopup(ui.Lobby.ResultsPopup)
+		addPopup(ui.Lobby.Popups and ui.Lobby.Popups.Shop)
+		addPopup(ui.Lobby.InventoryPopup)
+		addPopup(ui.Lobby.Popups and ui.Lobby.Popups.SkillTree)
+		addPopup(ui.Lobby.Popups and ui.Lobby.Popups.Squad)
+		addPopup(ui.Lobby.Popups and ui.Lobby.Popups.Social)
+		addPopup(ui.Lobby.Popups and ui.Lobby.Popups.Settings)
+		addPopup(ui.Lobby.Popups and ui.Lobby.Popups.Admin)
+	for _, popup in ipairs(popupList) do
+		applyPopupResponsiveLayout(popup, viewportX, viewportY, layoutState.mobileLayout)
+	end
+
+		if layoutState.mobileLayout then
+			local shopPopup = ui.Lobby.Popups and ui.Lobby.Popups.Shop
+			if shopPopup then
+				local leftRail = shopPopup:FindFirstChild("LeftRail")
+				local centerPane = shopPopup:FindFirstChild("CenterPane")
+				local rightPane = shopPopup:FindFirstChild("RightPane")
+				local tabButtons = leftRail and leftRail:FindFirstChild("TabButtons")
+				local railTitle = leftRail and leftRail:FindFirstChild("RailTitle")
+				local railBody = leftRail and leftRail:FindFirstChild("RailBody")
+				local railFooter = leftRail and leftRail:FindFirstChild("RailFooter")
+				local rewardCard = centerPane and centerPane:FindFirstChild("RewardCard")
+				local loadoutCard = centerPane and centerPane:FindFirstChild("LoadoutCard")
+				local previewCard = centerPane and centerPane:FindFirstChild("PreviewCard")
+				local previewViewport = ui.Lobby.ShopPreviewViewport
+				local previewTitle = centerPane and centerPane:FindFirstChild("PreviewCard") and centerPane.PreviewCard:FindFirstChild("PreviewTitle")
+				local previewBody = centerPane and centerPane:FindFirstChild("PreviewCard") and centerPane.PreviewCard:FindFirstChild("PreviewBody")
+				local previewCompareTitle = centerPane and centerPane:FindFirstChild("PreviewCard") and centerPane.PreviewCard:FindFirstChild("PreviewCompareTitle")
+				local previewStats = ui.Lobby.ShopPreviewStats
+				local previewCosmetic = ui.Lobby.ShopPreviewCosmetic
+				local previewCompareRows = ui.Lobby.ShopPreviewCompareRows
+				local previewHint = ui.Lobby.ShopPreviewHint
+				local shopBody = ui.Lobby.ShopBody
+				local shopStatus = ui.Lobby.ShopStatus
+				local inventoryTitle = rightPane and rightPane:FindFirstChild("InventoryTitle")
+				local inventoryBadge = rightPane and rightPane:FindFirstChild("InventoryBadge")
+				local rarityFilters = rightPane and rightPane:FindFirstChild("RarityFilters")
+				local premiumFilters = rightPane and rightPane:FindFirstChild("PremiumFilters")
+				local premiumFilterLabel = ui.Lobby.ShopPremiumFilterLabel
+				local itemsFrame = ui.Lobby.ShopItemsFrame
+				local emptyLabel = ui.Lobby.ShopEmptyLabel
+				if leftRail and leftRail:IsA("Frame") then
+					leftRail.Position = UDim2.new(0, 18, 0, 132)
+					leftRail.Size = UDim2.new(0, 122, 0, 214)
+				end
+				if centerPane and centerPane:IsA("Frame") then
+					centerPane.Position = UDim2.new(0, 150, 0, 132)
+					centerPane.Size = UDim2.new(1, -168, 0, 248)
+				end
+				if rightPane and rightPane:IsA("Frame") then
+					rightPane.Position = UDim2.new(0, 18, 0, 390)
+					rightPane.Size = UDim2.new(1, -36, 1, -408)
+				end
+				if railTitle and railTitle:IsA("TextLabel") then
+					railTitle.TextSize = 16
+				end
+				if railBody and railBody:IsA("TextLabel") then
+					railBody.Visible = false
+				end
+				if railFooter and railFooter:IsA("TextLabel") then
+					railFooter.Visible = false
+				end
+				if tabButtons and tabButtons:IsA("Frame") then
+					tabButtons.Position = UDim2.new(0, 10, 0, 54)
+					tabButtons.Size = UDim2.new(1, -20, 1, -64)
+					for _, child in ipairs(tabButtons:GetChildren()) do
+						if child:IsA("TextButton") then
+							child.Size = UDim2.new(1, 0, 0, 36)
+							child.TextSize = 15
+						end
+					end
+				end
+				if rewardCard and rewardCard:IsA("Frame") then
+					rewardCard.Position = UDim2.new(0, 12, 0, 12)
+					rewardCard.Size = UDim2.new(1, -24, 0, 72)
+				end
+				if loadoutCard and loadoutCard:IsA("Frame") then
+					loadoutCard.Position = UDim2.new(0, 12, 0, 86)
+					loadoutCard.Size = UDim2.new(1, -24, 0, 74)
+				end
+				if previewCard and previewCard:IsA("Frame") then
+					previewCard.Position = UDim2.new(0, 12, 0, 168)
+					previewCard.Size = UDim2.new(1, -24, 0, 68)
+				end
+				if previewViewport and previewViewport:IsA("ViewportFrame") then
+					previewViewport.Position = UDim2.new(0, 12, 0, 28)
+					previewViewport.Size = UDim2.new(0.42, 0, 1, -40)
+				end
+				if previewTitle and previewTitle:IsA("TextLabel") then
+					previewTitle.Visible = true
+					previewTitle.TextSize = 13
+				end
+				if previewBody and previewBody:IsA("TextLabel") then
+					previewBody.Visible = false
+				end
+				if previewStats and previewStats:IsA("TextLabel") then
+					previewStats.Position = UDim2.new(0.46, 8, 0, 24)
+					previewStats.Size = UDim2.new(0.54, -20, 0, 18)
+					previewStats.TextSize = 10
+				end
+				if previewCosmetic and previewCosmetic:IsA("TextLabel") then
+					previewCosmetic.Position = UDim2.new(0.46, 8, 0, 44)
+					previewCosmetic.Size = UDim2.new(0.54, -20, 0, 14)
+					previewCosmetic.TextSize = 9
+				end
+				if previewCompareTitle and previewCompareTitle:IsA("TextLabel") then
+					previewCompareTitle.Visible = false
+				end
+				if type(previewCompareRows) == "table" then
+					for _, row in pairs(previewCompareRows) do
+						if type(row) == "table" then
+							for _, node in pairs(row) do
+								if typeof(node) == "Instance" and node.Parent then
+									node.Parent.Visible = false
+								end
+							end
+						end
+					end
+				end
+				if previewHint and previewHint:IsA("TextLabel") then
+					previewHint.Visible = false
+				end
+				if shopBody and shopBody:IsA("TextLabel") then
+					shopBody.Size = UDim2.new(1, -44, 0, 22)
+					shopBody.TextSize = 12
+				end
+				if inventoryTitle and inventoryTitle:IsA("TextLabel") then
+					inventoryTitle.Position = UDim2.new(0, 22, 0, 76)
+					inventoryTitle.TextSize = 20
+				end
+				if shopStatus and shopStatus:IsA("TextLabel") then
+					shopStatus.Position = UDim2.new(0, 22, 0, 104)
+					shopStatus.Size = UDim2.new(1, -44, 0, 18)
+					shopStatus.TextSize = 12
+				end
+				if inventoryBadge and inventoryBadge:IsA("TextLabel") then
+					inventoryBadge.Size = UDim2.new(0, 122, 0, 24)
+					inventoryBadge.TextSize = 11
+				end
+				if rarityFilters and rarityFilters:IsA("Frame") then
+					rarityFilters.Position = UDim2.new(0, 22, 0, 146)
+				end
+				if premiumFilters and premiumFilters:IsA("Frame") then
+					premiumFilters.Position = UDim2.new(0, 22, 0, 190)
+				end
+				if premiumFilterLabel and premiumFilterLabel:IsA("TextLabel") then
+					premiumFilterLabel.Position = UDim2.new(0, 22, 0, 172)
+				end
+				if itemsFrame and itemsFrame:IsA("ScrollingFrame") then
+					itemsFrame.Position = UDim2.new(0, 22, 0, 230)
+					itemsFrame.Size = UDim2.new(1, -44, 1, -252)
+				end
+				if emptyLabel and emptyLabel:IsA("TextLabel") then
+					emptyLabel.Position = UDim2.new(0, 28, 0, 212)
+				end
+			end
+
+		local inventoryPopup = ui.Lobby.InventoryPopup
+		if inventoryPopup then
+			local inventoryLeftRail = inventoryPopup:FindFirstChild("LeftRail")
+			local inventoryRightPane = inventoryPopup:FindFirstChild("RightPane")
+			if inventoryLeftRail and inventoryLeftRail:IsA("Frame") then
+				inventoryLeftRail.Position = UDim2.new(0, 18, 0, 138)
+				inventoryLeftRail.Size = UDim2.new(0, 200, 1, -160)
+			end
+			if inventoryRightPane and inventoryRightPane:IsA("Frame") then
+				inventoryRightPane.Position = UDim2.new(0, 228, 0, 138)
+				inventoryRightPane.Size = UDim2.new(1, -246, 1, -160)
+			end
+		end
+
+		local adminPopup = ui.Lobby.AdminPopup
+		if adminPopup then
+			local adminTargetList = ui.Lobby.AdminTargetList
+			local adminTargetTitle = adminPopup:FindFirstChild("TargetTitle")
+			local adminTargetSub = adminPopup:FindFirstChild("TargetSub")
+			local adminTargetSummaryCard = adminPopup:FindFirstChild("AdminTargetSummaryCard")
+			local adminTabStrip = adminPopup:FindFirstChild("AdminTabStrip")
+			local adminContentFrame = adminPopup:FindFirstChild("AdminContentFrame")
+			if adminTargetTitle and adminTargetTitle:IsA("TextLabel") then
+				adminTargetTitle.Position = UDim2.new(0, 24, 0, 178)
+				adminTargetTitle.Size = UDim2.new(1, -48, 0, 22)
+			end
+			if adminTargetSub and adminTargetSub:IsA("TextLabel") then
+				adminTargetSub.Position = UDim2.new(0, 24, 0, 202)
+				adminTargetSub.Size = UDim2.new(1, -48, 0, 34)
+			end
+			if adminTargetList and adminTargetList:IsA("ScrollingFrame") then
+				adminTargetList.Position = UDim2.new(0, 24, 0, 242)
+				adminTargetList.Size = UDim2.new(1, -48, 0, 132)
+			end
+			if adminTargetSummaryCard and adminTargetSummaryCard:IsA("Frame") then
+				adminTargetSummaryCard.Position = UDim2.new(0, 24, 0, 386)
+				adminTargetSummaryCard.Size = UDim2.new(1, -48, 0, 74)
+			end
+			if adminTabStrip and adminTabStrip:IsA("Frame") then
+				adminTabStrip.Position = UDim2.new(0, 24, 0, 474)
+				adminTabStrip.Size = UDim2.new(1, -48, 0, 88)
+				local tabIndex = 0
+				for _, child in ipairs(adminTabStrip:GetChildren()) do
+					if child:IsA("TextButton") then
+						local row = math.floor(tabIndex / 2)
+						local col = tabIndex % 2
+						child.Size = UDim2.new(0.5, -6, 0, 38)
+						child.Position = UDim2.new(0, col * (((adminTabStrip.AbsoluteSize.X > 0) and math.floor((adminTabStrip.AbsoluteSize.X - 6) / 2) or 150) + 12), 0, row * 44)
+						child.AnchorPoint = Vector2.zero
+						tabIndex += 1
+					end
+				end
+			end
+			if adminContentFrame and adminContentFrame:IsA("Frame") then
+				adminContentFrame.Position = UDim2.new(0, 24, 0, 570)
+				adminContentFrame.Size = UDim2.new(1, -48, 1, -634)
+			end
+		end
+
+		local activitiesPopup = ui.Lobby.ActivitiesPopup
+		if activitiesPopup then
+			local sidebar = activitiesPopup:FindFirstChild("Sidebar")
+			if sidebar and sidebar:IsA("Frame") then
+				sidebar.Position = UDim2.new(0, 24, 1, -178)
+				sidebar.Size = UDim2.new(1, -48, 0, 96)
+				for _, panel in ipairs(sidebar:GetChildren()) do
+					if panel:IsA("Frame") then
+						local order = panel.Name == "SecretsPanel" and 0 or (panel.Name == "RewardsPanel" and 1 or 2)
+						panel.Position = UDim2.new(0, order * 132, 0, 0)
+						panel.Size = UDim2.new(0, 124, 1, 0)
+					end
+				end
+			end
+			local cardNames = { "TrainingCard", "ParkourCard", "RangeCard", "SalvageCard" }
+			for index, cardName in ipairs(cardNames) do
+				local card = activitiesPopup:FindFirstChild(cardName)
+				if card and card:IsA("Frame") then
+					local row = math.floor((index - 1) / 2)
+					local col = (index - 1) % 2
+					card.Position = UDim2.new(0, 24 + (col * 154), 0, 160 + (row * 126))
+					card.Size = UDim2.new(0, 146, 0, 118)
+				end
+			end
+		end
+	end
+end
 
 	local function cancelHomeAnimations()
 		if homeSignalSweepTween then
@@ -1152,6 +2272,35 @@ function FlowController.start()
 			end
 		end
 	end
+
+	local viewportCameraConnection
+	local currentViewportCamera
+	local function bindResponsiveViewportCamera()
+		if viewportCameraConnection then
+			viewportCameraConnection:Disconnect()
+			viewportCameraConnection = nil
+		end
+		currentViewportCamera = Workspace.CurrentCamera
+		if currentViewportCamera then
+			viewportCameraConnection = currentViewportCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+				applyResponsiveLayout()
+				if updateHudVisibility then
+					updateHudVisibility()
+				end
+			end)
+		end
+		applyResponsiveLayout()
+		if updateHudVisibility then
+			updateHudVisibility()
+		end
+	end
+
+	bindResponsiveViewportCamera()
+	Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		if Workspace.CurrentCamera ~= currentViewportCamera then
+			bindResponsiveViewportCamera()
+		end
+	end)
 
 	local function getAdminTargetPlayer()
 		if selectedAdminTargetUserId and tonumber(selectedAdminTargetUserId) and tonumber(selectedAdminTargetUserId) ~= player.UserId then
@@ -1332,12 +2481,14 @@ function FlowController.start()
 		local isModerator = identity.isModerator == true or identity.isAdmin == true or identity.isOwner == true
 		local isAdmin = identity.isAdmin == true or identity.isOwner == true
 		local isOwner = identity.isOwner == true
+		local missionPanelOpen = ui.Lobby.MissionPanel and ui.Lobby.MissionPanel.Visible == true
+		local adminVisible = isModerator and state ~= "Mission" and activePopup == nil and (not missionPanelOpen) and nearCentralCommand
 		local supportBotsAuto = player:GetAttribute("AutoSupportBots") == true
 		local targetPlayer = getAdminTargetPlayer()
 		local hasTarget = targetPlayer ~= nil
 		local hasOtherTarget = hasTarget and targetPlayer ~= player
 		if ui.Lobby.AdminButton then
-			ui.Lobby.AdminButton.Visible = isModerator
+			ui.Lobby.AdminButton.Visible = adminVisible
 			ui.Lobby.AdminButton.Text = identity.isOwner and "Owner" or (identity.isAdmin and "Admin" or "Mod")
 		end
 		if ui.Lobby.AdminSummary then
@@ -1427,12 +2578,7 @@ function FlowController.start()
 			return
 		end
 
-		local playersList = Players:GetPlayers()
-		local playerCount = #playersList
-		ui.Lobby.LeaderboardSummary.Text = ("Global Top 100 at Archive Walk. %d operator%s in this server. Use the world board for All Time, Monthly, Weekly, and Daily."):format(
-			playerCount,
-			playerCount == 1 and "" or "s"
-		)
+		ui.Lobby.LeaderboardSummary.Text = "Top 100 ->"
 	end
 
 	local function flashHitMarker(color)
@@ -1475,8 +2621,8 @@ function FlowController.start()
 	if kind == "shot" then
 		local recoil = tonumber(payload.recoil) or 0.14
 		local twist = tonumber(payload.twist) or 0.08
-			queueCameraKick(twist, recoil)
-			playCombatSound(weaponId, false, false)
+		queueCameraKick(twist, recoil)
+		playCombatSound(weaponId, false, false)
 	elseif kind == "hit" then
 		local killConfirmed = payload.kill == true
 		local markerColor = killConfirmed and Color3.fromRGB(255, 214, 128) or Color3.fromRGB(255, 255, 255)
@@ -1513,10 +2659,69 @@ function FlowController.start()
 				})
 			end
 		end
+	elseif kind == "reload_start" then
+		queueCameraKick(0, -0.02)
+		playUiSound(SOUND_IDS.Alert, 0.16, 1.12)
+		spawnFloatingRewardText("RELOADING", Color3.fromRGB(244, 206, 128), {
+			position = UDim2.new(0.82, 0, 0.78, 0),
+			textSize = 16,
+			rise = 28,
+			lifetime = 0.54,
+		})
+	elseif kind == "reload_insert" then
+		local currentAmmo = tonumber(payload.currentAmmo) or 0
+		local reserveAmmo = tonumber(payload.reserveAmmo) or 0
+		playUiSound(SOUND_IDS.UiOpen, 0.08, 1.22)
+		spawnFloatingRewardText(("+1  %d/%d"):format(currentAmmo, reserveAmmo), Color3.fromRGB(188, 220, 244), {
+			position = UDim2.new(0.84, 0, 0.8, 0),
+			textSize = 14,
+			rise = 22,
+			lifetime = 0.36,
+		})
+	elseif kind == "reload_complete" then
+		playUiSound(SOUND_IDS.Success, 0.14, 1.18)
+		spawnFloatingRewardText("READY", Color3.fromRGB(174, 236, 168), {
+			position = UDim2.new(0.82, 0, 0.78, 0),
+			textSize = 15,
+			rise = 26,
+			lifetime = 0.48,
+		})
+	elseif kind == "low_ammo" then
+		flashHitMarker(Color3.fromRGB(244, 178, 118))
+		playUiSound(SOUND_IDS.Alert, 0.14, 1.04)
+		spawnFloatingRewardText("LOW AMMO", Color3.fromRGB(244, 178, 118), {
+			position = UDim2.new(0.82, 0, 0.78, 0),
+			textSize = 15,
+			rise = 24,
+			lifetime = 0.44,
+		})
+	elseif kind == "dry_fire" then
+		flashHitMarker(Color3.fromRGB(255, 122, 122))
+		queueCameraKick(0, -0.01)
+		playUiSound(SOUND_IDS.Alert, 0.18, 0.86)
+		spawnFloatingRewardText("EMPTY", Color3.fromRGB(255, 132, 132), {
+			position = UDim2.new(0.82, 0, 0.78, 0),
+			textSize = 15,
+			rise = 20,
+			lifetime = 0.42,
+		})
 	end
 end
 
+	local updateLobbyZoneVisibility
+
 	RunService.RenderStepped:Connect(function(dt)
+		lobbyZoneSampleTimer += dt
+		if lobbyZoneSampleTimer >= 0.2 then
+			lobbyZoneSampleTimer = 0
+			updateLobbyZoneVisibility()
+		end
+
+		if activePopup == "Shop" and currentShopPreviewModel and currentShopPreviewBaseCFrame then
+			currentShopPreviewAngle += dt * 0.85
+			currentShopPreviewModel:PivotTo(currentShopPreviewBaseCFrame * CFrame.Angles(0, currentShopPreviewAngle, 0))
+		end
+
 		if math.abs(cameraKick.X) < 0.001 and math.abs(cameraKick.Y) < 0.001 then
 			return
 		end
@@ -1569,6 +2774,62 @@ end
 		return ("Next weekly crate in %s."):format(formatShortDuration((stateValue.nextClaimAt or 0) - os.time()))
 	end
 
+	local function getAnchorPosition(instance)
+		if not instance then
+			return nil
+		end
+		if instance:IsA("BasePart") then
+			return instance.Position
+		end
+		if instance:IsA("Model") then
+			return instance:GetPivot().Position
+		end
+		return nil
+	end
+
+	local function isNearAnchor(rootPart, instance, threshold)
+		local anchorPosition = getAnchorPosition(instance)
+		if not rootPart or not anchorPosition then
+			return false
+		end
+		return (rootPart.Position - anchorPosition).Magnitude <= threshold
+	end
+
+	local function resolveZoneState(currentState, rootPart, instance, enterThreshold, exitThreshold)
+		local threshold = currentState and exitThreshold or enterThreshold
+		return isNearAnchor(rootPart, instance, threshold)
+	end
+
+	updateLobbyZoneVisibility = function()
+		local character = player.Character
+		local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+		if not rootPart then
+			return
+		end
+
+		local leaderboardMonument = Workspace:FindFirstChild("LeaderboardMonument", true)
+		local centralHub = Workspace:FindFirstChild("CentralHub", true)
+		local spawnZone = Workspace:FindFirstChild("SpawnZone", true)
+		local deployPad = Workspace:FindFirstChild("DeployPad", true)
+
+		local nextNearArchiveLane = resolveZoneState(nearArchiveLane, rootPart, leaderboardMonument, 88, 102)
+		local nextNearCentralCommand = resolveZoneState(nearCentralCommand, rootPart, centralHub, 58, 72)
+			or resolveZoneState(nearCentralCommand, rootPart, spawnZone, 52, 66)
+		local nextNearDeployPad = resolveZoneState(nearDeployPad, rootPart, deployPad, 92, 108)
+
+		if nextNearArchiveLane ~= nearArchiveLane
+			or nextNearCentralCommand ~= nearCentralCommand
+			or nextNearDeployPad ~= nearDeployPad then
+			nearArchiveLane = nextNearArchiveLane
+			nearCentralCommand = nextNearCentralCommand
+			nearDeployPad = nextNearDeployPad
+			if ui and ui.Lobby and ui.Lobby.MissionPanel and ui.Lobby.MissionPanel.Visible and not nearDeployPad then
+				ui.Lobby.MissionPanel.Visible = false
+			end
+			updateHudVisibility()
+		end
+	end
+
 	local function normalizeProgression(payload)
 		if type(payload) ~= "table" then
 			return nil
@@ -1617,6 +2878,102 @@ end
 		setButtonEnabled(ui.Lobby.InviteSquadButton, isLeader, Theme.Colors.AccentWarm)
 	end
 
+	local function tweenLobbyOverlay(frame, shouldShow, goals, onHidden)
+		if not frame then
+			return
+		end
+
+		local existingTween = overlayTweens[frame]
+		if existingTween then
+			existingTween:Cancel()
+			overlayTweens[frame] = nil
+		end
+
+		if (not shouldShow) and (not frame.Visible) then
+			for propertyName, propertyValue in pairs(goals) do
+				frame[propertyName] = propertyValue
+			end
+			if onHidden then
+				onHidden()
+			end
+			return
+		end
+
+		frame.Visible = true
+		local tween = TweenService:Create(frame, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goals)
+		overlayTweens[frame] = tween
+		tween.Completed:Connect(function()
+			if overlayTweens[frame] ~= tween then
+				return
+			end
+			overlayTweens[frame] = nil
+			if not shouldShow then
+				frame.Visible = false
+				if onHidden then
+					onHidden()
+				end
+			end
+		end)
+		tween:Play()
+	end
+
+	local function setQuickAccessExpanded(expanded)
+		local bar = ui and ui.Lobby and ui.Lobby.QuickAccessBar
+		if not bar then
+			return
+		end
+
+		if layoutState.mobileLayout then
+			expanded = true
+		end
+		local targetWidth = expanded and layoutState.quickAccessExpandedWidth or layoutState.quickAccessCollapsedWidth
+		local targetTransparency = expanded and 0.04 or 0.12
+		TweenService:Create(bar, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0, targetWidth, 0, layoutState.mobileLayout and 282 or 246),
+			BackgroundTransparency = targetTransparency,
+		}):Play()
+
+		local tag = bar:FindFirstChild("Tag")
+		if tag and tag:IsA("TextLabel") then
+			tag.Visible = expanded
+			tag.TextTransparency = expanded and 0 or 0.2
+		end
+		local body = bar:FindFirstChild("Body")
+		if body and body:IsA("TextLabel") then
+			body.Visible = expanded
+			body.TextTransparency = expanded and 0 or 0.2
+		end
+	end
+
+	local function setQuickAccessButtonExpanded(button, expanded)
+		if not button then
+			return
+		end
+		if layoutState.mobileLayout then
+			expanded = true
+		end
+		local subtitle = button:FindFirstChild("Subtitle")
+		if subtitle and subtitle:IsA("TextLabel") then
+			subtitle.Visible = expanded
+			subtitle.TextTransparency = expanded and 0.08 or 1
+		end
+		local arrow = button:FindFirstChild("Arrow")
+		if arrow and arrow:IsA("TextLabel") then
+			arrow.Visible = expanded
+			arrow.TextTransparency = expanded and 0.08 or 1
+		end
+		local topRule = button:FindFirstChild("TopRule")
+		if topRule and topRule:IsA("Frame") then
+			topRule.Visible = expanded
+		end
+	end
+
+	local function setQuickAccessButtonsExpanded(expanded)
+		for _, quickButton in ipairs(getQuickAccessButtons()) do
+			setQuickAccessButtonExpanded(quickButton, expanded)
+		end
+	end
+
 	local function updateInvitePopup()
 		if not pendingInvite then
 			ui.Lobby.InvitePopup:SetAttribute("KeepOpen", false)
@@ -1661,6 +3018,198 @@ end
 		end
 	end
 
+	local function resolveShopPreviewSelection()
+		local category = Theme.ShopTabToCategory[currentShopTab]
+		local previewItem = currentShopPreviewItemId and findShopItem(category, currentShopPreviewItemId) or nil
+		local previewWeaponId = progression.equippedWeapon
+		local previewCosmeticId = progression.equippedCosmetic
+
+		if category == Theme.ShopTabToCategory.Weapons then
+			if previewItem then
+				previewWeaponId = previewItem.Id
+			end
+		elseif category == Theme.ShopTabToCategory.Cosmetics then
+			if previewItem then
+				previewCosmeticId = previewItem.Id
+			end
+		end
+
+		return previewItem, previewWeaponId, previewCosmeticId
+	end
+
+	local function rebuildShopPreviewViewport(weaponId, cosmeticId)
+		local signature = tostring(weaponId or "") .. "::" .. tostring(cosmeticId or "")
+		if signature == currentShopPreviewSignature then
+			return
+		end
+		currentShopPreviewSignature = signature
+
+		local viewport = ui and ui.Lobby and ui.Lobby.ShopPreviewViewport
+		if not viewport or not viewport:IsA("ViewportFrame") then
+			return
+		end
+
+		viewport:ClearAllChildren()
+
+		local worldModel = Instance.new("WorldModel")
+		worldModel.Name = "PreviewWorld"
+		worldModel.Parent = viewport
+
+		local camera = Instance.new("Camera")
+		camera.Name = "PreviewCamera"
+		camera.Parent = viewport
+		viewport.CurrentCamera = camera
+
+		local weapon = MissionConfig.getWeaponDefinition(weaponId)
+		if not weapon then
+			camera.CFrame = CFrame.new(0, 0, 8)
+			return
+		end
+
+		local model = Instance.new("Model")
+		model.Name = "PreviewWeapon"
+		model.Parent = worldModel
+
+		local handle = Instance.new("Part")
+		handle.Name = "Handle"
+		handle.Size = weapon.HandleSize or Vector3.new(0.7, 1.4, 1)
+		handle.Material = Enum.Material.SmoothPlastic
+		handle.Color = weapon.HandleColor
+		handle.CanCollide = false
+		handle.CanTouch = false
+		handle.CanQuery = false
+		handle.Anchored = false
+		handle.Massless = true
+		handle.CFrame = CFrame.new()
+		handle.Parent = model
+
+		local previewScale = getShopPreviewScale(weapon)
+		buildPreviewWeaponVisual(model, handle, weapon, previewScale)
+		applyPreviewSkin(model, cosmeticId)
+
+		for _, descendant in ipairs(model:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+				descendant.CastShadow = false
+			end
+		end
+
+		local basePivot = CFrame.Angles(math.rad(-8), math.rad(28), 0)
+		model:PivotTo(basePivot)
+		currentShopPreviewModel = model
+		currentShopPreviewBaseCFrame = basePivot
+		currentShopPreviewAngle = 0
+
+		local boundsCFrame, extents = model:GetBoundingBox()
+		local maxSize = math.max(extents.X, extents.Y, extents.Z, 1)
+		local center = boundsCFrame.Position
+		local distance = maxSize * 1.15
+		camera.CFrame = CFrame.lookAt(
+			center + Vector3.new(maxSize * 0.2, maxSize * 0.08, distance),
+			center + Vector3.new(0, maxSize * 0.04, 0)
+		)
+
+		local keyLight = Instance.new("Part")
+		keyLight.Name = "PreviewLight"
+		keyLight.Size = Vector3.new(0.4, 0.4, 0.4)
+		keyLight.Transparency = 1
+		keyLight.Anchored = true
+		keyLight.CanCollide = false
+		keyLight.CanTouch = false
+		keyLight.CanQuery = false
+		keyLight.CFrame = CFrame.new(3, 4, 3)
+		keyLight.Parent = worldModel
+
+		local pointLight = Instance.new("PointLight")
+		pointLight.Brightness = 1.4
+		pointLight.Range = 16
+		pointLight.Color = Color3.fromRGB(210, 226, 255)
+		pointLight.Parent = keyLight
+
+		local fillLight = Instance.new("Part")
+		fillLight.Name = "PreviewFill"
+		fillLight.Size = Vector3.new(0.4, 0.4, 0.4)
+		fillLight.Transparency = 1
+		fillLight.Anchored = true
+		fillLight.CanCollide = false
+		fillLight.CanTouch = false
+		fillLight.CanQuery = false
+		fillLight.CFrame = CFrame.new(-3, 2, 2)
+		fillLight.Parent = worldModel
+
+		local fillPointLight = Instance.new("PointLight")
+		fillPointLight.Brightness = 0.8
+		fillPointLight.Range = 12
+		fillPointLight.Color = Color3.fromRGB(142, 186, 236)
+		fillPointLight.Parent = fillLight
+	end
+
+	local function updateShopPreview()
+		local previewItem, previewWeaponId, previewCosmeticId = resolveShopPreviewSelection()
+		local previewWeapon = MissionConfig.getWeaponDefinition(previewWeaponId)
+		local equippedWeapon = MissionConfig.getWeaponDefinition(progression.equippedWeapon)
+		local previewCosmetic = previewCosmeticId and MissionConfig.getCosmeticDefinition(previewCosmeticId) or nil
+		local category = Theme.ShopTabToCategory[currentShopTab]
+
+		if ui and ui.Lobby then
+			ui.Lobby.ShopPreviewTitle.Text = previewItem and (previewItem.DisplayName or previewItem.Id) or (previewWeapon and previewWeapon.DisplayName or "Weapon Preview")
+			if category == Theme.ShopTabToCategory.Weapons and previewItem then
+				ui.Lobby.ShopPreviewBody.Text = tostring(previewItem.Description or "Quartermaster stock preview.")
+			elseif category == Theme.ShopTabToCategory.Cosmetics and previewItem then
+				ui.Lobby.ShopPreviewBody.Text = ("Previewing %s on %s."):format(
+					tostring(previewItem.DisplayName or previewItem.Id),
+					tostring(previewWeapon and previewWeapon.DisplayName or "current weapon")
+				)
+			else
+				ui.Lobby.ShopPreviewBody.Text = "Selected stock appears here with live bunker weapon stats and cosmetic preview."
+			end
+
+			if previewWeapon then
+				local ammoText = previewWeapon.MagazineSize and ("%d/%d"):format(previewWeapon.MagazineSize or 0, previewWeapon.ReserveAmmo or 0) or "MELEE"
+				ui.Lobby.ShopPreviewStats.Text = ("DMG %d  |  RNG %d  |  RATE %.2fs  |  AMMO %s"):format(
+					previewWeapon.Damage or 0,
+					previewWeapon.Range or 0,
+					previewWeapon.Cooldown or 0,
+					ammoText
+				)
+			else
+				ui.Lobby.ShopPreviewStats.Text = "DMG -- | RNG -- | RATE -- | AMMO --"
+			end
+			ui.Lobby.ShopPreviewCosmetic.Text = ("Preview Cosmetic: %s"):format(previewCosmetic and previewCosmetic.DisplayName or "None")
+			ui.Lobby.ShopPreviewHint.Text = category == Theme.ShopTabToCategory.Cosmetics
+				and "Cosmetics preview on your equipped weapon."
+				or "Hover or open a stock card to inspect the weapon build."
+			local compareRows = ui.Lobby.ShopPreviewCompareRows or {}
+			local function updateCompareRow(rowKey, previewValue, equippedValue, maxValue)
+				local row = compareRows[rowKey]
+				if not row then
+					return
+				end
+				local previewNumber = math.max(0, tonumber(previewValue) or 0)
+				local equippedNumber = math.max(0, tonumber(equippedValue) or 0)
+				local normalizedMax = math.max(previewNumber, equippedNumber, tonumber(maxValue) or 1, 1)
+				row.BarFill.Size = UDim2.new(math.clamp(previewNumber / normalizedMax, 0, 1), 0, 1, 0)
+				row.Value.Text = tostring(math.floor(previewNumber * 100 + 0.5) / 100)
+				if previewNumber > equippedNumber then
+					row.Delta.Text = "+"
+					row.Delta.TextColor3 = Color3.fromRGB(144, 222, 154)
+				elseif previewNumber < equippedNumber then
+					row.Delta.Text = "-"
+					row.Delta.TextColor3 = Color3.fromRGB(236, 138, 118)
+				else
+					row.Delta.Text = "="
+					row.Delta.TextColor3 = Color3.fromRGB(236, 244, 255)
+				end
+			end
+			updateCompareRow("Damage", previewWeapon and previewWeapon.Damage or 0, equippedWeapon and equippedWeapon.Damage or 0, 60)
+			updateCompareRow("Range", previewWeapon and previewWeapon.Range or 0, equippedWeapon and equippedWeapon.Range or 0, 300)
+			updateCompareRow("Rate", previewWeapon and (previewWeapon.Cooldown > 0 and (1 / previewWeapon.Cooldown) or 0) or 0, equippedWeapon and (equippedWeapon.Cooldown > 0 and (1 / equippedWeapon.Cooldown) or 0) or 0, 12)
+			updateCompareRow("Ammo", previewWeapon and ((previewWeapon.MagazineSize or 0) + (previewWeapon.ReserveAmmo or 0)) or 0, equippedWeapon and ((equippedWeapon.MagazineSize or 0) + (equippedWeapon.ReserveAmmo or 0)) or 0, 160)
+		end
+
+		rebuildShopPreviewViewport(previewWeaponId, previewCosmeticId)
+	end
+
 	local function updateLobbyText()
 		local skillTree = progression.skillTree or {}
 		local level = skillTree.level or 1
@@ -1693,12 +3242,22 @@ end
 			persistencePill.BackgroundColor3 = persistenceOnline and Color3.fromRGB(26, 44, 34) or Color3.fromRGB(60, 42, 36)
 		end
 		if ui.Lobby.SubscriptionValue then
-			local isActive = subscriptionState and subscriptionState.isActive == true
+			local isSupporter = subscriptionState and subscriptionState.isActive == true
 			local weeklyReady = subscriptionState and subscriptionState.weeklyRewardAvailable == true
-			ui.Lobby.SubscriptionValue.Text = isActive and (weeklyReady and "Supporter Ready" or "Supporter Active") or "Free Access"
+			local hasVip = player:GetAttribute("GamePassVipOperation") == true
+			if isSupporter and hasVip then
+				ui.Lobby.SubscriptionValue.Text = weeklyReady and "Supporter + VIP Ready" or "Supporter + VIP"
+			elseif isSupporter then
+				ui.Lobby.SubscriptionValue.Text = weeklyReady and "Supporter Ready" or "Supporter Active"
+			elseif hasVip then
+				ui.Lobby.SubscriptionValue.Text = "VIP Active"
+			else
+				ui.Lobby.SubscriptionValue.Text = "Free Access"
+			end
 			local subscriptionPill = ui.Lobby.SubscriptionValue.Parent
 			if subscriptionPill then
-				subscriptionPill.BackgroundColor3 = isActive and Color3.fromRGB(50, 54, 34) or Color3.fromRGB(32, 36, 28)
+				subscriptionPill.BackgroundColor3 = isSupporter and Color3.fromRGB(50, 54, 34)
+					or (hasVip and Color3.fromRGB(34, 44, 58) or Color3.fromRGB(32, 36, 28))
 			end
 		end
 		if ui.Lobby.IdentityValue then
@@ -1707,7 +3266,8 @@ end
 			local identityPill = ui.Lobby.IdentityValue.Parent
 			if identityPill then
 				identityPill.BackgroundColor3 = identity.isOwner and Color3.fromRGB(68, 54, 28)
-					or (identity.isAdmin and Color3.fromRGB(56, 48, 32) or Color3.fromRGB(36, 40, 46))
+					or (identity.isAdmin and Color3.fromRGB(56, 48, 32)
+						or ((identity.badge == "SUPPORT") and Color3.fromRGB(62, 50, 28) or Color3.fromRGB(36, 40, 46)))
 			end
 		end
 		if state == "Mission" then
@@ -1730,6 +3290,7 @@ end
 		end
 		ui.Lobby.SocialBody.Text = currentSocialMessage
 		ui.Lobby.ShopBody.Text = Theme.ShopCopy[currentShopTab] or Theme.ShopCopy["Deploy Tokens"]
+		updateShopPreview()
 		local weaponName = findShopItem(Theme.ShopTabToCategory.Weapons, progression.equippedWeapon)
 		local cosmeticName = progression.equippedCosmetic and findShopItem(Theme.ShopTabToCategory.Cosmetics, progression.equippedCosmetic) or nil
 		local weaponDefinition = MissionConfig.getWeaponDefinition(progression.equippedWeapon)
@@ -1816,6 +3377,33 @@ end
 		else
 			ui.Lobby.MissionLoadout.Text = "Your squad deploys into its own run instance."
 		end
+		if ui.Lobby.CombatWeapon then
+			ui.Lobby.CombatWeapon.Text = string.upper(trimLabel(missionTelemetry.weaponName or (weaponName and weaponName.DisplayName) or "Training Blade", 24))
+		end
+		if ui.Lobby.CombatAmmo then
+			if missionTelemetry.weaponType == "Melee" or missionTelemetry.ammo == nil then
+				ui.Lobby.CombatAmmo.Text = "MELEE READY"
+				ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(188, 228, 248)
+			else
+				ui.Lobby.CombatAmmo.Text = ("AMMO %d/%d"):format(missionTelemetry.ammo or 0, missionTelemetry.reserveAmmo or 0)
+				ui.Lobby.CombatAmmo.TextColor3 = (missionTelemetry.ammo or 0) <= 0 and Color3.fromRGB(244, 148, 118) or Color3.fromRGB(236, 196, 112)
+			end
+		end
+		if ui.Lobby.CombatStatus then
+			if missionTelemetry.reloading then
+				ui.Lobby.CombatStatus.Text = "RELOADING"
+				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(244, 206, 128)
+			elseif missionTelemetry.weaponType == "Melee" then
+				ui.Lobby.CombatStatus.Text = "STRIKE READY"
+				ui.Lobby.CombatStatus.TextColor3 = Theme.Colors.AccentSoft
+			elseif missionTelemetry.ammo ~= nil and (missionTelemetry.ammo or 0) <= 0 then
+				ui.Lobby.CombatStatus.Text = "RELOAD / EMPTY"
+				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(244, 148, 118)
+			else
+				ui.Lobby.CombatStatus.Text = "WEAPON READY"
+				ui.Lobby.CombatStatus.TextColor3 = Theme.Colors.AccentSoft
+			end
+		end
 		if ui.Lobby.MissionVoteLabel then
 			local showVoteUi = state ~= "Mission" and #nextMissionVoteOptions > 0
 			ui.Lobby.MissionVoteLabel.Visible = showVoteUi
@@ -1857,9 +3445,132 @@ end
 				and ("Daily ops reset in " .. formatShortDuration((dailyOpsState.nextResetAt or 0) - os.time()) .. ".")
 				or "Daily ops reset on the next server cycle."
 			ui.Lobby.QuestBoardSummary.Text = (weeklyRewardState and weeklyRewardState.active
-				and "Daily stipend, daily ops, and weekly supporter crate are all tracked here. "
+				and "Daily stipend, daily ops, weekly supporter crate, and lounge access are all tracked here. "
 				or "Daily stipend and daily ops are available to everyone. Weekly crates unlock with supporter access. ")
 				.. resetText
+		end
+		if ui.Lobby.ActivitySummary then
+			local activities = progression.activities or {}
+			local secrets = 0
+			for _, found in pairs(activities.secrets or {}) do
+				if found == true then
+					secrets += 1
+				end
+			end
+			local rewards = 0
+			for _, claimed in pairs(activities.rewards or {}) do
+				if claimed == true then
+					rewards += 1
+				end
+			end
+			ui.Lobby.ActivitySummary.Text = ("Training Lv.%d (%d clears, best %d) | Parkour Lv.%d (%d clears, best %s)\nRange Lv.%d (%d runs, best %d) | Salvage Lv.%d (%d clears, best %s)\nSecrets: %d/4 | Exclusive rewards: %d"):format(
+				tonumber(activities.trainingLevel) or 0,
+				tonumber(activities.trainingClears) or 0,
+				tonumber(activities.trainingBestScore) or 0,
+				tonumber(activities.parkourLevel) or 0,
+				tonumber(activities.parkourClears) or 0,
+				tonumber(activities.parkourBestMs) and tonumber(activities.parkourBestMs) > 0 and ("%.2fs"):format((tonumber(activities.parkourBestMs) or 0) / 1000) or "--",
+				tonumber(activities.rangeLevel) or 0,
+				tonumber(activities.rangeRuns) or 0,
+				tonumber(activities.rangeBestScore) or 0,
+				tonumber(activities.salvageLevel) or 0,
+				tonumber(activities.salvageClears) or 0,
+				tonumber(activities.salvageBestMs) and tonumber(activities.salvageBestMs) > 0 and ("%.2fs"):format((tonumber(activities.salvageBestMs) or 0) / 1000) or "--",
+				secrets,
+				rewards
+			)
+		end
+		if ui.Lobby.ActivityCards or ui.Lobby.ActivitySecretsSummary or ui.Lobby.ActivityRewardsSummary or ui.Lobby.ActivityBadgesSummary then
+			local activities = progression.activities or {}
+			local function formatBestTime(ms)
+				local numeric = tonumber(ms)
+				return numeric and numeric > 0 and ("%.2fs"):format(numeric / 1000) or "--"
+			end
+			local function setCard(card, summaryText, metaText, rewardText)
+				if not card then
+					return
+				end
+				if card.Summary then
+					card.Summary.Text = summaryText
+				end
+				if card.Meta then
+					card.Meta.Text = metaText
+				end
+				if card.Reward then
+					card.Reward.Text = rewardText
+				end
+			end
+			local cards = ui.Lobby.ActivityCards or {}
+			setCard(
+				cards.Training,
+				("Level %d | %d clears"):format(tonumber(activities.trainingLevel) or 0, tonumber(activities.trainingClears) or 0),
+				("Best drill score: %d | Drill for stripe unlocks."):format(tonumber(activities.trainingBestScore) or 0),
+				((activities.rewards or {}).cosmetic_cadet_stripe and "Unlocked: Cadet Stripe" or "Next unlock: Cadet Stripe at Lv.2")
+			)
+			setCard(
+				cards.Parkour,
+				("Level %d | %d clears"):format(tonumber(activities.parkourLevel) or 0, tonumber(activities.parkourClears) or 0),
+				("Best route: %s | Clear faster for mastery."):format(formatBestTime(activities.parkourBestMs)),
+				((activities.rewards or {}).cosmetic_rooftop_glow and "Unlocked: Rooftop Glow" or "Next unlock: Rooftop Glow at Lv.2")
+			)
+			setCard(
+				cards.Range,
+				("Level %d | %d runs"):format(tonumber(activities.rangeLevel) or 0, tonumber(activities.rangeRuns) or 0),
+				("Best score: %d | Deadeye unlocks from precision."):format(tonumber(activities.rangeBestScore) or 0),
+				((activities.rewards or {}).cosmetic_deadeye_trace and "Unlocked: Deadeye Trace" or "Next unlock: Deadeye Trace at Lv.2")
+			)
+			setCard(
+				cards.Salvage,
+				("Level %d | %d clears"):format(tonumber(activities.salvageLevel) or 0, tonumber(activities.salvageClears) or 0),
+				("Best extract: %s | Recover caches under pressure."):format(formatBestTime(activities.salvageBestMs)),
+				((activities.rewards or {}).cosmetic_salvage_signal and "Unlocked: Salvage Signal" or "Next unlock: Salvage Signal at Lv.2")
+			)
+
+			local secretNames = {}
+			for key, found in pairs(activities.secrets or {}) do
+				if found == true then
+					local label = ACTIVITY_BADGE_LABELS["secret_" .. key]
+					table.insert(secretNames, label or key)
+				end
+			end
+			table.sort(secretNames)
+			if ui.Lobby.ActivitySecretsSummary then
+				ui.Lobby.ActivitySecretsSummary.Text = #secretNames > 0
+					and ("Found: %s\nMastery reward: %s"):format(table.concat(secretNames, ", "), ((activities.rewards or {}).cosmetic_cipher_sigil and "Cipher Sigil unlocked" or "Find all 4 secrets"))
+					or "No bunker secrets found yet.\nMastery reward: Cipher Sigil"
+			end
+
+			local rewardNames = {}
+			for key, unlocked in pairs(activities.rewards or {}) do
+				if unlocked == true then
+					table.insert(rewardNames, ACTIVITY_REWARD_LABELS[key] or key)
+				end
+			end
+			table.sort(rewardNames)
+			if ui.Lobby.ActivityRewardsSummary then
+				ui.Lobby.ActivityRewardsSummary.Text = #rewardNames > 0
+					and table.concat(rewardNames, "\n")
+					or "No exclusive rewards unlocked yet."
+			end
+
+			local badgeNames = {}
+			for key, unlocked in pairs(activities.achievements or {}) do
+				if unlocked == true then
+					table.insert(badgeNames, ACTIVITY_BADGE_LABELS[key] or key)
+				end
+			end
+			table.sort(badgeNames)
+			if ui.Lobby.ActivityBadgesSummary then
+				if #badgeNames > 8 then
+					local trimmed = {}
+					for index = 1, 8 do
+						trimmed[index] = badgeNames[index]
+					end
+					ui.Lobby.ActivityBadgesSummary.Text = table.concat(trimmed, "\n") .. ("\n+%d more"):format(#badgeNames - 8)
+				else
+					ui.Lobby.ActivityBadgesSummary.Text = #badgeNames > 0 and table.concat(badgeNames, "\n") or "No activity badges unlocked yet."
+				end
+			end
 		end
 		if ui.Lobby.ClaimDailyQuestButton then
 			local canClaimDaily = dailyRewardState ~= nil and dailyRewardState.canClaim
@@ -1952,24 +3663,58 @@ end
 		end
 	end
 
-	local function updateHudVisibility()
+	updateHudVisibility = function()
 		local inMission = state == "Mission"
 			or player:GetAttribute("InMission") == true
 		local missionPanelOpen = ui.Lobby.MissionPanel and ui.Lobby.MissionPanel.Visible == true
+		local lobbyOverlayBusy = activePopup ~= nil or missionPanelOpen
+		local showCommandHud = nearCentralCommand or nearDeployPad
 		if ui.Lobby.HudBar then
-			ui.Lobby.HudBar.Visible = not inMission
+			local showHudBar = (not inMission) and (not lobbyOverlayBusy) and showCommandHud
+			tweenLobbyOverlay(ui.Lobby.HudBar, showHudBar, {
+				Size = nearDeployPad and layoutState.hudDeployVisibleSize or layoutState.hudCompactVisibleSize,
+				BackgroundTransparency = showHudBar and (nearDeployPad and 0.18 or 0.28) or 0.42,
+				Position = showHudBar and layoutState.hudShownPosition or layoutState.hudHiddenPosition,
+			})
+		end
+		if ui.Lobby.TokenPill then
+			ui.Lobby.TokenPill.Visible = nearDeployPad and (not inMission) and (not lobbyOverlayBusy)
+		end
+		if ui.Lobby.DeployStatusPill then
+			ui.Lobby.DeployStatusPill.Visible = nearDeployPad and (not inMission) and (not lobbyOverlayBusy)
+		end
+		if ui.Lobby.PersistencePill then
+			ui.Lobby.PersistencePill.Visible = nearDeployPad and (not inMission) and (not lobbyOverlayBusy)
+		end
+		if ui.Lobby.DeployButton then
+			ui.Lobby.DeployButton.Visible = nearDeployPad and (not inMission) and (not lobbyOverlayBusy)
 		end
 		if ui.Lobby.QuickAccessBar then
-			ui.Lobby.QuickAccessBar.Visible = (not inMission) and activePopup == nil
+			local showQuickAccess = (not inMission) and (not lobbyOverlayBusy) and nearCentralCommand
+			if not showQuickAccess then
+				setQuickAccessExpanded(false)
+				setQuickAccessButtonsExpanded(false)
+			end
+			tweenLobbyOverlay(ui.Lobby.QuickAccessBar, showQuickAccess, {
+				BackgroundTransparency = showQuickAccess and 0.02 or 0.22,
+				Position = showQuickAccess and layoutState.quickAccessShownPosition or layoutState.quickAccessHiddenPosition,
+			})
 		end
 		if ui.Lobby.MissionToastStack then
 			ui.Lobby.MissionToastStack.Visible = inMission
+		end
+		if ui.Lobby.CombatHud then
+			ui.Lobby.CombatHud.Visible = inMission
 		end
 		if ui.Lobby.RewardFloatLayer then
 			ui.Lobby.RewardFloatLayer.Visible = inMission
 		end
 		if ui.Lobby.LeaderboardBoard then
-			ui.Lobby.LeaderboardBoard.Visible = (not inMission) and activePopup == nil and (not missionPanelOpen)
+			local showArchiveHint = (not inMission) and (not lobbyOverlayBusy) and nearCentralCommand and (not nearDeployPad) and (not nearArchiveLane)
+			tweenLobbyOverlay(ui.Lobby.LeaderboardBoard, showArchiveHint, {
+				BackgroundTransparency = showArchiveHint and 0.34 or 0.46,
+				Position = showArchiveHint and layoutState.archiveHintShownPosition or layoutState.archiveHintHiddenPosition,
+			})
 		end
 		if not inMission and next(suppressedMissionPrompts) ~= nil then
 			for prompt in pairs(suppressedMissionPrompts) do
@@ -1993,7 +3738,7 @@ end
 			BackgroundColor3 = isComplete and Color3.fromRGB(34, 42, 28) or Color3.fromRGB(20, 24, 30),
 			BackgroundTransparency = 0.04,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 62),
+			Size = UDim2.new(1, 0, 0, 54),
 			Parent = ui.Lobby.MissionToastStack,
 		})
 		addCorner(card, UDim.new(0, 14))
@@ -2012,12 +3757,12 @@ end
 		local title = new("TextLabel", {
 			Name = "Title",
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0, 14, 0, 9),
-			Size = UDim2.new(1, -28, 0, 18),
+			Position = UDim2.new(0, 12, 0, 7),
+			Size = UDim2.new(1, -24, 0, 16),
 			Text = titleText,
 			TextColor3 = Theme.Colors.Text,
 			TextScaled = false,
-			TextSize = 14,
+			TextSize = 13,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Font = Theme.Fonts.Heading,
 			Parent = card,
@@ -2026,12 +3771,12 @@ end
 		local body = new("TextLabel", {
 			Name = "Body",
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0, 14, 0, 29),
-			Size = UDim2.new(1, isComplete and -116 or -28, 0, 22),
+			Position = UDim2.new(0, 12, 0, 24),
+			Size = UDim2.new(1, isComplete and -98 or -24, 0, 18),
 			Text = bodyText,
 			TextColor3 = Theme.Colors.Muted,
 			TextScaled = false,
-			TextSize = 11,
+			TextSize = 10,
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Font = Theme.Fonts.Body,
@@ -2044,12 +3789,12 @@ end
 				BackgroundColor3 = accentColor or Theme.Colors.AccentWarm,
 				BorderSizePixel = 0,
 				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.new(1, -10, 0.5, 0),
-				Size = UDim2.new(0, 88, 0, 24),
+				Position = UDim2.new(1, -8, 0.5, 0),
+				Size = UDim2.new(0, 74, 0, 22),
 				Text = rewardText,
 				TextColor3 = Color3.fromRGB(18, 22, 18),
 				TextScaled = false,
-				TextSize = 10,
+				TextSize = 9,
 				Font = Theme.Fonts.Heading,
 				Parent = card,
 			})
@@ -2134,6 +3879,9 @@ end
 	local function setActivePopup(name)
 		local previousActive = activePopup
 		activePopup = name
+		if name and ui.Lobby.MissionPanel then
+			ui.Lobby.MissionPanel.Visible = false
+		end
 		for popupName, popup in pairs(ui.Lobby.Popups) do
 			local isActive = popupName == name
 			popup:SetAttribute("KeepOpen", isActive)
@@ -2143,6 +3891,29 @@ end
 		if name and previousActive ~= name then
 			playUiSound(SOUND_IDS.UiOpen, 0.4, 1.02)
 		elseif not name and previousActive then
+			playUiSound(SOUND_IDS.UiClose, 0.32, 1)
+		end
+	end
+
+	local function openMissionPanel()
+		if not ui or not ui.Lobby or not ui.Lobby.MissionPanel or state ~= "Lobby" then
+			return
+		end
+		setActivePopup(nil)
+		ui.Lobby.MissionPanel.Visible = true
+		updateHudVisibility()
+		updateLobbyText()
+		playUiSound(SOUND_IDS.UiOpen, 0.4, 1.02)
+	end
+
+	local function closeMissionPanel()
+		if not ui or not ui.Lobby or not ui.Lobby.MissionPanel then
+			return
+		end
+		if ui.Lobby.MissionPanel.Visible then
+			ui.Lobby.MissionPanel.Visible = false
+			updateHudVisibility()
+			updateLobbyText()
 			playUiSound(SOUND_IDS.UiClose, 0.32, 1)
 		end
 	end
@@ -2229,6 +4000,12 @@ end
 			refreshDailyOpsState()
 			refreshWeeklyRewardState()
 			refreshSubscriptionState()
+			updateLobbyText()
+			return
+		end
+
+		if panelName == "Activities" then
+			setActivePopup("Activities")
 			updateLobbyText()
 			return
 		end
@@ -2350,7 +4127,7 @@ end
 		cancelHomeAnimations()
 		restoreCameraToPlayer(player)
 		setPageVisibility(ui, "Lobby")
-		ui.Lobby.MissionPanel.Visible = true
+		ui.Lobby.MissionPanel.Visible = false
 		updateHudVisibility()
 		updateLobbyText()
 	end
@@ -2380,7 +4157,7 @@ end
 			if not ui.Pages.Lobby.Visible then
 				setPageVisibility(ui, "Lobby")
 			end
-			ui.Lobby.MissionPanel.Visible = true
+			ui.Lobby.MissionPanel.Visible = false
 		end
 
 		updateHudVisibility()
@@ -2394,6 +4171,7 @@ end
 		tabName = normalizeShopTab(tabName)
 		if Theme.ShopCopy[tabName] then
 			currentShopTab = tabName
+			currentShopPreviewItemId = nil
 			currentShopStatus = Theme.ShopCopy[tabName]
 			updateLobbyText()
 		end
@@ -2592,7 +4370,30 @@ end
 	local function setSubscriptionStateValue(value)
 		local normalized = normalizeSubscriptionState(value)
 		if normalized then
+			local wasActive = subscriptionState and subscriptionState.isActive == true
 			subscriptionState = normalized
+			if normalized.isActive == true and not wasActive then
+				currentSocialMessage = normalized.weeklyRewardAvailable
+					and "Supporter active. VIP access granted and your weekly crate is ready."
+					or "Supporter active. VIP access and supporter rewards are now enabled."
+				showPremiumUnlockBanner(
+					"SUPPORTER STATUS ACTIVE",
+					normalized.weeklyRewardAvailable
+						and "Supporter rewards are live, VIP access is enabled, and your weekly crate is ready."
+						or "Supporter rewards are live and VIP access is now enabled.",
+					Color3.fromRGB(214, 194, 122),
+					normalized.weeklyRewardAvailable and "CRATE READY" or "SUPPORTER"
+				)
+				playUiSound(SOUND_IDS.Success, 0.36, 1.02)
+				if ui and ui.Lobby then
+					if ui.Lobby.SubscriptionValue then
+						pulseGuiObject(ui.Lobby.SubscriptionValue.Parent, Color3.fromRGB(214, 194, 122))
+					end
+					if ui.Lobby.IdentityValue then
+						pulseGuiObject(ui.Lobby.IdentityValue.Parent, Color3.fromRGB(214, 194, 122))
+					end
+				end
+			end
 			updateLobbyText()
 		end
 	end
@@ -2608,11 +4409,20 @@ end
 		missionTelemetry.wave = tonumber(payload.wave or missionTelemetry.wave) or 0
 		missionTelemetry.totalWaves = tonumber(payload.totalWaves or missionTelemetry.totalWaves) or 0
 		missionTelemetry.objectiveHealthPercent = tonumber(payload.objectiveHealthPercent or missionTelemetry.objectiveHealthPercent) or 100
+		if payload.weaponName ~= nil then
+			missionTelemetry.weaponName = tostring(payload.weaponName)
+		end
+		if payload.weaponType ~= nil then
+			missionTelemetry.weaponType = tostring(payload.weaponType)
+		end
 		if payload.currentAmmo ~= nil then
 			missionTelemetry.ammo = tonumber(payload.currentAmmo)
 		end
 		if payload.reserveAmmo ~= nil then
 			missionTelemetry.reserveAmmo = tonumber(payload.reserveAmmo)
+		end
+		if payload.reloading ~= nil then
+			missionTelemetry.reloading = payload.reloading == true
 		end
 		local statusText = tostring(payload.status or "")
 		if string.find(statusText, "Core integrity", 1, true) or string.find(statusText, "Warning", 1, true) then
@@ -3165,6 +4975,82 @@ end
 		end)
 	end
 
+	local function showPremiumUnlockBanner(titleText, bodyText, accentColor, chipText)
+		if not ui or not ui.Lobby or not ui.Lobby.PremiumUnlockBanner then
+			return
+		end
+
+		local banner = ui.Lobby.PremiumUnlockBanner
+		local rail = ui.Lobby.PremiumUnlockBannerRail
+		local title = ui.Lobby.PremiumUnlockBannerTitle
+		local body = ui.Lobby.PremiumUnlockBannerBody
+		local chip = ui.Lobby.PremiumUnlockBannerChip
+		local color = accentColor or Color3.fromRGB(132, 182, 244)
+
+		premiumUnlockBannerNonce += 1
+		local bannerId = premiumUnlockBannerNonce
+
+		if rail then
+			rail.BackgroundColor3 = color
+		end
+		if title then
+			title.Text = tostring(titleText or "ACCESS UNLOCKED")
+		end
+		if body then
+			body.Text = tostring(bodyText or "")
+		end
+		if chip then
+			chip.Text = tostring(chipText or "ACTIVE")
+			chip.BackgroundColor3 = color
+		end
+
+		local stroke = banner:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color = color
+		end
+
+		banner.Visible = true
+		banner.BackgroundTransparency = 1
+		banner.Position = UDim2.new(0.5, 0, 0.09, -14)
+		local scaleDriver = banner:FindFirstChild("PremiumBannerScale")
+		if not scaleDriver or not scaleDriver:IsA("UIScale") then
+			scaleDriver = new("UIScale", {
+				Name = "PremiumBannerScale",
+				Scale = 0.96,
+				Parent = banner,
+			})
+		end
+		scaleDriver.Scale = 0.96
+
+		TweenService:Create(banner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			BackgroundTransparency = 0.06,
+			Position = UDim2.new(0.5, 0, 0.11, 0),
+		}):Play()
+		TweenService:Create(scaleDriver, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Scale = 1,
+		}):Play()
+		playUiSound(SOUND_IDS.Success, 0.42, 1.05)
+		pulseGuiObject(banner, color)
+
+		task.delay(3.25, function()
+			if premiumUnlockBannerNonce ~= bannerId or not banner.Parent then
+				return
+			end
+			TweenService:Create(banner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.5, 0, 0.09, -14),
+			}):Play()
+			TweenService:Create(scaleDriver, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				Scale = 0.97,
+			}):Play()
+			task.delay(0.2, function()
+				if premiumUnlockBannerNonce == bannerId and banner.Parent then
+					banner.Visible = false
+				end
+			end)
+		end)
+	end
+
 	local function requestShopPurchase(category, item)
 		if purchasingItemId then
 			return
@@ -3337,9 +5223,16 @@ end
 			return tostring(a.DisplayName or a.Id) < tostring(b.DisplayName or b.Id)
 		end)
 		ui.Lobby.ShopEmptyLabel.Visible = #items == 0
+		if #items == 0 then
+			currentShopPreviewItemId = nil
+			updateShopPreview()
+		elseif not currentShopPreviewItemId or not findShopItem(category, currentShopPreviewItemId) then
+			currentShopPreviewItemId = items[1].Id
+			updateShopPreview()
+		end
 
 		for index, item in ipairs(items) do
-			local card = makeListCard(ui.Lobby.ShopItemsFrame, "Item_" .. index, 178)
+			local card = makeListCard(ui.Lobby.ShopItemsFrame, "Item_" .. index, 156)
 			card.LayoutOrder = index
 			local isSubscriptionItem = type(item.SubscriptionId) == "string" and item.SubscriptionId ~= ""
 			local isGamePassItem = type(item.GamePassId) == "number" and item.GamePassId > 0
@@ -3363,23 +5256,12 @@ end
 				Name = "AccentBar",
 				BackgroundColor3 = premiumAccent,
 				BorderSizePixel = 0,
-				Position = UDim2.new(0.02, 0, 0.12, 0),
-				Size = UDim2.new(0, 4, 0.8, 0),
+				Position = UDim2.new(0, 12, 0, 14),
+				Size = UDim2.new(0, 4, 1, -28),
 				Parent = card,
 			})
 			addCorner(accentBar, UDim.new(0, 4))
 			addStroke(card, premiumAccent, 0.14, 1)
-
-			local topRule = new("Frame", {
-				Name = "TopRule",
-				BackgroundColor3 = premiumAccent,
-				BackgroundTransparency = 0.4,
-				BorderSizePixel = 0,
-				Position = UDim2.new(0, 16, 0, 12),
-				Size = UDim2.new(0, 82, 0, 2),
-				Parent = card,
-			})
-			addCorner(topRule, UDim.new(0, 4))
 
 			local featuredEvent = item.SeasonalEvent and seasonalEventState and seasonalEventState.Id == item.SeasonalEvent
 			local eventRibbonText = featuredEvent and ((seasonalEventState and seasonalEventState.DisplayName) or "EVENT LIVE")
@@ -3409,8 +5291,8 @@ end
 			local infoPane = new("Frame", {
 				Name = "InfoPane",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 22, 0, 18),
-				Size = UDim2.new(1, -214, 1, -34),
+				Position = UDim2.new(0, 28, 0, 16),
+				Size = UDim2.new(1, -206, 1, -32),
 				Parent = card,
 			})
 
@@ -3419,8 +5301,8 @@ end
 				BackgroundColor3 = Color3.fromRGB(26, 32, 40),
 				BackgroundTransparency = 0.1,
 				BorderSizePixel = 0,
-				Position = UDim2.new(1, -182, 0, 14),
-				Size = UDim2.new(0, 164, 1, -28),
+				Position = UDim2.new(1, -174, 0, 14),
+				Size = UDim2.new(0, 156, 1, -28),
 				Parent = card,
 			})
 			addCorner(rightPane, UDim.new(0, 14))
@@ -3440,6 +5322,10 @@ end
 				Font = Theme.Fonts.Heading,
 				Parent = infoPane,
 			})
+			card.MouseEnter:Connect(function()
+				currentShopPreviewItemId = item.Id
+				updateShopPreview()
+			end)
 			local laneText = premiumLabel
 				or ((category == Theme.ShopTabToCategory.Weapons and "ARMORY STOCK")
 				or (category == Theme.ShopTabToCategory.Upgrades and "FIELD UPGRADE")
@@ -3458,64 +5344,15 @@ end
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Parent = infoPane,
 			})
-			local featuredBlock = new("Frame", {
-				Name = "FeaturedBlock",
-				BackgroundColor3 = featuredEvent and Color3.fromRGB(38, 60, 48)
-					or (item.SeasonalEvent and Color3.fromRGB(48, 42, 66)
-					or (item.DropOnly and Color3.fromRGB(34, 50, 68) or Color3.fromRGB(28, 36, 46))),
-				BackgroundTransparency = 0.08,
-				BorderSizePixel = 0,
-				Position = UDim2.new(0, 0, 0, 52),
-				Size = UDim2.new(0, 98, 0, 46),
-				Parent = infoPane,
-			})
-			addCorner(featuredBlock, UDim.new(0, 14))
-			addStroke(
-				featuredBlock,
-				featuredEvent and Color3.fromRGB(132, 196, 118)
-					or (item.SeasonalEvent and Color3.fromRGB(178, 122, 214)
-					or (item.DropOnly and Color3.fromRGB(86, 156, 214) or premiumAccent)),
-				0.14,
-				1
-			)
-			local featuredMark = new("TextLabel", {
-				Name = "FeaturedMark",
-				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 12, 0, 10),
-				Size = UDim2.new(1, -24, 0, 14),
-				Text = item.DropOnly and "FIELD FIND" or (item.SeasonalEvent and "EVENT ISSUE" or "STOCK"),
-				TextColor3 = Theme.Colors.Text,
-				TextScaled = false,
-				TextSize = 9,
-				Font = Theme.Fonts.Heading,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				Parent = featuredBlock,
-			})
-			local featuredGlyph = new("TextLabel", {
-				Name = "FeaturedGlyph",
-				BackgroundTransparency = 1,
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5, 0, 0.62, 0),
-				Size = UDim2.new(1, -20, 0, 26),
-				Text = item.SeasonalEvent and "FEATURED" or (item.DropOnly and "DROP CACHE" or "STANDARD"),
-				TextColor3 = featuredEvent and Color3.fromRGB(198, 255, 188)
-					or (item.SeasonalEvent and Color3.fromRGB(224, 186, 255)
-					or (item.DropOnly and Color3.fromRGB(172, 218, 255) or premiumAccent)),
-				TextScaled = false,
-				TextSize = 12,
-				Font = Theme.Fonts.Heading,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				Parent = featuredBlock,
-			})
 			local details = new("TextLabel", {
 				Name = "Details",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 110, 0, 52),
-				Size = UDim2.new(1, -110, 0, 58),
+				Position = UDim2.new(0, 0, 0, 52),
+				Size = UDim2.new(1, 0, 0, 54),
 				Text = tostring(item.Description or "No description set."),
 				TextColor3 = Color3.fromRGB(194, 204, 216),
 				TextScaled = false,
-				TextSize = 13,
+				TextSize = 12,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextYAlignment = Enum.TextYAlignment.Top,
@@ -3525,14 +5362,15 @@ end
 			local intelLine = new("TextLabel", {
 				Name = "DropChance",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 0, 1, -52),
-				Size = UDim2.new(1, 0, 0, 26),
+				Position = UDim2.new(0, 0, 1, -44),
+				Size = UDim2.new(1, 0, 0, 22),
 				Text = getDropChanceText(item, seasonalEventState),
 				TextColor3 = Color3.fromRGB(150, 200, 170),
 				TextScaled = false,
-				TextSize = 11,
+				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Left,
-				TextWrapped = true,
+				TextWrapped = false,
+				TextTruncate = Enum.TextTruncate.AtEnd,
 				Font = Theme.Fonts.Body,
 				Parent = infoPane,
 			})
@@ -3558,7 +5396,7 @@ end
 				BackgroundColor3 = rarityColor,
 				BorderSizePixel = 0,
 				Position = UDim2.new(0, 0, 1, -20),
-				Size = UDim2.new(0, 92, 0, 20),
+				Size = UDim2.new(0, 86, 0, 20),
 				Text = badgeText,
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
@@ -3572,7 +5410,7 @@ end
 				BackgroundColor3 = Color3.fromRGB(46, 56, 70),
 				BorderSizePixel = 0,
 				Position = UDim2.new(0, 100, 1, -20),
-				Size = UDim2.new(0, premiumLabel and 118 or 102, 0, 20),
+				Size = UDim2.new(0, premiumLabel and 112 or 96, 0, 20),
 				Text = string.upper(premiumLabel or ((category == Theme.ShopTabToCategory.Weapons and "ARMORY") or (category == Theme.ShopTabToCategory.Upgrades and "UPGRADE") or (category == Theme.ShopTabToCategory.Cosmetics and "COSMETIC") or "TOKEN")),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
@@ -3586,11 +5424,11 @@ end
 				Name = "Price",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 14, 0, 16),
-				Size = UDim2.new(1, -28, 0, 30),
+				Size = UDim2.new(1, -28, 0, 28),
 				Text = priceText,
 				TextColor3 = premiumAccent:Lerp(Theme.Colors.Text, 0.26),
 				TextScaled = false,
-				TextSize = 16,
+				TextSize = 15,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Theme.Fonts.Heading,
@@ -3599,33 +5437,17 @@ end
 			local priceMeta = new("TextLabel", {
 				Name = "PriceMeta",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 14, 0, 44),
-				Size = UDim2.new(1, -28, 0, 28),
+				Position = UDim2.new(0, 14, 0, 42),
+				Size = UDim2.new(1, -28, 0, 24),
 				Text = premiumLabel and "Premium access item" or (item.DropOnly and "Mission reward only" or "Quartermaster stock"),
 				TextColor3 = Theme.Colors.Muted,
 				TextScaled = false,
-				TextSize = 11,
+				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextWrapped = true,
 				Font = Theme.Fonts.Body,
 				Parent = rightPane,
 			})
-			local premiumChip = new("TextLabel", {
-				Name = "PremiumChip",
-				BackgroundColor3 = premiumAccent:Lerp(Color3.fromRGB(30, 38, 50), 0.22),
-				BackgroundTransparency = premiumLabel and 0.12 or 0.18,
-				BorderSizePixel = 0,
-				Position = UDim2.new(0, 14, 0, 78),
-				Size = UDim2.new(0, premiumLabel and 110 or 92, 0, 20),
-				Text = premiumLabel or "STANDARD",
-				TextColor3 = Theme.Colors.Text,
-				TextScaled = false,
-				TextSize = 10,
-				Font = Theme.Fonts.Heading,
-				Parent = rightPane,
-			})
-			addCorner(premiumChip, UDim.new(0, 8))
-			addStroke(premiumChip, premiumAccent, 0.14, 1)
 			local ownedAttribute = ("ShopUnlocked_%s_%s"):format(category, item.Id)
 			local isOwned = (isGamePassItem and player:GetAttribute("GamePassOwned_" .. tostring(item.GamePassKey or "")) == true)
 				or player:GetAttribute(ownedAttribute) == true
@@ -3696,12 +5518,18 @@ end
 				"PurchaseButton",
 				buttonText,
 				UDim2.new(1, -18, 1, -18),
-				UDim2.new(0, 118, 0, 36),
+				UDim2.new(0, 124, 0, 34),
 				buttonColor
 			)
-			button.TextSize = 15
+			button.TextSize = 14
 			setButtonEnabled(button, canPurchase or isRobuxItem, buttonColor)
+			button.MouseEnter:Connect(function()
+				currentShopPreviewItemId = item.Id
+				updateShopPreview()
+			end)
 			button.MouseButton1Click:Connect(function()
+				currentShopPreviewItemId = item.Id
+				updateShopPreview()
 				if isOwned and (category == Theme.ShopTabToCategory.Weapons or category == Theme.ShopTabToCategory.Cosmetics) then
 					requestEquipItem(category, item)
 				else
@@ -4814,6 +6642,22 @@ end
 	styleButton(ui.Lobby.SquadQuickButton, Color3.fromRGB(92, 146, 214))
 	styleButton(ui.Lobby.InviteQuickButton, Color3.fromRGB(76, 158, 136))
 	styleButton(ui.Lobby.SettingsQuickButton, Theme.Colors.Backdrop)
+	for _, quickButton in ipairs(getQuickAccessButtons()) do
+		setQuickAccessButtonExpanded(quickButton, false)
+		quickButton.MouseEnter:Connect(function()
+			setQuickAccessButtonExpanded(quickButton, true)
+		end)
+		quickButton.MouseLeave:Connect(function()
+			setQuickAccessButtonExpanded(quickButton, false)
+		end)
+	end
+	ui.Lobby.QuickAccessBar.MouseEnter:Connect(function()
+		setQuickAccessExpanded(true)
+	end)
+	ui.Lobby.QuickAccessBar.MouseLeave:Connect(function()
+		setQuickAccessExpanded(false)
+		setQuickAccessButtonsExpanded(false)
+	end)
 	styleButton(ui.Lobby.CloseShopButton, Theme.Colors.Backdrop)
 	styleButton(ui.Lobby.InventoryWeaponTab, Color3.fromRGB(92, 122, 176))
 	styleButton(ui.Lobby.InventoryCosmeticTab, Color3.fromRGB(84, 128, 184))
@@ -4832,9 +6676,14 @@ end
 	styleButton(ui.Lobby.ClaimDailyQuestButton, Theme.Colors.AccentWarm)
 	styleButton(ui.Lobby.ClaimWeeklyQuestButton, Color3.fromRGB(180, 154, 86))
 	styleButton(ui.Lobby.CloseQuestBoardButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.OpenActivitiesButton, Color3.fromRGB(88, 132, 188))
+	styleButton(ui.Lobby.BackToOpsButton, Color3.fromRGB(88, 132, 188))
+	styleButton(ui.Lobby.CloseActivitiesButton, Theme.Colors.Backdrop)
 	styleButton(ui.Lobby.AcceptInviteButton, Theme.Colors.Accent)
 	styleButton(ui.Lobby.DeclineInviteButton, Theme.Colors.Backdrop)
 	styleButton(ui.Lobby.DeployButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.MissionCloseButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.MissionLaunchButton, Theme.Colors.AccentWarm)
 	if ui.Lobby.MissionVoteButtons then
 		for _, button in ipairs(ui.Lobby.MissionVoteButtons) do
 			styleButton(button, Theme.Colors.Backdrop)
@@ -4948,6 +6797,14 @@ end
 
 	ui.Lobby.DeployButton.MouseButton1Click:Connect(function()
 		if state == "Lobby" then
+			openMissionPanel()
+		end
+	end)
+	ui.Lobby.MissionCloseButton.MouseButton1Click:Connect(function()
+		closeMissionPanel()
+	end)
+	ui.Lobby.MissionLaunchButton.MouseButton1Click:Connect(function()
+		if state == "Lobby" then
 			requestDeploy()
 		end
 	end)
@@ -5024,6 +6881,8 @@ end
 			refreshDailyOpsState()
 			refreshWeeklyRewardState()
 			refreshSubscriptionState()
+		elseif panelName == "Activities" then
+			setActivePopup("Activities")
 		elseif panelName == "Social" then
 			setActivePopup("Social")
 			refreshSquadDirectory()
@@ -5066,6 +6925,28 @@ end
 	end)
 
 	ui.Lobby.CloseQuestBoardButton.MouseButton1Click:Connect(function()
+		setActivePopup(nil)
+	end)
+
+	ui.Lobby.OpenActivitiesButton.MouseButton1Click:Connect(function()
+		if state == "Lobby" then
+			setActivePopup("Activities")
+			updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.BackToOpsButton.MouseButton1Click:Connect(function()
+		if state == "Lobby" then
+			setActivePopup("QuestBoard")
+			refreshDailyRewardState()
+			refreshDailyOpsState()
+			refreshWeeklyRewardState()
+			refreshSubscriptionState()
+			updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.CloseActivitiesButton.MouseButton1Click:Connect(function()
 		setActivePopup(nil)
 	end)
 
@@ -5362,7 +7243,41 @@ end
 		end
 
 		if wasPurchased then
-			currentShopStatus = ("Game pass granted: %d. Refreshing entitlements."):format(tonumber(gamePassId) or 0)
+			local purchasedVip = false
+			for _, item in ipairs(TokenEconomy.ShopItems) do
+				if item.GamePassId == gamePassId and item.GamePassKey == "vip_operation" then
+					purchasedVip = true
+					break
+				end
+			end
+			currentShopStatus = purchasedVip
+				and "VIP unlocked. Access granted to VIP Operations."
+				or ("Game pass granted: %d. Refreshing entitlements."):format(tonumber(gamePassId) or 0)
+			currentSocialMessage = currentShopStatus
+			if purchasedVip then
+				showPremiumUnlockBanner(
+					"VIP ACCESS UNLOCKED",
+					"VIP Operations is now open and your access badge has been updated.",
+					Color3.fromRGB(132, 182, 244),
+					"VIP ACTIVE"
+				)
+			else
+				showPremiumUnlockBanner(
+					"GAME PASS UNLOCKED",
+					currentShopStatus,
+					Color3.fromRGB(188, 214, 128),
+					"OWNED"
+				)
+			end
+			playUiSound(SOUND_IDS.Success, 0.36, 1.02)
+			if ui and ui.Lobby then
+				if ui.Lobby.SubscriptionValue then
+					pulseGuiObject(ui.Lobby.SubscriptionValue.Parent, purchasedVip and Color3.fromRGB(132, 182, 244) or Color3.fromRGB(188, 214, 128))
+				end
+				if ui.Lobby.IdentityValue then
+					pulseGuiObject(ui.Lobby.IdentityValue.Parent, purchasedVip and Color3.fromRGB(132, 182, 244) or Color3.fromRGB(188, 214, 128))
+				end
+			end
 			refreshEntitlements()
 		else
 			currentShopStatus = "Game pass purchase canceled."
@@ -5370,8 +7285,64 @@ end
 		updateLobbyText()
 	end)
 
+	local subscriptionPromptConnection = MarketplaceService.PromptSubscriptionPurchaseFinished:Connect(function(finishedPlayer, subscriptionId, wasPurchased)
+		if finishedPlayer ~= player then
+			return
+		end
+
+		if wasPurchased then
+			currentShopStatus = "Supporter activated. VIP access and supporter rewards are now enabled."
+			currentSocialMessage = currentShopStatus
+			showPremiumUnlockBanner(
+				"SUPPORTER STATUS ACTIVE",
+				"VIP access, supporter rewards, and the premium lounge are now available.",
+				Color3.fromRGB(214, 194, 122),
+				"SUPPORTER"
+			)
+			playUiSound(SOUND_IDS.Success, 0.38, 1.02)
+			if ui and ui.Lobby then
+				if ui.Lobby.SubscriptionValue then
+					pulseGuiObject(ui.Lobby.SubscriptionValue.Parent, Color3.fromRGB(214, 194, 122))
+				end
+				if ui.Lobby.IdentityValue then
+					pulseGuiObject(ui.Lobby.IdentityValue.Parent, Color3.fromRGB(214, 194, 122))
+				end
+			end
+			refreshEntitlements()
+		else
+			currentShopStatus = ("Subscription purchase canceled for %s."):format(tostring(subscriptionId or "supporter"))
+		end
+		updateLobbyText()
+	end)
+
 	local promptConnection = ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		if state ~= "Lobby" or not prompt then
+			return
+		end
+
+		if prompt:GetAttribute("RequiresSupporter") == true and not (subscriptionState and subscriptionState.isActive == true) then
+			pendingNpcDialogue = {
+				title = "Supporter Access",
+				role = "Premium bunker lane",
+				body = "Supporter access is required for this lounge. Activate Bunker Supporter to use the lounge, weekly crate terminal, and premium reward lane.",
+				actionLabel = "Close",
+				actionPanel = "",
+			}
+			setActivePopup("NpcDialogue")
+			updateLobbyText()
+			return
+		end
+
+		if prompt:GetAttribute("RequiresVip") == true and player:GetAttribute("GamePassVipOperation") ~= true then
+			pendingNpcDialogue = {
+				title = "VIP Access",
+				role = "Operator fast lane",
+				body = "VIP access is required for this lane. VIP Operation owners and active supporters can both use this area.",
+				actionLabel = "Close",
+				actionPanel = "",
+			}
+			setActivePopup("NpcDialogue")
+			updateLobbyText()
 			return
 		end
 
@@ -5407,6 +7378,16 @@ end
 			return
 		end
 
+		if prompt:GetAttribute("RequiresSupporter") == true then
+			local unlocked = subscriptionState and subscriptionState.isActive == true
+			prompt.ActionText = tostring(prompt:GetAttribute(unlocked and "UnlockedActionText" or "LockedActionText") or prompt.ActionText)
+			prompt.ObjectText = tostring(prompt:GetAttribute(unlocked and "UnlockedObjectText" or "LockedObjectText") or prompt.ObjectText)
+		elseif prompt:GetAttribute("RequiresVip") == true then
+			local unlocked = player:GetAttribute("GamePassVipOperation") == true
+			prompt.ActionText = tostring(prompt:GetAttribute(unlocked and "UnlockedActionText" or "LockedActionText") or prompt.ActionText)
+			prompt.ObjectText = tostring(prompt:GetAttribute(unlocked and "UnlockedObjectText" or "LockedObjectText") or prompt.ObjectText)
+		end
+
 		local inMission = state == "Mission" or player:GetAttribute("InMission") == true
 		if inMission and prompt:GetAttribute("MissionPrompt") ~= true then
 			suppressedMissionPrompts[prompt] = true
@@ -5414,158 +7395,49 @@ end
 		end
 	end)
 
-	local leaderboardPlayerConnections = {}
-	local function bindLeaderboardPlayer(candidate)
-		if leaderboardPlayerConnections[candidate] then
-			return
-		end
-		leaderboardPlayerConnections[candidate] = {
-			candidate:GetAttributeChangedSignal("SkillTreeLevel"):Connect(updateLobbyText),
-			candidate:GetAttributeChangedSignal("MissionsCompleted"):Connect(updateLobbyText),
-			candidate:GetAttributeChangedSignal("ZombiesDefeated"):Connect(updateLobbyText),
-			candidate:GetAttributeChangedSignal("AllTimeMissionsCompleted"):Connect(updateLobbyText),
-			candidate:GetAttributeChangedSignal("AllTimeZombiesDefeated"):Connect(updateLobbyText),
-			candidate:GetAttributeChangedSignal("WeeklyMissionsCompleted"):Connect(updateLobbyText),
-			candidate:GetAttributeChangedSignal("WeeklyZombiesDefeated"):Connect(updateLobbyText),
-			candidate:GetAttributeChangedSignal("DailyMissionsCompleted"):Connect(updateLobbyText),
-			candidate:GetAttributeChangedSignal("DailyZombiesDefeated"):Connect(updateLobbyText),
-			candidate:GetAttributeChangedSignal("LeaderboardRank"):Connect(updateLobbyText),
-		}
-	end
+	local leaderboardPlayerConnections, leaderboardPlayerAddedConnection, leaderboardPlayerRemovingConnection, unbindLeaderboardPlayer =
+		createLeaderboardPlayerBindings(updateLobbyText)
 
-	local function unbindLeaderboardPlayer(candidate)
-		local connections = leaderboardPlayerConnections[candidate]
-		if not connections then
-			return
-		end
-		for _, connection in ipairs(connections) do
-			connection:Disconnect()
-		end
-		leaderboardPlayerConnections[candidate] = nil
-	end
-
-	for _, candidate in ipairs(Players:GetPlayers()) do
-		bindLeaderboardPlayer(candidate)
-	end
-	local leaderboardPlayerAddedConnection = Players.PlayerAdded:Connect(function(candidate)
-		bindLeaderboardPlayer(candidate)
-		updateLobbyText()
-	end)
-	local leaderboardPlayerRemovingConnection = Players.PlayerRemoving:Connect(function(candidate)
-		unbindLeaderboardPlayer(candidate)
-		updateLobbyText()
-	end)
-
-	local remoteCleanup = Remotes.bind({
-		[RemoteNames.Events.LobbyStateChanged] = setLobbyValue,
-		[RemoteNames.Events.TokenBalanceChanged] = setTokenValue,
-		[RemoteNames.Events.SquadUpdated] = setSquadValue,
-		[RemoteNames.Events.DeployStateChanged] = setDeployValue,
-		[RemoteNames.Events.CombatFeedback] = handleCombatFeedback,
-		[RemoteNames.Events.Notification] = function(message)
-			if type(message) == "table" then
-				if message.userId and message.userId ~= player.UserId then
-					return
-				end
-				if message.kind == "Results" then
-					showResultsPopup(message)
-					return
-				elseif message.kind == "DailyOpsProgress" then
-					local lines = type(message.lines) == "table" and message.lines or {}
-					for _, line in ipairs(lines) do
-						if type(line) == "table" then
-							local title = line.complete and "Daily Op Complete" or "Daily Op Updated"
-							local progressText = ("%d/%d"):format(tonumber(line.progress) or 0, tonumber(line.goal) or 1)
-							local body = ("%s • %s"):format(tostring(line.displayName or "Daily Op"), progressText)
-							local rewardText = nil
-							if line.complete then
-								rewardText = ("+%dT +%dXP"):format(
-									tonumber(line.rewardTokens) or 0,
-									tonumber(line.rewardExperience) or 0
-								)
-							end
-							pushMissionToast(
-								title,
-								body,
-								line.complete and Color3.fromRGB(188, 214, 128) or Color3.fromRGB(122, 170, 220),
-								line.complete == true,
-								rewardText
-							)
-						end
-					end
-					return
-				elseif message.kind == "Invite" then
-					pendingInvite = message
-					currentSocialMessage = tostring(message.message or currentSocialMessage)
-					playUiSound(SOUND_IDS.Alert, 0.32, 1.02)
-					updateLobbyText()
-					return
-				end
-				currentSocialMessage = tostring(message.message or message.status or currentSocialMessage)
-				if string.find(currentSocialMessage, "Warning", 1, true) then
-					playUiSound(SOUND_IDS.Alert, 0.28, 0.98)
-				end
-				updateLobbyText()
-			elseif typeof(message) == "string" then
-				currentSocialMessage = message
-				if string.find(currentSocialMessage, "Warning", 1, true) then
-					playUiSound(SOUND_IDS.Alert, 0.28, 0.98)
-				end
-				updateLobbyText()
-			end
+	local remoteCleanup = bindFlowRemoteHandlers({
+		player = player,
+		progression = progression,
+		setLobbyValue = setLobbyValue,
+		setTokenValue = setTokenValue,
+		setSquadValue = setSquadValue,
+		setDeployValue = setDeployValue,
+		handleCombatFeedback = handleCombatFeedback,
+		showResultsPopup = showResultsPopup,
+		pushMissionToast = pushMissionToast,
+		playUiSound = playUiSound,
+		updateLobbyText = updateLobbyText,
+		setPendingInvite = function(value)
+			pendingInvite = value
 		end,
-		[RemoteNames.Events.ShopStateChanged] = function(payload)
-			if type(payload) == "table" then
-				local shopTab = normalizeShopTab(payload.tab or payload.category)
-				if shopTab and Theme.ShopCopy[shopTab] then
-					currentShopTab = shopTab
-					local category = Theme.ShopTabToCategory[shopTab]
-					local item = findShopItem(category, payload.itemId)
-					if item then
-						local isEquipUpdate = payload.equippedWeapon ~= nil or payload.equippedCosmetic ~= nil
-						currentShopStatus = isEquipUpdate
-							and ("Equipped %s."):format(item.DisplayName or item.Id)
-							or ("Unlocked %s."):format(item.DisplayName or item.Id)
-						if isEquipUpdate then
-							currentInventoryStatus = currentShopStatus
-						end
-					end
-					if payload.equippedWeapon then
-						progression.equippedWeapon = tostring(payload.equippedWeapon)
-						currentInventoryTab = "Weapons"
-					end
-					if payload.equippedCosmetic ~= nil then
-						progression.equippedCosmetic = payload.equippedCosmetic ~= "" and tostring(payload.equippedCosmetic) or nil
-						if progression.equippedCosmetic then
-							currentInventoryTab = "Cosmetics"
-						end
-					end
-					if activePopup == "Inventory" and (payload.equippedWeapon ~= nil or payload.equippedCosmetic ~= nil) then
-						setActivePopup("Inventory")
-					else
-						setActivePopup("Shop")
-					end
-					updateLobbyText()
-				end
-			elseif typeof(payload) == "string" then
-				local shopTab = normalizeShopTab(payload)
-				if shopTab and Theme.ShopCopy[shopTab] then
-					currentShopTab = shopTab
-					currentShopStatus = Theme.ShopCopy[shopTab]
-					setActivePopup("Shop")
-					updateLobbyText()
-				end
-			end
+		getCurrentSocialMessage = function()
+			return currentSocialMessage
 		end,
-		[RemoteNames.Events.ProgressionUpdated] = function(payload)
-			setProgressionValue(payload)
+		setCurrentSocialMessage = function(value)
+			currentSocialMessage = value
 		end,
-		[RemoteNames.Events.SubscriptionStateChanged] = function(payload)
-			setSubscriptionStateValue(payload)
+		setCurrentShopTab = function(value)
+			currentShopTab = value
 		end,
-		[RemoteNames.Events.PersistenceStateChanged] = function(payload)
-			setPersistenceStateValue(payload)
+		setCurrentShopStatus = function(value)
+			currentShopStatus = value
 		end,
+		setCurrentInventoryStatus = function(value)
+			currentInventoryStatus = value
+		end,
+		setCurrentInventoryTab = function(value)
+			currentInventoryTab = value
+		end,
+		getActivePopup = function()
+			return activePopup
+		end,
+		setActivePopup = setActivePopup,
+		setProgressionValue = setProgressionValue,
+		setSubscriptionStateValue = setSubscriptionStateValue,
+		setPersistenceStateValue = setPersistenceStateValue,
 	})
 
 	local function applyBootstrap(bootstrap)
@@ -5638,34 +7510,18 @@ end
 		end
 	end)
 
-	local function cleanup()
-		if inputConnection then
-			inputConnection:Disconnect()
-		end
-		if promptConnection then
-			promptConnection:Disconnect()
-		end
-		if promptShownConnection then
-			promptShownConnection:Disconnect()
-		end
-		if leaderboardPlayerAddedConnection then
-			leaderboardPlayerAddedConnection:Disconnect()
-		end
-		if leaderboardPlayerRemovingConnection then
-			leaderboardPlayerRemovingConnection:Disconnect()
-		end
-		for candidate in pairs(leaderboardPlayerConnections) do
-			unbindLeaderboardPlayer(candidate)
-		end
-		if promptTween then
-			promptTween:Cancel()
-		end
-		if remoteCleanup then
-			remoteCleanup()
-		end
-	end
-
-	return cleanup
+	return createFlowCleanup(
+		inputConnection,
+		promptConnection,
+		promptShownConnection,
+		leaderboardPlayerAddedConnection,
+		leaderboardPlayerRemovingConnection,
+		leaderboardPlayerConnections,
+		unbindLeaderboardPlayer,
+		promptTween,
+		subscriptionPromptConnection,
+		remoteCleanup
+	)
 end
 
 return FlowController

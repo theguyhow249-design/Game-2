@@ -41,6 +41,26 @@ local function deepCopy(value)
 	return result
 end
 
+local function defaultActivityStats()
+	return {
+		parkourBestMs = 0,
+		rangeBestScore = 0,
+		salvageBestMs = 0,
+		trainingBestScore = 0,
+		parkourClears = 0,
+		rangeRuns = 0,
+		salvageClears = 0,
+		trainingClears = 0,
+		parkourLevel = 0,
+		rangeLevel = 0,
+		salvageLevel = 0,
+		trainingLevel = 0,
+		secrets = {},
+		achievements = {},
+		rewards = {},
+	}
+end
+
 function PersistenceService.new(context)
 	local self = setmetatable({}, PersistenceService)
 	self._tokenEconomy = context.TokenEconomy
@@ -141,12 +161,28 @@ function PersistenceService:_defaultProfile()
 			claimed = {},
 		},
 		claimedRewards = {},
-		activities = {
-			parkourBestMs = 0,
-			rangeBestScore = 0,
-			salvageBestMs = 0,
-		},
+		activities = defaultActivityStats(),
 	}
+end
+
+function PersistenceService:_applyActivityAttributes(player, activities)
+	if not player then
+		return
+	end
+
+	local stats = activities or defaultActivityStats()
+	player:SetAttribute("ParkourBestMs", math.max(0, math.floor(stats.parkourBestMs or 0)))
+	player:SetAttribute("RangeBestScore", math.max(0, math.floor(stats.rangeBestScore or 0)))
+	player:SetAttribute("SalvageBestMs", math.max(0, math.floor(stats.salvageBestMs or 0)))
+	player:SetAttribute("TrainingBestScore", math.max(0, math.floor(stats.trainingBestScore or 0)))
+	player:SetAttribute("ParkourClears", math.max(0, math.floor(stats.parkourClears or 0)))
+	player:SetAttribute("RangeRuns", math.max(0, math.floor(stats.rangeRuns or 0)))
+	player:SetAttribute("SalvageClears", math.max(0, math.floor(stats.salvageClears or 0)))
+	player:SetAttribute("TrainingClears", math.max(0, math.floor(stats.trainingClears or 0)))
+	player:SetAttribute("ParkourLevel", math.max(0, math.floor(stats.parkourLevel or 0)))
+	player:SetAttribute("RangeLevel", math.max(0, math.floor(stats.rangeLevel or 0)))
+	player:SetAttribute("SalvageLevel", math.max(0, math.floor(stats.salvageLevel or 0)))
+	player:SetAttribute("TrainingLevel", math.max(0, math.floor(stats.trainingLevel or 0)))
 end
 
 function PersistenceService:_normalizeStats(profile)
@@ -308,14 +344,13 @@ function PersistenceService:BindPlayer(player)
 	end
 
 	self._profiles[player.UserId] = profile
-	profile.activities = profile.activities or {
-		parkourBestMs = 0,
-		rangeBestScore = 0,
-		salvageBestMs = 0,
-	}
-	player:SetAttribute("ParkourBestMs", math.max(0, math.floor(profile.activities.parkourBestMs or 0)))
-	player:SetAttribute("RangeBestScore", math.max(0, math.floor(profile.activities.rangeBestScore or 0)))
-	player:SetAttribute("SalvageBestMs", math.max(0, math.floor(profile.activities.salvageBestMs or 0)))
+	profile.activities = profile.activities or defaultActivityStats()
+	for key, value in pairs(defaultActivityStats()) do
+		if profile.activities[key] == nil then
+			profile.activities[key] = deepCopy(value)
+		end
+	end
+	self:_applyActivityAttributes(player, profile.activities)
 	self:_emitPersistenceState(player)
 end
 
@@ -536,11 +571,12 @@ end
 
 function PersistenceService:GetActivityStats(player)
 	local profile = self:GetProfile(player)
-	profile.activities = profile.activities or {
-		parkourBestMs = 0,
-		rangeBestScore = 0,
-		salvageBestMs = 0,
-	}
+	profile.activities = profile.activities or defaultActivityStats()
+	for key, value in pairs(defaultActivityStats()) do
+		if profile.activities[key] == nil then
+			profile.activities[key] = deepCopy(value)
+		end
+	end
 	return profile.activities
 end
 
@@ -548,15 +584,15 @@ function PersistenceService:SetActivityStat(player, statName, amount)
 	local stats = self:GetActivityStats(player)
 	local value = math.max(0, math.floor(amount or 0))
 	stats[statName] = value
-	if statName == "parkourBestMs" then
-		player:SetAttribute("ParkourBestMs", value)
-	elseif statName == "rangeBestScore" then
-		player:SetAttribute("RangeBestScore", value)
-	elseif statName == "salvageBestMs" then
-		player:SetAttribute("SalvageBestMs", value)
-	end
+	self:_applyActivityAttributes(player, stats)
 	self:_markDirty(player.UserId)
 	return value
+end
+
+function PersistenceService:IncrementActivityStat(player, statName, amount)
+	local stats = self:GetActivityStats(player)
+	local current = math.max(0, math.floor(stats[statName] or 0))
+	return self:SetActivityStat(player, statName, current + math.floor(amount or 0))
 end
 
 function PersistenceService:UpdateActivityBest(player, statName, amount, lowerIsBetter)
@@ -573,6 +609,20 @@ function PersistenceService:UpdateActivityBest(player, statName, amount, lowerIs
 		current = self:SetActivityStat(player, statName, candidate)
 	end
 	return improved, current
+end
+
+function PersistenceService:HasActivityFlag(player, bucketName, flagName)
+	local stats = self:GetActivityStats(player)
+	local bucket = stats[bucketName]
+	return type(bucket) == "table" and bucket[flagName] == true
+end
+
+function PersistenceService:SetActivityFlag(player, bucketName, flagName, value)
+	local stats = self:GetActivityStats(player)
+	stats[bucketName] = type(stats[bucketName]) == "table" and stats[bucketName] or {}
+	stats[bucketName][flagName] = value == true
+	self:_markDirty(player.UserId)
+	return stats[bucketName][flagName]
 end
 
 function PersistenceService:SavePlayer(player)

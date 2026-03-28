@@ -25,6 +25,7 @@ end
 function RoleService.new(_context)
 	local self = setmetatable({}, RoleService)
 	self._gamePassService = _context.GamePassService
+	self._subscriptionService = _context.SubscriptionService
 	self._grants = {}
 	self._accessStore = nil
 	local ok, store = pcall(function()
@@ -165,6 +166,7 @@ function RoleService:GetIdentity(player)
 	local isModerator = hasUserId(ROLE_OVERRIDES.ModeratorUserIds, userId) or grantRole == "moderator"
 	local isAdmin = isOwner or hasUserId(ROLE_OVERRIDES.AdminUserIds, userId) or grantRole == "admin" or RunService:IsStudio()
 	local vipOwned = self._gamePassService and self._gamePassService:HasPass(player, "vip_operation")
+	local supporterActive = self._subscriptionService and self._subscriptionService:IsActive(player)
 	if isOwner then
 		identity.title = "Creator / Owner"
 		identity.badge = "OWNER"
@@ -178,6 +180,9 @@ function RoleService:GetIdentity(player)
 		identity.title = "Moderator"
 		identity.badge = "MOD"
 		identity.isModerator = true
+	elseif supporterActive then
+		identity.title = "Bunker Supporter"
+		identity.badge = "SUPPORT"
 	elseif vipOwned then
 		identity.title = "VIP Operator"
 		identity.badge = "VIP"

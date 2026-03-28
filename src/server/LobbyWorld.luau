@@ -324,19 +324,19 @@ end
 
 local LEADERBOARD_MASTER_PPS = 16
 local LEADERBOARD_MASTER_WINDOW_BUTTONS = {
-	{ name = "AllTimeWindow", controlName = "AllTimeButton", text = "All Time", x = 24, y = 84, width = 104, height = 26 },
-	{ name = "MonthlyWindow", controlName = "MonthlyButton", text = "Monthly", x = 136, y = 84, width = 98, height = 26 },
-	{ name = "WeeklyWindow", controlName = "WeeklyButton", text = "Weekly", x = 242, y = 84, width = 92, height = 26 },
-	{ name = "DailyWindow", controlName = "DailyButton", text = "Daily", x = 342, y = 84, width = 84, height = 26 },
+	{ name = "AllTimeWindow", controlName = "AllTimeButton", text = "All Time", x = 24, y = 70, width = 86, height = 22 },
+	{ name = "MonthlyWindow", controlName = "MonthlyButton", text = "Monthly", x = 118, y = 70, width = 82, height = 22 },
+	{ name = "WeeklyWindow", controlName = "WeeklyButton", text = "Weekly", x = 208, y = 70, width = 78, height = 22 },
+	{ name = "DailyWindow", controlName = "DailyButton", text = "Daily", x = 294, y = 70, width = 72, height = 22 },
 }
 local LEADERBOARD_MASTER_CATEGORY_TABS = {
-	{ name = "LevelsTab", controlName = "LevelsButton", text = "All Levels", key = "Levels", x = 24, y = 118, width = 128, height = 26 },
-	{ name = "RunsTab", controlName = "RunsButton", text = "Runs", key = "Runs", x = 164, y = 118, width = 98, height = 26 },
-	{ name = "KillsTab", controlName = "KillsButton", text = "Kills", key = "Kills", x = 278, y = 118, width = 98, height = 26 },
+	{ name = "LevelsTab", controlName = "LevelsButton", text = "Levels", key = "Levels", x = 24, y = 98, width = 88, height = 22 },
+	{ name = "RunsTab", controlName = "RunsButton", text = "Runs", key = "Runs", x = 122, y = 98, width = 72, height = 22 },
+	{ name = "KillsTab", controlName = "KillsButton", text = "Kills", key = "Kills", x = 204, y = 98, width = 72, height = 22 },
 }
 local LEADERBOARD_MASTER_SCROLL_BUTTONS = {
-	{ name = "ScrollUpButton", x = 556, y = 182, width = 32, height = 78 },
-	{ name = "ScrollDownButton", x = 556, y = 264, width = 32, height = 78 },
+	{ name = "ScrollUpButton", x = 556, y = 232, width = 30, height = 64 },
+	{ name = "ScrollDownButton", x = 556, y = 300, width = 30, height = 64 },
 }
 
 local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects)
@@ -411,36 +411,36 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 	local header = Instance.new("TextLabel")
 	header.Name = "Header"
 	header.BackgroundTransparency = 1
-	header.Position = UDim2.fromOffset(44, 18)
+	header.Position = UDim2.fromOffset(44, 16)
 	header.Size = UDim2.new(1, -72, 0, 30)
 	header.Font = Enum.Font.GothamBlack
 	header.Text = "Top Operators"
 	header.TextColor3 = Color3.fromRGB(44, 34, 18)
-	header.TextSize = 26
+	header.TextSize = 24
 	header.TextXAlignment = Enum.TextXAlignment.Center
 	header.Parent = frame
 
 	local subheader = Instance.new("TextLabel")
 	subheader.Name = "Subheader"
 	subheader.BackgroundTransparency = 1
-	subheader.Position = UDim2.fromOffset(24, 56)
+	subheader.Position = UDim2.fromOffset(24, 48)
 	subheader.Size = UDim2.new(1, -168, 0, 18)
 	subheader.Font = Enum.Font.GothamBold
 	subheader.Text = "GLOBAL ALL-TIME • TOP 100"
 	subheader.TextColor3 = Color3.fromRGB(96, 78, 54)
-	subheader.TextSize = 14
+	subheader.TextSize = 12
 	subheader.TextXAlignment = Enum.TextXAlignment.Left
 	subheader.Parent = frame
 
 	local countdown = Instance.new("TextLabel")
 	countdown.Name = "Countdown"
 	countdown.BackgroundTransparency = 1
-	countdown.Position = UDim2.new(1, -164, 0, 52)
-	countdown.Size = UDim2.fromOffset(136, 20)
+	countdown.Position = UDim2.new(1, -154, 0, 48)
+	countdown.Size = UDim2.fromOffset(128, 18)
 	countdown.Font = Enum.Font.GothamBlack
 	countdown.Text = "REFRESH IN 60s"
 	countdown.TextColor3 = Color3.fromRGB(88, 82, 70)
-	countdown.TextSize = 14
+	countdown.TextSize = 12
 	countdown.TextXAlignment = Enum.TextXAlignment.Right
 	countdown.Parent = frame
 
@@ -455,7 +455,7 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 		button.Font = Enum.Font.GothamBold
 		button.Text = info.text
 		button.TextColor3 = Color3.fromRGB(58, 48, 34)
-		button.TextSize = 14
+		button.TextSize = 12
 		button.Parent = frame
 
 		local buttonCorner = Instance.new("UICorner")
@@ -480,7 +480,7 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 		tab.Font = Enum.Font.GothamBold
 		tab.Text = info.text
 		tab.TextColor3 = Color3.fromRGB(58, 48, 34)
-		tab.TextSize = 14
+		tab.TextSize = 12
 		tab.Parent = frame
 
 		local tabCorner = Instance.new("UICorner")
@@ -509,35 +509,248 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 	rule.BackgroundColor3 = Color3.fromRGB(210, 184, 108)
 	rule.BackgroundTransparency = 0.08
 	rule.BorderSizePixel = 0
-	rule.Position = UDim2.fromOffset(24, 152)
+	rule.Position = UDim2.fromOffset(24, 128)
 	rule.Size = UDim2.new(1, -48, 0, 2)
 	rule.Parent = frame
 
+	local podium = Instance.new("Frame")
+	podium.Name = "TopThree"
+	podium.BackgroundTransparency = 1
+	podium.Position = UDim2.fromOffset(24, 138)
+	local leaderboardLayout = Config.LeaderboardLayout
+	local podiumLayout = leaderboardLayout.Podium
+	local listLayout = leaderboardLayout.List
+	podium.Size = podiumLayout.Size
+	podium.ClipsDescendants = true
+	podium.Parent = frame
+
+	for _, info in ipairs({
+		{ name = "FirstCard", rank = 1 },
+		{ name = "SecondCard", rank = 2 },
+		{ name = "ThirdCard", rank = 3 },
+	}) do
+		local layout = podiumLayout.Cards[info.name]
+		local compact = layout.height <= 72
+		local ultraCompact = compact and layout.width <= 140
+		local card = Instance.new("Frame")
+		card.Name = info.name
+		card.BackgroundColor3 = Color3.fromRGB(246, 242, 232)
+		card.BackgroundTransparency = 0.02
+		card.BorderSizePixel = 0
+		card.Position = UDim2.fromOffset(layout.x, layout.y)
+		card.Size = UDim2.fromOffset(layout.width, layout.height)
+		card.Parent = podium
+
+		local cardCorner = Instance.new("UICorner")
+		cardCorner.CornerRadius = UDim.new(0, compact and 10 or 12)
+		cardCorner.Parent = card
+
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Name = "Stroke"
+		cardStroke.Color = layout.accent
+		cardStroke.Transparency = compact and 0.26 or 0.2
+		cardStroke.Thickness = compact and 1 or 1.4
+		cardStroke.Parent = card
+
+		local cardGradient = Instance.new("UIGradient")
+		cardGradient.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(252, 249, 241)),
+			ColorSequenceKeypoint.new(0.65, Color3.fromRGB(244, 239, 229)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(238, 231, 218)),
+		})
+		cardGradient.Rotation = 90
+		cardGradient.Parent = card
+
+		local accent = Instance.new("Frame")
+		accent.Name = "Accent"
+		accent.BackgroundColor3 = layout.accent
+		accent.BorderSizePixel = 0
+		accent.Position = UDim2.fromOffset(0, 0)
+		accent.Size = UDim2.new(0, compact and 4 or 6, 1, 0)
+		accent.Parent = card
+
+		local accentGlow = Instance.new("Frame")
+		accentGlow.Name = "AccentGlow"
+		accentGlow.BackgroundColor3 = layout.accent
+		accentGlow.BackgroundTransparency = compact and 0.95 or 0.92
+		accentGlow.BorderSizePixel = 0
+		accentGlow.Position = UDim2.fromOffset(compact and 6 or 8, compact and (ultraCompact and 6 or 8) or 12)
+		accentGlow.Size = UDim2.new(1, compact and -12 or -16, 0, compact and (ultraCompact and 12 or 16) or 22)
+		accentGlow.Parent = card
+
+		local accentGlowCorner = Instance.new("UICorner")
+		accentGlowCorner.CornerRadius = UDim.new(0, 8)
+		accentGlowCorner.Parent = accentGlow
+
+		local crest = Instance.new("Frame")
+		crest.Name = "AvatarFrame"
+		crest.BackgroundColor3 = layout.accent
+		crest.BackgroundTransparency = 0.9
+		crest.BorderSizePixel = 0
+		crest.Position = UDim2.fromOffset(compact and 8 or 12, compact and (ultraCompact and 7 or 10) or 12)
+		crest.Size = UDim2.fromOffset(compact and (ultraCompact and 30 or 38) or 54, compact and (ultraCompact and 30 or 38) or 54)
+		crest.Parent = card
+
+		local crestCorner = Instance.new("UICorner")
+		crestCorner.CornerRadius = UDim.new(0, compact and 10 or 14)
+		crestCorner.Parent = crest
+
+		local crestStroke = Instance.new("UIStroke")
+		crestStroke.Color = layout.accent
+		crestStroke.Transparency = compact and 0.3 or 0.18
+		crestStroke.Thickness = 1.2
+		crestStroke.Parent = crest
+
+		local avatar = Instance.new("ImageLabel")
+		avatar.Name = "Avatar"
+		avatar.BackgroundTransparency = 1
+		avatar.Position = UDim2.fromOffset(4, 4)
+		avatar.Size = UDim2.new(1, -8, 1, -8)
+		avatar.Image = ""
+		avatar.ScaleType = Enum.ScaleType.Crop
+		avatar.Parent = crest
+
+		local avatarCorner = Instance.new("UICorner")
+		avatarCorner.CornerRadius = UDim.new(1, 0)
+		avatarCorner.Parent = avatar
+
+		local title = Instance.new("TextLabel")
+		title.Name = "Title"
+		title.BackgroundTransparency = 1
+		title.Position = UDim2.fromOffset(compact and (ultraCompact and 46 or 56) or 78, compact and (ultraCompact and 7 or 10) or 14)
+		title.Size = UDim2.new(1, compact and (ultraCompact and -92 or -114) or -132, 0, compact and 18 or 24)
+		title.Font = Enum.Font.GothamBlack
+		title.Text = "Awaiting Operator"
+		title.TextColor3 = Color3.fromRGB(54, 42, 26)
+		title.TextSize = compact and (ultraCompact and 10 or 12) or (layout.width > 240 and 18 or 15)
+		title.TextXAlignment = Enum.TextXAlignment.Left
+		title.Parent = card
+
+		local subtitle = Instance.new("TextLabel")
+		subtitle.Name = "Subtitle"
+		subtitle.BackgroundTransparency = 1
+		subtitle.Position = UDim2.fromOffset(compact and (ultraCompact and 46 or 56) or 78, compact and (ultraCompact and 22 or 28) or 42)
+		subtitle.Size = UDim2.new(1, compact and (ultraCompact and -92 or -114) or -132, 0, compact and (ultraCompact and 12 or 14) or 18)
+		subtitle.Font = Enum.Font.GothamBold
+		subtitle.Text = "No record yet"
+		subtitle.TextColor3 = Color3.fromRGB(112, 96, 72)
+		subtitle.TextSize = compact and (ultraCompact and 8 or 9) or (layout.width > 240 and 11 or 10)
+		subtitle.TextXAlignment = Enum.TextXAlignment.Left
+		subtitle.Parent = card
+
+		local value = Instance.new("TextLabel")
+		value.Name = "Value"
+		value.BackgroundTransparency = 1
+		value.Position = UDim2.fromOffset(14, compact and (ultraCompact and 30 or 40) or 68)
+		value.Size = UDim2.new(1, -28, 0, 28)
+		value.Font = Enum.Font.GothamBlack
+		value.Text = "-"
+		value.TextColor3 = Color3.fromRGB(44, 34, 18)
+		value.TextSize = compact and (ultraCompact and 9 or 11) or (layout.width > 240 and 20 or 17)
+		value.TextXAlignment = Enum.TextXAlignment.Left
+		value.Parent = card
+
+		local valueLabel = Instance.new("TextLabel")
+		valueLabel.Name = "ValueLabel"
+		valueLabel.BackgroundTransparency = 1
+		valueLabel.Position = UDim2.fromOffset(16, compact and (ultraCompact and 40 or 50) or 94)
+		valueLabel.Size = UDim2.new(1, compact and (ultraCompact and -84 or -94) or -120, 0, 16)
+		valueLabel.Font = Enum.Font.GothamBold
+		valueLabel.Text = "TRACKED VALUE"
+		valueLabel.TextColor3 = Color3.fromRGB(118, 102, 76)
+		valueLabel.TextSize = compact and (ultraCompact and 7 or 8) or 9
+		valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+		valueLabel.Parent = card
+
+		local rankChip = Instance.new("Frame")
+		rankChip.Name = "RankChip"
+		rankChip.BackgroundColor3 = layout.accent
+		rankChip.BackgroundTransparency = compact and 0.94 or 0.91
+		rankChip.BorderSizePixel = 0
+		rankChip.Position = UDim2.new(1, compact and (ultraCompact and -48 or -62) or -88, 0, compact and (ultraCompact and 8 or 10) or 12)
+		rankChip.Size = UDim2.fromOffset(compact and (ultraCompact and 38 or 50) or 74, compact and (ultraCompact and 16 or 18) or 24)
+		rankChip.Parent = card
+
+		local rankChipCorner = Instance.new("UICorner")
+		rankChipCorner.CornerRadius = UDim.new(0, compact and 9 or 12)
+		rankChipCorner.Parent = rankChip
+
+		local rankChipStroke = Instance.new("UIStroke")
+		rankChipStroke.Color = layout.accent
+		rankChipStroke.Transparency = compact and 0.24 or 0.16
+		rankChipStroke.Thickness = 1.1
+		rankChipStroke.Parent = rankChip
+
+		local rank = Instance.new("TextLabel")
+		rank.Name = "Rank"
+		rank.BackgroundTransparency = 1
+		rank.Position = UDim2.new(1, compact and (ultraCompact and -44 or -58) or -84, 0, compact and (ultraCompact and 7 or 9) or 13)
+		rank.Size = UDim2.fromOffset(compact and (ultraCompact and 34 or 42) or 66, compact and (ultraCompact and 16 or 18) or 22)
+		rank.Font = Enum.Font.GothamBlack
+		rank.Text = "#" .. tostring(info.rank)
+		rank.TextColor3 = layout.accent
+		rank.TextSize = compact and (ultraCompact and 9 or 11) or 15
+		rank.TextXAlignment = Enum.TextXAlignment.Center
+		rank.Parent = card
+
+		local glow = Instance.new("Frame")
+		glow.Name = "Glow"
+		glow.BackgroundColor3 = layout.glow
+		glow.BackgroundTransparency = compact and 0.96 or 0.93
+		glow.BorderSizePixel = 0
+		glow.Position = UDim2.fromOffset(12, compact and (ultraCompact and 44 or 56) or 100)
+		glow.Size = UDim2.new(1, -24, 0, compact and (ultraCompact and 4 or 6) or 10)
+		glow.Parent = card
+	end
+
+	local listSectionLabel = Instance.new("TextLabel")
+	listSectionLabel.Name = "ListSectionLabel"
+	listSectionLabel.BackgroundTransparency = 1
+	listSectionLabel.Position = UDim2.fromOffset(24, listLayout.HeaderY - 18)
+	listSectionLabel.Size = UDim2.new(1, -48, 0, 14)
+	listSectionLabel.Font = Enum.Font.GothamBold
+	listSectionLabel.Text = "RANKED OPERATORS  #4-100"
+	listSectionLabel.TextColor3 = Color3.fromRGB(124, 106, 78)
+	listSectionLabel.TextSize = 9
+	listSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+	listSectionLabel.Parent = frame
+
 	local headerRow = Instance.new("TextLabel")
 	headerRow.Name = "ListHeader"
-	headerRow.BackgroundTransparency = 1
-	headerRow.Position = UDim2.fromOffset(24, 160)
-	headerRow.Size = UDim2.new(1, -48, 0, 18)
-	headerRow.Font = Enum.Font.GothamBold
-	headerRow.Text = "#   Username                              Score"
-	headerRow.TextColor3 = Color3.fromRGB(40, 38, 34)
-	headerRow.TextSize = 14
+	headerRow.BackgroundColor3 = Color3.fromRGB(239, 233, 220)
+	headerRow.BackgroundTransparency = 0.12
+	headerRow.Position = UDim2.fromOffset(24, listLayout.HeaderY)
+	headerRow.Size = UDim2.new(1, -48, 0, listLayout.HeaderHeight)
+	headerRow.Font = Enum.Font.RobotoMono
+	headerRow.Text = "#  USERNAME                          SCORE"
+	headerRow.TextColor3 = Color3.fromRGB(54, 48, 36)
+	headerRow.TextSize = 13
 	headerRow.TextXAlignment = Enum.TextXAlignment.Left
 	headerRow.Parent = frame
 
-	for index = 0, 4 do
+	local headerCorner = Instance.new("UICorner")
+	headerCorner.CornerRadius = UDim.new(0, 8)
+	headerCorner.Parent = headerRow
+
+	local headerStroke = Instance.new("UIStroke")
+	headerStroke.Color = Color3.fromRGB(194, 186, 170)
+	headerStroke.Transparency = 0.42
+	headerStroke.Thickness = 1
+	headerStroke.Parent = headerRow
+
+	for index = 0, listLayout.SlotCount - 1 do
 		local slot = Instance.new("Frame")
 		slot.Name = "RankSlot" .. tostring(index + 1)
 		slot.BackgroundColor3 = index % 2 == 0 and Color3.fromRGB(248, 246, 240) or Color3.fromRGB(238, 234, 226)
-		slot.BackgroundTransparency = 0.16
+		slot.BackgroundTransparency = 0.2
 		slot.BorderSizePixel = 0
-		slot.Position = UDim2.fromOffset(18, 184 + (index * 90))
-		slot.Size = UDim2.new(1, -36, 0, 74)
+		slot.Position = UDim2.fromOffset(18, listLayout.SlotStartY + (index * listLayout.SlotSpacing))
+		slot.Size = UDim2.new(1, -36, 0, 62)
 		slot.Parent = frame
 
 		local slotStroke = Instance.new("UIStroke")
 		slotStroke.Color = Color3.fromRGB(194, 186, 170)
-		slotStroke.Transparency = 0.58
+		slotStroke.Transparency = 0.64
 		slotStroke.Thickness = 1
 		slotStroke.Parent = slot
 	end
@@ -546,11 +759,11 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 	scroll.Name = "BodyScroll"
 	scroll.BackgroundTransparency = 1
 	scroll.BorderSizePixel = 0
-	scroll.Position = UDim2.fromOffset(24, 182)
-	scroll.Size = UDim2.new(1, -48, 1, -198)
+	scroll.Position = UDim2.fromOffset(24, listLayout.ScrollY)
+	scroll.Size = UDim2.new(1, -48, 1, -listLayout.ScrollBottomPadding)
 	scroll.CanvasSize = UDim2.fromOffset(0, 0)
-	scroll.ScrollBarThickness = 8
-	scroll.ScrollBarImageColor3 = Color3.fromRGB(168, 156, 132)
+	scroll.ScrollBarThickness = 10
+	scroll.ScrollBarImageColor3 = Color3.fromRGB(176, 154, 112)
 	scroll.Active = true
 	scroll.Parent = frame
 
@@ -559,14 +772,14 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 	body.BackgroundTransparency = 1
 	body.Position = UDim2.fromOffset(10, 6)
 	body.Size = UDim2.new(1, -20, 0, 1200)
-	body.Font = Enum.Font.GothamMedium
+	body.Font = Enum.Font.RobotoMono
 	body.Text = "Loading..."
 	body.RichText = true
 	body.TextWrapped = true
 	body.TextYAlignment = Enum.TextYAlignment.Top
 	body.TextXAlignment = Enum.TextXAlignment.Left
 	body.TextColor3 = Color3.fromRGB(38, 36, 32)
-	body.TextSize = 18
+	body.TextSize = 16
 	body.Parent = scroll
 
 		local bodyGradient = Instance.new("UIGradient")
@@ -641,6 +854,37 @@ local function addTeleportPrompt(parent: Instance, name: string, actionText: str
 	return prompt
 end
 
+local function addPremiumTeleportPrompt(parent: Instance, name: string, actionText: string, objectText: string, destination: BasePart, requiredAttribute: string, requiredAttributeFlag: string, offset: Vector3?, maxDistance: number?)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = name
+	prompt.ActionText = actionText
+	prompt.ObjectText = objectText
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0
+	prompt.RequiresLineOfSight = false
+	prompt.MaxActivationDistance = maxDistance or 12
+	prompt:SetAttribute(requiredAttributeFlag, true)
+	prompt:SetAttribute("UnlockedActionText", actionText)
+	prompt:SetAttribute("UnlockedObjectText", objectText)
+	if requiredAttributeFlag == "RequiresSupporter" then
+		prompt:SetAttribute("LockedActionText", "Supporter Locked")
+		prompt:SetAttribute("LockedObjectText", "Bunker Supporter Required")
+	elseif requiredAttributeFlag == "RequiresVip" then
+		prompt:SetAttribute("LockedActionText", "VIP Locked")
+		prompt:SetAttribute("LockedObjectText", "VIP Access Required")
+	end
+	prompt.Parent = parent
+
+	prompt.Triggered:Connect(function(player)
+		if not player or player:GetAttribute(requiredAttribute) ~= true then
+			return
+		end
+		teleportPlayerToPart(player, destination, offset)
+	end)
+
+	return prompt
+end
+
 local function addTravelPad(root: Instance, name: string, position: Vector3, palette, destination: BasePart?, actionText: string, objectText: string, subtitle: string?, offset: Vector3?)
 	local node = Instance.new("Model")
 	node.Name = name
@@ -680,21 +924,6 @@ local function addTravelPad(root: Instance, name: string, position: Vector3, pal
 	)
 	pad.CanCollide = false
 	pad.CanQuery = false
-
-	local sign = makePart(
-		node,
-		"Part",
-		"Sign",
-		Vector3.new(10, 0.8, 0.5),
-		CFrame.new(position + Vector3.new(0, 3.2, 3.8)),
-		Color3.fromRGB(44, 50, 58),
-		Enum.Material.Metal
-	)
-	sign.CanCollide = false
-	sign.CanQuery = false
-
-	attachLabel(sign, actionText:upper(), subtitle or objectText, palette.Accent)
-	attachWorldText(pad, actionText:upper(), Vector3.new(0, 1.95, 0), palette.Accent, Vector2.new(110, 24))
 
 	if transitStyle == "training" then
 		local lane = makeGlowPart(
@@ -786,10 +1015,84 @@ local function addTravelPad(root: Instance, name: string, position: Vector3, pal
 			)
 			pylon.CanQuery = false
 		end
+	elseif transitStyle == "supporter" then
+		local loungeDeck = makePart(
+			node,
+			"Part",
+			"SupporterDeck",
+			Vector3.new(12, 0.2, 12),
+			CFrame.new(position + Vector3.new(0, 0.56, 0)),
+			Color3.fromRGB(108, 88, 54),
+			Enum.Material.WoodPlanks
+		)
+		loungeDeck.CanCollide = false
+		loungeDeck.CanQuery = false
+		local deckGlow = makeGlowPart(
+			node,
+			"SupporterDeckGlow",
+			Vector3.new(8.4, 0.06, 2.2),
+			CFrame.new(position + Vector3.new(0, 0.68, 1.4)),
+			Color3.fromRGB(248, 222, 138),
+			0.78
+		)
+		deckGlow.CanCollide = false
+		deckGlow.CanQuery = false
+		for _, x in ipairs({ -4.6, 4.6 }) do
+			local post = makePart(
+				node,
+				"Part",
+				"SupporterPost",
+				Vector3.new(0.9, 3.2, 0.9),
+				CFrame.new(position + Vector3.new(x, 1.74, 2.8)),
+				Color3.fromRGB(112, 90, 56),
+				Enum.Material.Metal
+			)
+			post.CanQuery = false
+		end
+	elseif transitStyle == "vip" then
+		local apron = makePart(
+			node,
+			"Part",
+			"VipApron",
+			Vector3.new(12, 0.2, 12),
+			CFrame.new(position + Vector3.new(0, 0.56, 0)),
+			Color3.fromRGB(74, 90, 122),
+			Enum.Material.Metal
+		)
+		apron.CanCollide = false
+		apron.CanQuery = false
+		local laneGlow = makeGlowPart(
+			node,
+			"VipApronGlow",
+			Vector3.new(8.2, 0.06, 2.0),
+			CFrame.new(position + Vector3.new(0, 0.68, 1.6)),
+			Color3.fromRGB(186, 220, 255),
+			0.8
+		)
+		laneGlow.CanCollide = false
+		laneGlow.CanQuery = false
+		for _, x in ipairs({ -4.8, 4.8 }) do
+			local post = makePart(
+				node,
+				"Part",
+				"VipPost",
+				Vector3.new(1.0, 3.2, 1.0),
+				CFrame.new(position + Vector3.new(x, 1.74, 2.8)),
+				Color3.fromRGB(90, 108, 146),
+				Enum.Material.Metal
+			)
+			post.CanQuery = false
+		end
 	end
 
 	if destination then
-		addTeleportPrompt(pad, name .. "Prompt", actionText, objectText, destination, offset or Vector3.new(0, 4, 0), 14)
+		if palette.RequiresSupporter == true then
+			addPremiumTeleportPrompt(pad, name .. "Prompt", actionText, objectText, destination, "SubscriptionActive", "RequiresSupporter", offset or Vector3.new(0, 4, 0), 14)
+		elseif palette.RequiresVip == true then
+			addPremiumTeleportPrompt(pad, name .. "Prompt", actionText, objectText, destination, "GamePassVipOperation", "RequiresVip", offset or Vector3.new(0, 4, 0), 14)
+		else
+			addTeleportPrompt(pad, name .. "Prompt", actionText, objectText, destination, offset or Vector3.new(0, 4, 0), 14)
+		end
 	end
 
 	return node
@@ -810,6 +1113,9 @@ local function makeTrainingYard(root: Instance, worldPosition: Vector3, palette,
 
 	local backWall = makePart(yard, "Part", "BackWall", Vector3.new(32, 8, 2), CFrame.new(worldPosition + Vector3.new(0, 4, 12)), Color3.fromRGB(48, 54, 62), Enum.Material.Metal)
 	backWall.CanQuery = false
+	local backWallSign = makePart(yard, "Part", "BackWallSign", Vector3.new(18, 1.1, 0.4), backWall.CFrame * CFrame.new(0, 1.7, -1.18), Color3.fromRGB(64, 72, 84), Enum.Material.Metal)
+	backWallSign.CanCollide = false
+	backWallSign.CanQuery = false
 	local leftFence = makePart(yard, "Part", "LeftFence", Vector3.new(2, 6, 24), CFrame.new(worldPosition + Vector3.new(-15, 3, -2)), Color3.fromRGB(64, 70, 80), Enum.Material.Metal)
 	leftFence.CanQuery = false
 	local rightFence = makePart(yard, "Part", "RightFence", Vector3.new(2, 6, 24), CFrame.new(worldPosition + Vector3.new(15, 3, -2)), Color3.fromRGB(64, 70, 80), Enum.Material.Metal)
@@ -835,22 +1141,36 @@ local function makeTrainingYard(root: Instance, worldPosition: Vector3, palette,
 
 		local hurdle = makePart(yard, "Part", "Hurdle" .. tostring(lane + 2), Vector3.new(4.8, 1.2, 0.8), CFrame.new(worldPosition + Vector3.new(laneX, 1.2, -5.8)), Color3.fromRGB(96, 82, 58), Enum.Material.WoodPlanks)
 		hurdle.CanQuery = false
+		local hurdleTrigger = makePart(yard, "Part", "HurdleTrigger" .. tostring(lane + 2), Vector3.new(5.6, 3.2, 3.4), CFrame.new(worldPosition + Vector3.new(laneX, 2.0, -4.6)), Color3.fromRGB(255, 255, 255), Enum.Material.ForceField)
+		hurdleTrigger.Transparency = 1
+		hurdleTrigger.CanCollide = false
+		hurdleTrigger.CanQuery = false
 	end
 
 	local benchLeft = makePart(yard, "Part", "BenchLeft", Vector3.new(6, 1.2, 2), CFrame.new(worldPosition + Vector3.new(-10.4, 1.2, 12.4)), Color3.fromRGB(98, 82, 58), Enum.Material.WoodPlanks)
 	benchLeft.CanQuery = false
 	local benchRight = makePart(yard, "Part", "BenchRight", Vector3.new(6, 1.2, 2), CFrame.new(worldPosition + Vector3.new(10.4, 1.2, 12.4)), Color3.fromRGB(98, 82, 58), Enum.Material.WoodPlanks)
 	benchRight.CanQuery = false
+	local trainingSecret = makeGlowPart(yard, "TrainingSecret", Vector3.new(1.2, 1.2, 1.2), CFrame.new(worldPosition + Vector3.new(13.2, 2.2, 11.2)), Color3.fromRGB(214, 162, 255), 0.34)
+	trainingSecret.CanCollide = false
+	trainingSecret.CanQuery = false
 
 	local returnPad = makePart(yard, "Part", "ReturnPad", Vector3.new(8, 0.24, 6), CFrame.new(worldPosition + Vector3.new(0, 0.84, 13.4)), Color3.fromRGB(70, 76, 84), Enum.Material.Metal)
 	returnPad.CanCollide = false
 	returnPad.CanQuery = false
 
-	attachLabel(backWall, "TRAINING YARD", "Warm up movement and range control", palette.Accent)
-	attachWorldText(entryPad, "TRAIN", Vector3.new(0, 2.2, 0), palette.Accent, Vector2.new(116, 28))
-	attachWorldText(returnPad, "RETURN", Vector3.new(0, 2.1, 0), Color3.fromRGB(224, 232, 242), Vector2.new(110, 26))
+	attachLabel(backWallSign, "TRAINING YARD", "Warm up movement and range control", palette.Accent)
+	attachWorldText(returnPad, "RETURN", Vector3.new(0, 1.74, 0), Color3.fromRGB(224, 232, 242), Vector2.new(84, 20))
 
-	addTeleportPrompt(entryPad, "TrainingEnterPrompt", "Train", "Training Yard", entryPad, Vector3.new(0, 4, 6), 14)
+	local trainingPrompt = Instance.new("ProximityPrompt")
+	trainingPrompt.Name = "TrainingEnterPrompt"
+	trainingPrompt.ActionText = "Start Drill"
+	trainingPrompt.ObjectText = "Training Yard"
+	trainingPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	trainingPrompt.HoldDuration = 0
+	trainingPrompt.RequiresLineOfSight = false
+	trainingPrompt.MaxActivationDistance = 14
+	trainingPrompt.Parent = entryPad
 	addTeleportPrompt(returnPad, "TrainingReturnPrompt", "Return", "Main Plaza", lobbyReturnPart or base, Vector3.new(0, 4, 0), 14)
 
 	return yard
@@ -890,15 +1210,28 @@ local function makeParkourCourse(root: Instance, worldPosition: Vector3, palette
 
 	local finishTower = makePart(course, "Part", "FinishTower", Vector3.new(8, 12, 8), CFrame.new(worldPosition + Vector3.new(-16, 6, 10)), Color3.fromRGB(60, 66, 82), Enum.Material.Metal)
 	finishTower.CanQuery = false
+	local finishBanner = makePart(course, "Part", "FinishBanner", Vector3.new(10, 1.1, 0.5), finishTower.CFrame * CFrame.new(0, 2.1, -4.24), Color3.fromRGB(72, 80, 96), Enum.Material.Metal)
+	finishBanner.CanCollide = false
+	finishBanner.CanQuery = false
 	local finishPad = makePart(course, "Part", "FinishPad", Vector3.new(8, 1, 8), finishTower.CFrame * CFrame.new(0, 6.5, 0), Color3.fromRGB(92, 106, 146), Enum.Material.DiamondPlate)
 	finishPad.CanQuery = false
 	makeGlowPart(course, "FinishGlow", Vector3.new(8.4, 0.08, 8.4), finishPad.CFrame * CFrame.new(0, 0.54, 0), palette.Accent, 0.56)
+	local parkourSecret = makeGlowPart(course, "ParkourSecret", Vector3.new(1.2, 1.2, 1.2), finishTower.CFrame * CFrame.new(0, 8.9, 0), Color3.fromRGB(214, 162, 255), 0.34)
+	parkourSecret.CanCollide = false
+	parkourSecret.CanQuery = false
 
-	attachLabel(finishTower, "PARKOUR LINE", "Run the blocks and claim the roof", palette.Accent)
-	attachWorldText(startPad, "START", Vector3.new(0, 2.1, 0), palette.Accent, Vector2.new(110, 26))
-	attachWorldText(returnPad, "RETURN", Vector3.new(0, 2.1, 0), Color3.fromRGB(224, 232, 242), Vector2.new(110, 26))
+	attachLabel(finishBanner, "PARKOUR LINE", "Run the blocks and claim the roof", palette.Accent)
+	attachWorldText(returnPad, "RETURN", Vector3.new(0, 1.74, 0), Color3.fromRGB(224, 232, 242), Vector2.new(84, 20))
 
-	addTeleportPrompt(startPad, "ParkourStartPrompt", "Run Course", "Parkour Line", startPad, Vector3.new(0, 4, 0), 14)
+	local parkourPrompt = Instance.new("ProximityPrompt")
+	parkourPrompt.Name = "ParkourStartPrompt"
+	parkourPrompt.ActionText = "Run Course"
+	parkourPrompt.ObjectText = "Parkour Line"
+	parkourPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	parkourPrompt.HoldDuration = 0
+	parkourPrompt.RequiresLineOfSight = false
+	parkourPrompt.MaxActivationDistance = 14
+	parkourPrompt.Parent = startPad
 	addTeleportPrompt(returnPad, "ParkourReturnPrompt", "Return", "Main Plaza", lobbyReturnPart or base, Vector3.new(0, 4, 0), 14)
 
 	return course
@@ -952,13 +1285,13 @@ local function makeDuelRing(root: Instance, worldPosition: Vector3, palette)
 	returnPad.CanCollide = false
 	returnPad.CanQuery = false
 
-	local banner = makePart(ring, "Part", "Banner", Vector3.new(14, 1.2, 0.6), CFrame.new(worldPosition + Vector3.new(0, 7.4, 12.8)), Color3.fromRGB(82, 44, 44), Enum.Material.Metal)
+	local banner = makePart(ring, "Part", "Banner", Vector3.new(9.4, 0.82, 0.4), CFrame.new(worldPosition + Vector3.new(0, 6.0, 12.8)), Color3.fromRGB(82, 44, 44), Enum.Material.Metal)
 	banner.CanCollide = false
 	banner.CanQuery = false
 	attachLabel(banner, "DUEL RING", "Stage 1v1s and settle bragging rights", palette.Accent)
-	attachWorldText(redCorner, "RED", Vector3.new(0, 2.1, 0), Color3.fromRGB(255, 194, 194), Vector2.new(88, 24))
-	attachWorldText(blueCorner, "BLUE", Vector3.new(0, 2.1, 0), Color3.fromRGB(198, 218, 255), Vector2.new(88, 24))
-	attachWorldText(returnPad, "RETURN", Vector3.new(0, 2.1, 0), Color3.fromRGB(224, 232, 242), Vector2.new(110, 26))
+	attachWorldText(redCorner, "RED", Vector3.new(0, 1.72, 0), Color3.fromRGB(255, 194, 194), Vector2.new(64, 18))
+	attachWorldText(blueCorner, "BLUE", Vector3.new(0, 1.72, 0), Color3.fromRGB(198, 218, 255), Vector2.new(64, 18))
+	attachWorldText(returnPad, "RETURN", Vector3.new(0, 1.74, 0), Color3.fromRGB(224, 232, 242), Vector2.new(84, 20))
 
 	local redPrompt = Instance.new("ProximityPrompt")
 	redPrompt.Name = "DuelRedPrompt"
@@ -1026,15 +1359,25 @@ local function makeTargetRange(root: Instance, worldPosition: Vector3, palette, 
 		targetFace.CanCollide = false
 		targetFace.CanQuery = true
 	end
+	local rangeSecret = makeGlowPart(range, "RangeSecret", Vector3.new(1.2, 1.2, 1.2), CFrame.new(worldPosition + Vector3.new(-13.2, 2.4, 11.6)), Color3.fromRGB(214, 162, 255), 0.34)
+	rangeSecret.CanCollide = false
+	rangeSecret.CanQuery = false
 
-	local sign = makePart(range, "Part", "Sign", Vector3.new(16, 1.2, 0.6), CFrame.new(worldPosition + Vector3.new(0, 7.4, 13.2)), Color3.fromRGB(56, 82, 72), Enum.Material.Metal)
+	local sign = makePart(range, "Part", "Sign", Vector3.new(12.4, 1.0, 0.5), CFrame.new(worldPosition + Vector3.new(0, 6.6, 13.2)), Color3.fromRGB(56, 82, 72), Enum.Material.Metal)
 	sign.CanCollide = false
 	sign.CanQuery = false
 	attachLabel(sign, "TARGET RANGE", "Dial in aim and test recoil control", palette.Accent)
-	attachWorldText(firingLine, "RANGE", Vector3.new(0, 2.1, 0), palette.Accent, Vector2.new(112, 26))
-	attachWorldText(returnPad, "RETURN", Vector3.new(0, 2.1, 0), Color3.fromRGB(224, 232, 242), Vector2.new(110, 26))
+	attachWorldText(returnPad, "RETURN", Vector3.new(0, 1.74, 0), Color3.fromRGB(224, 232, 242), Vector2.new(84, 20))
 
-	addTeleportPrompt(firingLine, "TargetRangePrompt", "Enter Range", "Target Range", firingLine, Vector3.new(0, 4, 0), 14)
+	local rangePrompt = Instance.new("ProximityPrompt")
+	rangePrompt.Name = "TargetRangePrompt"
+	rangePrompt.ActionText = "Start Trial"
+	rangePrompt.ObjectText = "Target Range"
+	rangePrompt.KeyboardKeyCode = Enum.KeyCode.E
+	rangePrompt.HoldDuration = 0
+	rangePrompt.RequiresLineOfSight = false
+	rangePrompt.MaxActivationDistance = 14
+	rangePrompt.Parent = firingLine
 	addTeleportPrompt(returnPad, "TargetRangeReturnPrompt", "Return", "Main Plaza", lobbyReturnPart or base, Vector3.new(0, 4, 0), 14)
 
 	return range
@@ -1060,6 +1403,9 @@ local function makeSalvageRun(root: Instance, worldPosition: Vector3, palette, l
 	local finishPad = makePart(run, "Part", "FinishPad", Vector3.new(7, 0.22, 5), CFrame.new(worldPosition + Vector3.new(0, 0.56, 4.2)), Color3.fromRGB(88, 94, 104), Enum.Material.Metal)
 	finishPad.CanCollide = false
 	finishPad.CanQuery = false
+	local returnPad = makePart(run, "Part", "ReturnPad", Vector3.new(6.4, 0.22, 4.4), CFrame.new(worldPosition + Vector3.new(10.2, 0.56, -4.4)), Color3.fromRGB(74, 80, 88), Enum.Material.Metal)
+	returnPad.CanCollide = false
+	returnPad.CanQuery = false
 
 	local nodeOffsets = {
 		Vector3.new(-8, 0.95, -0.8),
@@ -1071,18 +1417,246 @@ local function makeSalvageRun(root: Instance, worldPosition: Vector3, palette, l
 		crate.CanQuery = false
 		makeGlowPart(run, "CacheGlow" .. tostring(index), Vector3.new(3.1, 0.08, 3.1), crate.CFrame * CFrame.new(0, 1.08, 0), palette.Accent, 0.7)
 	end
+	local salvageSecret = makeGlowPart(run, "SalvageSecret", Vector3.new(1.2, 1.2, 1.2), CFrame.new(worldPosition + Vector3.new(10.4, 2.2, 9.6)), Color3.fromRGB(214, 162, 255), 0.34)
+	salvageSecret.CanCollide = false
+	salvageSecret.CanQuery = false
 
-	local sign = makePart(run, "Part", "Sign", Vector3.new(8, 0.7, 0.5), CFrame.new(worldPosition + Vector3.new(-9.2, 2.8, 0)), Color3.fromRGB(82, 62, 42), Enum.Material.Metal)
+	local sign = makePart(run, "Part", "Sign", Vector3.new(7, 0.6, 0.4), CFrame.new(worldPosition + Vector3.new(-9.2, 2.4, 0)), Color3.fromRGB(82, 62, 42), Enum.Material.Metal)
 	sign.CanCollide = false
 	sign.CanQuery = false
 	attachLabel(sign, "SALVAGE RUN", "Recover bunker caches before the timer burns out", palette.Accent)
-	attachWorldText(startPad, "START", Vector3.new(0, 1.75, 0), palette.Accent, Vector2.new(96, 24))
-	attachWorldText(finishPad, "EXTRACT", Vector3.new(0, 1.75, 0), Color3.fromRGB(224, 232, 242), Vector2.new(100, 24))
+	attachWorldText(finishPad, "EXTRACT", Vector3.new(0, 1.46, 0), Color3.fromRGB(224, 232, 242), Vector2.new(82, 20))
+	attachWorldText(returnPad, "RETURN", Vector3.new(0, 1.46, 0), Color3.fromRGB(224, 232, 242), Vector2.new(82, 20))
 
-	addTeleportPrompt(startPad, "SalvageStartPrompt", "Start Run", "Salvage Run", startPad, Vector3.new(0, 4, 0), 14)
-	addTeleportPrompt(finishPad, "SalvageReturnPrompt", "Return", "Main Plaza", lobbyReturnPart or base, Vector3.new(0, 4, 0), 14)
+	local salvageStartPrompt = Instance.new("ProximityPrompt")
+	salvageStartPrompt.Name = "SalvageStartPrompt"
+	salvageStartPrompt.ActionText = "Start Run"
+	salvageStartPrompt.ObjectText = "Salvage Run"
+	salvageStartPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	salvageStartPrompt.HoldDuration = 0
+	salvageStartPrompt.RequiresLineOfSight = false
+	salvageStartPrompt.MaxActivationDistance = 14
+	salvageStartPrompt.Parent = startPad
+
+	local salvageExtractPrompt = Instance.new("ProximityPrompt")
+	salvageExtractPrompt.Name = "SalvageExtractPrompt"
+	salvageExtractPrompt.ActionText = "Extract"
+	salvageExtractPrompt.ObjectText = "Salvage Run"
+	salvageExtractPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	salvageExtractPrompt.HoldDuration = 0
+	salvageExtractPrompt.RequiresLineOfSight = false
+	salvageExtractPrompt.MaxActivationDistance = 14
+	salvageExtractPrompt.Parent = finishPad
+
+	addTeleportPrompt(returnPad, "SalvageReturnPrompt", "Return", "Main Plaza", lobbyReturnPart or base, Vector3.new(0, 4, 0), 14)
 
 	return run
+end
+
+local function makeSupporterLounge(root: Instance, worldPosition: Vector3, palette, lobbyReturnPart: BasePart?)
+	local lounge = Instance.new("Model")
+	lounge.Name = "SupporterLounge"
+	lounge.Parent = root
+
+	local base = makePart(lounge, "Part", "Base", Vector3.new(54, 1, 38), CFrame.new(worldPosition), palette.Color:Lerp(Color3.fromRGB(60, 56, 46), 0.28), Enum.Material.WoodPlanks)
+	base.CanQuery = false
+	lounge.PrimaryPart = base
+
+	local trim = makeGlowPart(lounge, "BaseTrim", Vector3.new(54, 0.12, 38), CFrame.new(worldPosition + Vector3.new(0, 0.72, 0)), palette.Accent, 0.9)
+	trim.CanCollide = false
+	trim.CanQuery = false
+
+	local rearTerrace = makePart(lounge, "Part", "RearTerrace", Vector3.new(34, 1.2, 12), CFrame.new(worldPosition + Vector3.new(0, 0.6, 11.8)), Color3.fromRGB(112, 90, 58), Enum.Material.WoodPlanks)
+	rearTerrace.CanQuery = false
+	local rearWall = makePart(lounge, "Part", "RearWall", Vector3.new(34, 8.2, 1.6), CFrame.new(worldPosition + Vector3.new(0, 4.4, 17.0)), Color3.fromRGB(92, 74, 48), Enum.Material.WoodPlanks)
+	rearWall.CanQuery = false
+	local canopy = makePart(lounge, "Part", "Canopy", Vector3.new(26, 0.9, 10), CFrame.new(worldPosition + Vector3.new(0, 8.6, 11.6)), Color3.fromRGB(116, 92, 58), Enum.Material.WoodPlanks)
+	canopy.CanQuery = false
+	local canopyGlow = makeGlowPart(lounge, "CanopyGlow", Vector3.new(18, 0.08, 1.2), canopy.CFrame * CFrame.new(0, -0.3, -3.6), palette.Accent, 0.62)
+	canopyGlow.CanCollide = false
+	canopyGlow.CanQuery = false
+
+	local signBand = makePart(lounge, "Part", "SignBand", Vector3.new(18, 1.1, 0.3), rearWall.CFrame * CFrame.new(0, 2.0, -0.96), Color3.fromRGB(132, 104, 64), Enum.Material.Metal)
+	signBand.CanCollide = false
+	signBand.CanQuery = false
+	attachLabel(signBand, "SUPPORTER LOUNGE", "Weekly crate lane, quiet briefing deck, and premium bunker access", palette.Accent)
+
+	local loungeDeck = makePart(lounge, "Part", "LoungeDeck", Vector3.new(20, 0.4, 12), CFrame.new(worldPosition + Vector3.new(0, 1.1, 2.8)), Color3.fromRGB(136, 110, 72), Enum.Material.WoodPlanks)
+	loungeDeck.CanCollide = false
+	loungeDeck.CanQuery = false
+	local loungeDeckGlow = makeGlowPart(lounge, "LoungeDeckGlow", Vector3.new(10, 0.06, 2.4), loungeDeck.CFrame * CFrame.new(0, 0.22, -2.6), palette.Accent, 0.72)
+	loungeDeckGlow.CanCollide = false
+	loungeDeckGlow.CanQuery = false
+
+	for _, x in ipairs({ -17.5, 17.5 }) do
+		local tower = makePart(lounge, "Part", "WatchPost", Vector3.new(2.0, 6.2, 2.0), CFrame.new(worldPosition + Vector3.new(x, 3.2, 8.0)), Color3.fromRGB(106, 84, 52), Enum.Material.Metal)
+		tower.CanQuery = false
+		local cap = makeGlowPart(lounge, "WatchPostGlow", Vector3.new(2.2, 0.12, 2.2), tower.CFrame * CFrame.new(0, 2.86, 0), palette.Accent, 0.54)
+		cap.CanCollide = false
+		cap.CanQuery = false
+	end
+
+	local cratePad = makePart(lounge, "Part", "CratePad", Vector3.new(12, 0.24, 10), CFrame.new(worldPosition + Vector3.new(-14, 0.84, 2.0)), Color3.fromRGB(148, 118, 76), Enum.Material.Metal)
+	cratePad.CanCollide = false
+	cratePad.CanQuery = false
+	local crateStack = makePart(lounge, "Part", "WeeklyCrate", Vector3.new(4.2, 3.4, 4.2), CFrame.new(worldPosition + Vector3.new(-14, 2.14, 2.0)), Color3.fromRGB(122, 96, 58), Enum.Material.WoodPlanks)
+	crateStack.CanQuery = false
+	local crateGlow = makeGlowPart(lounge, "WeeklyCrateGlow", Vector3.new(5.0, 0.1, 5.0), crateStack.CFrame * CFrame.new(0, 1.84, 0), palette.Accent, 0.48)
+	crateGlow.CanCollide = false
+	crateGlow.CanQuery = false
+
+	local briefingWall = makePart(lounge, "Part", "BriefingWall", Vector3.new(10, 4.4, 0.4), CFrame.new(worldPosition + Vector3.new(0, 4.0, 15.9)), Color3.fromRGB(238, 232, 216), Enum.Material.SmoothPlastic)
+	briefingWall.CanCollide = false
+	briefingWall.CanQuery = false
+	local briefingGlow = makeGlowPart(lounge, "BriefingWallGlow", Vector3.new(12, 0.08, 0.5), briefingWall.CFrame * CFrame.new(0, -2.1, -0.24), palette.Accent, 0.78)
+	briefingGlow.CanCollide = false
+	briefingGlow.CanQuery = false
+
+	local terminalPad = makePart(lounge, "Part", "SupportTerminalPad", Vector3.new(12, 0.24, 10), CFrame.new(worldPosition + Vector3.new(14, 0.84, 2.0)), Color3.fromRGB(98, 86, 62), Enum.Material.Metal)
+	terminalPad.CanCollide = false
+	terminalPad.CanQuery = false
+	local terminal = makePart(lounge, "Part", "SupportTerminal", Vector3.new(5.2, 3.4, 2.0), CFrame.new(worldPosition + Vector3.new(14, 2.2, 4.9)), Color3.fromRGB(82, 74, 58), Enum.Material.Metal)
+	terminal.CanQuery = false
+	local terminalScreen = makeGlowPart(lounge, "SupportTerminalScreen", Vector3.new(3.6, 2.2, 0.12), terminal.CFrame * CFrame.new(0, 0.34, -1.02), Color3.fromRGB(246, 220, 138), 0.32)
+	terminalScreen.CanCollide = false
+	terminalScreen.CanQuery = false
+
+	for _, offset in ipairs({
+		Vector3.new(-4.6, 0.74, -6.4),
+		Vector3.new(4.6, 0.74, -6.4),
+	}) do
+		local bench = makePart(lounge, "Part", "Bench", Vector3.new(7.4, 1.1, 2.4), CFrame.new(worldPosition + offset), Color3.fromRGB(108, 86, 56), Enum.Material.WoodPlanks)
+		bench.CanQuery = false
+	end
+
+	local entryWalk = makePart(lounge, "Part", "EntryWalk", Vector3.new(18, 0.2, 16), CFrame.new(worldPosition + Vector3.new(0, 0.56, -10.0)), Color3.fromRGB(118, 96, 62), Enum.Material.WoodPlanks)
+	entryWalk.CanCollide = false
+	entryWalk.CanQuery = false
+	local entryPad = makePart(lounge, "Part", "EntryPad", Vector3.new(11.2, 0.24, 7.2), CFrame.new(worldPosition + Vector3.new(0, 0.84, -12.8)), palette.Accent:Lerp(Color3.fromRGB(248, 240, 220), 0.18), Enum.Material.Metal)
+	entryPad.CanCollide = false
+	entryPad.CanQuery = false
+	local entryGlow = makeGlowPart(lounge, "EntryPadGlow", Vector3.new(7.2, 0.06, 1.8), entryPad.CFrame * CFrame.new(0, 0.16, 1.0), palette.Accent, 0.66)
+	entryGlow.CanCollide = false
+	entryGlow.CanQuery = false
+
+	local returnPad = makePart(lounge, "Part", "ReturnPad", Vector3.new(8, 0.24, 6), CFrame.new(worldPosition + Vector3.new(0, 0.84, 14.2)), Color3.fromRGB(70, 76, 84), Enum.Material.Metal)
+	returnPad.CanCollide = false
+	returnPad.CanQuery = false
+	attachWorldText(returnPad, "RETURN", Vector3.new(0, 1.62, 0), Color3.fromRGB(224, 232, 242), Vector2.new(80, 18))
+
+	addPremiumTeleportPrompt(entryPad, "SupporterEnterPrompt", "Enter Lounge", "Supporter Lounge", entryPad, "SubscriptionActive", "RequiresSupporter", Vector3.new(0, 4, 0), 14)
+	addTeleportPrompt(returnPad, "SupporterReturnPrompt", "Return", "Main Plaza", lobbyReturnPart or base, Vector3.new(0, 4, 0), 14)
+
+	local terminalPrompt = Instance.new("ProximityPrompt")
+	terminalPrompt.Name = "SupporterTerminalPrompt"
+	terminalPrompt.ActionText = "Open Support Board"
+	terminalPrompt.ObjectText = "Supporter Lounge"
+	terminalPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	terminalPrompt.HoldDuration = 0
+	terminalPrompt.RequiresLineOfSight = false
+	terminalPrompt.MaxActivationDistance = 14
+	terminalPrompt:SetAttribute("RequiresSupporter", true)
+	terminalPrompt:SetAttribute("NpcDialogueTitle", "Supporter Terminal")
+	terminalPrompt:SetAttribute("NpcDialogueRole", "Premium ops terminal")
+	terminalPrompt:SetAttribute("NpcDialogueBody", "Track your weekly crate, supporter status, and bunker stipend timing from this terminal.")
+	terminalPrompt:SetAttribute("NpcActionLabel", "Open Ops Board")
+	terminalPrompt:SetAttribute("NpcActionPanel", "QuestBoard")
+	terminalPrompt.Parent = terminalPad
+
+	return lounge
+end
+
+local function makeVipLounge(root: Instance, worldPosition: Vector3, palette, lobbyReturnPart: BasePart?)
+	local lounge = Instance.new("Model")
+	lounge.Name = "VipLounge"
+	lounge.Parent = root
+
+	local base = makePart(lounge, "Part", "Base", Vector3.new(56, 1, 40), CFrame.new(worldPosition), palette.Color:Lerp(Color3.fromRGB(52, 60, 80), 0.22), Enum.Material.Metal)
+	base.CanQuery = false
+	lounge.PrimaryPart = base
+
+	local trim = makeGlowPart(lounge, "BaseTrim", Vector3.new(56, 0.12, 40), CFrame.new(worldPosition + Vector3.new(0, 0.72, 0)), palette.Accent, 0.92)
+	trim.CanCollide = false
+	trim.CanQuery = false
+
+	local rearDais = makePart(lounge, "Part", "RearDais", Vector3.new(30, 1.4, 12), CFrame.new(worldPosition + Vector3.new(0, 0.7, 13.8)), Color3.fromRGB(66, 80, 112), Enum.Material.Metal)
+	rearDais.CanQuery = false
+	local rearWall = makePart(lounge, "Part", "RearWall", Vector3.new(30, 9.2, 1.4), CFrame.new(worldPosition + Vector3.new(0, 4.9, 19.2)), Color3.fromRGB(58, 72, 98), Enum.Material.Metal)
+	rearWall.CanQuery = false
+	local canopy = makePart(lounge, "Part", "Canopy", Vector3.new(24, 0.9, 10), CFrame.new(worldPosition + Vector3.new(0, 9.1, 13.4)), Color3.fromRGB(56, 68, 94), Enum.Material.Metal)
+	canopy.CanQuery = false
+	local canopyGlow = makeGlowPart(lounge, "CanopyGlow", Vector3.new(18, 0.08, 1.2), canopy.CFrame * CFrame.new(0, -0.32, -3.4), palette.Accent, 0.58)
+	canopyGlow.CanCollide = false
+	canopyGlow.CanQuery = false
+
+	local leftWing = makePart(lounge, "WedgePart", "LeftWing", Vector3.new(6.8, 8.2, 16), CFrame.new(worldPosition + Vector3.new(-19.8, 4.2, 10.6)) * CFrame.Angles(0, math.rad(180), 0), Color3.fromRGB(60, 74, 102), Enum.Material.Metal)
+	leftWing.CanQuery = false
+	local rightWing = makePart(lounge, "WedgePart", "RightWing", Vector3.new(6.8, 8.2, 16), CFrame.new(worldPosition + Vector3.new(19.8, 4.2, 10.6)), Color3.fromRGB(60, 74, 102), Enum.Material.Metal)
+	rightWing.CanQuery = false
+
+	local signBand = makePart(lounge, "Part", "SignBand", Vector3.new(16.4, 1.0, 0.3), rearWall.CFrame * CFrame.new(0, 2.2, -0.86), Color3.fromRGB(82, 104, 144), Enum.Material.Metal)
+	signBand.CanCollide = false
+	signBand.CanQuery = false
+	attachLabel(signBand, "VIP OPERATIONS", "Priority launch deck, route prep, and operator fast lane", palette.Accent)
+
+	local centralDeck = makePart(lounge, "Part", "CentralDeck", Vector3.new(20, 0.4, 16), CFrame.new(worldPosition + Vector3.new(0, 1.1, 3.0)), Color3.fromRGB(72, 86, 116), Enum.Material.Metal)
+	centralDeck.CanCollide = false
+	centralDeck.CanQuery = false
+	local centralGlow = makeGlowPart(lounge, "CentralDeckGlow", Vector3.new(10, 0.06, 3.0), centralDeck.CFrame * CFrame.new(0, 0.22, -3.2), palette.Accent, 0.72)
+	centralGlow.CanCollide = false
+	centralGlow.CanQuery = false
+
+	local mapTable = makePart(lounge, "Part", "MapTable", Vector3.new(10.6, 1.4, 5.8), CFrame.new(worldPosition + Vector3.new(0, 1.8, 5.8)), Color3.fromRGB(66, 80, 112), Enum.Material.Metal)
+	mapTable.CanQuery = false
+	local mapGlow = makeGlowPart(lounge, "MapTableGlow", Vector3.new(7.8, 0.08, 4.0), mapTable.CFrame * CFrame.new(0, 0.78, 0), palette.Accent, 0.42)
+	mapGlow.CanCollide = false
+	mapGlow.CanQuery = false
+
+	for _, offset in ipairs({
+		Vector3.new(-14.0, 1.2, 4.4),
+		Vector3.new(14.0, 1.2, 4.4),
+	}) do
+		local prepBay = makePart(lounge, "Part", "PrepBay", Vector3.new(8.2, 3.8, 6.0), CFrame.new(worldPosition + offset), Color3.fromRGB(72, 88, 122), Enum.Material.Metal)
+		prepBay.CanQuery = false
+		local prepGlow = makeGlowPart(lounge, "PrepBayGlow", Vector3.new(6.0, 0.08, 1.4), prepBay.CFrame * CFrame.new(0, 1.82, -2.12), palette.Accent, 0.46)
+		prepGlow.CanCollide = false
+		prepGlow.CanQuery = false
+	end
+
+	local briefingScreen = makeGlowPart(lounge, "BriefingScreen", Vector3.new(10.6, 2.8, 0.12), CFrame.new(worldPosition + Vector3.new(0, 5.0, 18.18)), palette.Accent, 0.28)
+	briefingScreen.CanCollide = false
+	briefingScreen.CanQuery = false
+
+	for _, offset in ipairs({
+		Vector3.new(-17.4, 3.0, -1.6),
+		Vector3.new(17.4, 3.0, -1.6),
+	}) do
+		local pylon = makePart(lounge, "Part", "EntryPylon", Vector3.new(1.6, 5.8, 1.6), CFrame.new(worldPosition + offset), Color3.fromRGB(74, 94, 128), Enum.Material.Metal)
+		pylon.CanQuery = false
+		local pylonGlow = makeGlowPart(lounge, "EntryPylonGlow", Vector3.new(1.8, 0.12, 1.8), pylon.CFrame * CFrame.new(0, 2.62, 0), palette.Accent, 0.5)
+		pylonGlow.CanCollide = false
+		pylonGlow.CanQuery = false
+	end
+
+	local entryWalk = makePart(lounge, "Part", "EntryWalk", Vector3.new(20, 0.22, 16), CFrame.new(worldPosition + Vector3.new(0, 0.68, -11.2)), Color3.fromRGB(74, 88, 118), Enum.Material.DiamondPlate)
+	entryWalk.CanCollide = false
+	entryWalk.CanQuery = false
+	local entryPad = makePart(lounge, "Part", "EntryPad", Vector3.new(10.8, 0.24, 7.0), CFrame.new(worldPosition + Vector3.new(0, 0.84, -14.0)), palette.Accent:Lerp(Color3.fromRGB(236, 244, 255), 0.18), Enum.Material.Metal)
+	entryPad.CanCollide = false
+	entryPad.CanQuery = false
+	local entryGlow = makeGlowPart(lounge, "EntryPadGlow", Vector3.new(7.0, 0.06, 1.8), entryPad.CFrame * CFrame.new(0, 0.16, 1.0), palette.Accent, 0.66)
+	entryGlow.CanCollide = false
+	entryGlow.CanQuery = false
+
+	local returnPad = makePart(lounge, "Part", "ReturnPad", Vector3.new(8, 0.24, 6), CFrame.new(worldPosition + Vector3.new(0, 0.84, 16.0)), Color3.fromRGB(70, 76, 84), Enum.Material.Metal)
+	returnPad.CanCollide = false
+	returnPad.CanQuery = false
+	attachWorldText(returnPad, "RETURN", Vector3.new(0, 1.62, 0), Color3.fromRGB(224, 232, 242), Vector2.new(80, 18))
+
+	addPremiumTeleportPrompt(entryPad, "VipEnterPrompt", "Enter VIP", "VIP Operations", entryPad, "GamePassVipOperation", "RequiresVip", Vector3.new(0, 4, 0), 14)
+	addTeleportPrompt(returnPad, "VipReturnPrompt", "Return", "Main Plaza", lobbyReturnPart or base, Vector3.new(0, 4, 0), 14)
+
+	return lounge
 end
 
 local function makePathSegment(parent: Instance, name: string, startPosition: Vector3, endPosition: Vector3, color: Color3)
@@ -1097,12 +1671,12 @@ local function makePathSegment(parent: Instance, name: string, startPosition: Ve
 		parent,
 		"Part",
 		name,
-		Vector3.new(2.6, 0.1, distance),
+		Vector3.new(1.8, 0.08, distance),
 		CFrame.lookAt(midpoint, endPosition) * CFrame.new(0, 0.2, 0),
 		color,
 		Enum.Material.Neon
 	)
-	segment.Transparency = 0.82
+	segment.Transparency = 0.88
 	segment.CanCollide = false
 	segment.CanQuery = false
 
@@ -1110,12 +1684,12 @@ local function makePathSegment(parent: Instance, name: string, startPosition: Ve
 		parent,
 		"Part",
 		name .. "Lane",
-		Vector3.new(5.8, 0.06, distance),
+		Vector3.new(4.2, 0.05, distance),
 		CFrame.lookAt(midpoint, endPosition) * CFrame.new(0, 0.05, 0),
 		color:Lerp(Color3.fromRGB(44, 50, 58), 0.5),
 		Enum.Material.Metal
 	)
-	lane.Transparency = 0.9
+	lane.Transparency = 0.94
 	lane.CanCollide = false
 	lane.CanQuery = false
 end
@@ -1123,6 +1697,328 @@ end
 local makeStation
 local makeGuidePaths
 local makeDeployPad
+
+local function buildDeployVoteBoardGui(part: BasePart, guiName: string, face: Enum.NormalId)
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = guiName
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 18
+	gui.LightInfluence = 1
+	gui.AlwaysOnTop = false
+	gui.Parent = part
+
+	local frame = Instance.new("Frame")
+	frame.Name = "Frame"
+	frame.BackgroundColor3 = Color3.fromRGB(238, 232, 220)
+	frame.BorderSizePixel = 0
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.ClipsDescendants = true
+	frame.Parent = gui
+
+	local headerBand = Instance.new("Frame")
+	headerBand.Name = "HeaderBand"
+	headerBand.BackgroundColor3 = Color3.fromRGB(218, 206, 186)
+	headerBand.BorderSizePixel = 0
+	headerBand.Position = UDim2.fromScale(0, 0)
+	headerBand.Size = UDim2.fromScale(1, 0.22)
+	headerBand.Parent = frame
+
+	local frameStroke = Instance.new("UIStroke")
+	frameStroke.Color = Color3.fromRGB(106, 88, 64)
+	frameStroke.Thickness = 2
+	frameStroke.Transparency = 0.12
+	frameStroke.Parent = frame
+
+	local header = Instance.new("TextLabel")
+	header.Name = "Title"
+	header.BackgroundTransparency = 1
+	header.Position = UDim2.fromScale(0.05, 0.045)
+	header.Size = UDim2.fromScale(0.9, 0.1)
+	header.Font = Enum.Font.GothamBlack
+	header.Text = "Vote For The Next Run"
+	header.TextColor3 = Color3.fromRGB(48, 38, 24)
+	header.TextScaled = true
+	header.TextXAlignment = Enum.TextXAlignment.Left
+	header.Parent = frame
+
+	local subtitle = Instance.new("TextLabel")
+	subtitle.Name = "Subtitle"
+	subtitle.BackgroundTransparency = 1
+	subtitle.Position = UDim2.fromScale(0.05, 0.13)
+	subtitle.Size = UDim2.fromScale(0.9, 0.06)
+	subtitle.Font = Enum.Font.GothamMedium
+	subtitle.Text = "Step on a floor pad to cast your vote."
+	subtitle.TextColor3 = Color3.fromRGB(96, 80, 58)
+	subtitle.TextScaled = true
+	subtitle.TextXAlignment = Enum.TextXAlignment.Left
+	subtitle.Parent = frame
+
+	local topRule = Instance.new("Frame")
+	topRule.BackgroundColor3 = Color3.fromRGB(212, 186, 118)
+	topRule.BorderSizePixel = 0
+	topRule.Position = UDim2.fromScale(0.05, 0.21)
+	topRule.Size = UDim2.fromScale(0.9, 0.008)
+	topRule.Parent = frame
+
+	local sectionLabel = Instance.new("TextLabel")
+	sectionLabel.Name = "SectionLabel"
+	sectionLabel.BackgroundTransparency = 1
+	sectionLabel.Position = UDim2.fromScale(0.05, 0.235)
+	sectionLabel.Size = UDim2.fromScale(0.9, 0.05)
+	sectionLabel.Font = Enum.Font.GothamBold
+	sectionLabel.Text = "PAD VOTE OPTIONS"
+	sectionLabel.TextColor3 = Color3.fromRGB(102, 84, 62)
+	sectionLabel.TextScaled = true
+	sectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+	sectionLabel.Parent = frame
+
+	local cardX = { 0.04, 0.36, 0.68 }
+	for index = 1, 3 do
+		local option = Instance.new("Frame")
+		option.Name = "Option" .. tostring(index)
+		option.BackgroundColor3 = Color3.fromRGB(214, 205, 188)
+		option.BorderSizePixel = 0
+		option.Position = UDim2.fromScale(cardX[index], 0.31)
+		option.Size = UDim2.fromScale(0.28, 0.42)
+		option.Parent = frame
+
+		local optionCorner = Instance.new("UICorner")
+		optionCorner.CornerRadius = UDim.new(0, 10)
+		optionCorner.Parent = option
+
+		local optionStroke = Instance.new("UIStroke")
+		optionStroke.Color = Color3.fromRGB(88, 72, 52)
+		optionStroke.Transparency = 0.08
+		optionStroke.Thickness = 2
+		optionStroke.Parent = option
+
+		local accentBand = Instance.new("Frame")
+		accentBand.Name = "AccentBand"
+		accentBand.BorderSizePixel = 0
+		accentBand.Position = UDim2.fromScale(0.04, 0.08)
+		accentBand.Size = UDim2.fromScale(0.02, 0.8)
+		accentBand.BackgroundColor3 = ({
+			Color3.fromRGB(126, 194, 126),
+			Color3.fromRGB(112, 168, 228),
+			Color3.fromRGB(232, 182, 108),
+		})[index]
+		accentBand.Parent = option
+
+		local cardInset = Instance.new("Frame")
+		cardInset.Name = "CardInset"
+		cardInset.BackgroundColor3 = Color3.fromRGB(228, 220, 204)
+		cardInset.BackgroundTransparency = 0.18
+		cardInset.BorderSizePixel = 0
+		cardInset.Position = UDim2.fromScale(0.06, 0.08)
+		cardInset.Size = UDim2.fromScale(0.88, 0.84)
+		cardInset.Parent = option
+
+		local insetCorner = Instance.new("UICorner")
+		insetCorner.CornerRadius = UDim.new(0, 8)
+		insetCorner.Parent = cardInset
+
+		local leadingChip = Instance.new("TextLabel")
+		leadingChip.Name = "LeadingChip"
+		leadingChip.Visible = false
+		leadingChip.BackgroundColor3 = Color3.fromRGB(126, 196, 108)
+		leadingChip.BorderSizePixel = 0
+		leadingChip.Position = UDim2.fromScale(0.62, 0.08)
+		leadingChip.Size = UDim2.fromScale(0.28, 0.16)
+		leadingChip.Font = Enum.Font.GothamBlack
+		leadingChip.Text = "LEADING"
+		leadingChip.TextColor3 = Color3.fromRGB(24, 44, 22)
+		leadingChip.TextScaled = true
+		leadingChip.Parent = option
+
+		local leadingCorner = Instance.new("UICorner")
+		leadingCorner.CornerRadius = UDim.new(0, 8)
+		leadingCorner.Parent = leadingChip
+
+		local padChip = Instance.new("TextLabel")
+		padChip.Name = "PadLabel"
+		padChip.BackgroundColor3 = Color3.fromRGB(198, 178, 138)
+		padChip.BorderSizePixel = 0
+		padChip.Position = UDim2.fromScale(0.1, 0.08)
+		padChip.Size = UDim2.fromScale(0.4, 0.15)
+		padChip.Font = Enum.Font.GothamBlack
+		padChip.Text = "PAD " .. tostring(index)
+		padChip.TextColor3 = Color3.fromRGB(54, 40, 22)
+		padChip.TextScaled = true
+		padChip.Parent = option
+
+		local chipCorner = Instance.new("UICorner")
+		chipCorner.CornerRadius = UDim.new(0, 8)
+		chipCorner.Parent = padChip
+
+		local mapName = Instance.new("TextLabel")
+		mapName.Name = "MapName"
+		mapName.BackgroundTransparency = 1
+		mapName.Position = UDim2.fromScale(0.1, 0.28)
+		mapName.Size = UDim2.fromScale(0.8, 0.22)
+		mapName.Font = Enum.Font.GothamBlack
+		mapName.Text = "Map Name"
+		mapName.TextColor3 = Color3.fromRGB(34, 28, 18)
+		mapName.TextScaled = true
+		mapName.TextTruncate = Enum.TextTruncate.AtEnd
+		mapName.TextWrapped = true
+		mapName.TextXAlignment = Enum.TextXAlignment.Left
+		mapName.TextYAlignment = Enum.TextYAlignment.Center
+		mapName.Parent = option
+
+		local scenario = Instance.new("TextLabel")
+		scenario.Name = "Scenario"
+		scenario.BackgroundTransparency = 1
+		scenario.Position = UDim2.fromScale(0.1, 0.54)
+		scenario.Size = UDim2.fromScale(0.8, 0.12)
+		scenario.Font = Enum.Font.GothamMedium
+		scenario.Text = "Scenario"
+		scenario.TextColor3 = Color3.fromRGB(92, 78, 60)
+		scenario.TextScaled = true
+		scenario.TextTruncate = Enum.TextTruncate.AtEnd
+		scenario.TextXAlignment = Enum.TextXAlignment.Left
+		scenario.Parent = option
+
+		local voteRule = Instance.new("Frame")
+		voteRule.Name = "VoteRule"
+		voteRule.BackgroundColor3 = Color3.fromRGB(188, 170, 140)
+		voteRule.BorderSizePixel = 0
+		voteRule.Position = UDim2.fromScale(0.1, 0.69)
+		voteRule.Size = UDim2.fromScale(0.8, 0.012)
+		voteRule.Parent = option
+
+		local votes = Instance.new("TextLabel")
+		votes.Name = "Votes"
+		votes.BackgroundTransparency = 1
+		votes.Position = UDim2.fromScale(0.1, 0.72)
+		votes.Size = UDim2.fromScale(0.8, 0.16)
+		votes.Font = Enum.Font.GothamBlack
+		votes.Text = "0 votes"
+		votes.TextColor3 = Color3.fromRGB(44, 104, 58)
+		votes.TextScaled = true
+		votes.TextXAlignment = Enum.TextXAlignment.Left
+		votes.Parent = option
+	end
+
+	local footer = Instance.new("TextLabel")
+	footer.Name = "Footer"
+	footer.BackgroundTransparency = 1
+	footer.Position = UDim2.fromScale(0.05, 0.88)
+	footer.Size = UDim2.fromScale(0.9, 0.06)
+	footer.Font = Enum.Font.GothamMedium
+	footer.Text = "Stand on a pad, then step onto launch when your squad is ready."
+	footer.TextColor3 = Color3.fromRGB(110, 94, 72)
+	footer.TextScaled = true
+	footer.TextXAlignment = Enum.TextXAlignment.Center
+	footer.Parent = frame
+
+	return gui
+end
+
+local function attachDeployVoteBoard(part: BasePart)
+	buildDeployVoteBoardGui(part, "BoardGui", Enum.NormalId.Front)
+	buildDeployVoteBoardGui(part, "BoardGuiMirror", Enum.NormalId.Back)
+end
+
+local function clearNamedChildren(parent: Instance, childNames: { string })
+	for _, childName in ipairs(childNames) do
+		local child = parent:FindFirstChild(childName)
+		if child then
+			child:Destroy()
+		end
+	end
+end
+
+local function ensurePrompt(part: BasePart, promptName: string, actionText: string, objectText: string, maxDistance: number)
+	local prompt = part:FindFirstChild(promptName)
+	if not (prompt and prompt:IsA("ProximityPrompt")) then
+		prompt = Instance.new("ProximityPrompt")
+		prompt.Name = promptName
+		prompt.Parent = part
+	end
+
+	prompt.ActionText = actionText
+	prompt.ObjectText = objectText
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0
+	prompt.RequiresLineOfSight = false
+	prompt.MaxActivationDistance = maxDistance
+	return prompt
+end
+
+local function cloneDesignerLobbyTemplate(root: Instance)
+	local template = Workspace:FindFirstChild("DesignerLobby")
+	if not template then
+		return nil
+	end
+
+	local clone = template:Clone()
+	clone.Name = "OpenSkyLobby"
+	clone.Parent = root
+	return clone
+end
+
+local function publishDesignerLobbyExport(lobbyModel: Instance)
+	if not RunService:IsStudio() or not lobbyModel or not lobbyModel:IsA("Model") then
+		return
+	end
+
+	local existing = Workspace:FindFirstChild("DesignerLobby_Export")
+	if existing then
+		existing:Destroy()
+	end
+
+	local clone = lobbyModel:Clone()
+	clone.Name = "DesignerLobby_Export"
+	clone.Parent = Workspace
+	clone:SetAttribute("ExportHint", "Save this model as your editable DesignerLobby source.")
+end
+
+local function wireDesignerLobby(root: Instance, lobbyModel: Instance)
+	local anchorPart = lobbyModel:FindFirstChild("OuterGround", true)
+	if anchorPart and anchorPart:IsA("BasePart") then
+		CollectionService:AddTag(anchorPart, "LobbyAnchor")
+	end
+
+	local spawn = lobbyModel:FindFirstChild("LobbySpawn", true)
+	if spawn and spawn:IsA("BasePart") then
+		CollectionService:AddTag(spawn, "LobbySpawn")
+	end
+
+	local board = lobbyModel:FindFirstChild("VoteBoard", true)
+	if board and board:IsA("BasePart") then
+		clearNamedChildren(board, { "BoardGui", "BoardGuiMirror" })
+		attachDeployVoteBoard(board)
+	end
+
+	for index = 1, 3 do
+		local votePad = lobbyModel:FindFirstChild("VotePad" .. tostring(index), true)
+		if votePad and votePad:IsA("BasePart") then
+			votePad:SetAttribute("VoteOptionIndex", index)
+			CollectionService:AddTag(votePad, "MapVotePad")
+			ensurePrompt(votePad, "VotePrompt", "Vote", "Map Vote", 10)
+		end
+	end
+
+	local launchPad = lobbyModel:FindFirstChild("LaunchPad", true) or lobbyModel:FindFirstChild("DeployPad", true)
+	if launchPad and launchPad:IsA("BasePart") then
+		launchPad:SetAttribute("DeployPad", true)
+		launchPad:SetAttribute("RequiresDeployTokens", true)
+		CollectionService:AddTag(launchPad, "DeployPad")
+		local prompt = ensurePrompt(launchPad, "DeployPrompt", "Launch Run", "Mission Vote Ready", 12)
+		root:SetAttribute("DeployPadName", launchPad.Name)
+		root:SetAttribute("DeployPromptName", prompt.Name)
+	else
+		root:SetAttribute("DeployPadName", "")
+		root:SetAttribute("DeployPromptName", "")
+	end
+
+	local leaderboardBoard = lobbyModel:FindFirstChild("MasterBoard", true) or lobbyModel:FindFirstChild("LeaderboardBoard", true)
+	if leaderboardBoard and leaderboardBoard:IsA("BasePart") then
+		clearNamedChildren(leaderboardBoard, { "BoardGui" })
+		attachLeaderboardMasterBoard(leaderboardBoard, {})
+	end
+end
 
 local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 	local plaza = Instance.new("Model")
@@ -1194,16 +2090,49 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 		strap.CanQuery = false
 	end
 
+	local function addPrivacyScreen(name: string, position: Vector3, size: Vector3, rotationY: number, color: Color3, accent: Color3)
+		local base = makePart(
+			plaza,
+			"Part",
+			name,
+			size,
+			CFrame.new(position + Vector3.new(0, size.Y * 0.5, 0)) * CFrame.Angles(0, math.rad(rotationY), 0),
+			color,
+			Enum.Material.Metal
+		)
+		base.CanQuery = false
+		local cap = makeGlowPart(
+			plaza,
+			name .. "CapGlow",
+			Vector3.new(math.max(4, size.X - 1.8), 0.08, math.max(0.8, size.Z - 1.8)),
+			base.CFrame * CFrame.new(0, (size.Y * 0.5) + 0.1, 0),
+			accent,
+			0.9
+		)
+		cap.CanCollide = false
+		cap.CanQuery = false
+		local berm = makePart(
+			plaza,
+			"Part",
+			name .. "Berm",
+			Vector3.new(size.X + 8, 2.4, size.Z + 8),
+			CFrame.new(position + Vector3.new(0, 1.2, 0)) * CFrame.Angles(0, math.rad(rotationY), 0),
+			color:Lerp(Color3.fromRGB(38, 44, 54), 0.34),
+			Enum.Material.Slate
+		)
+		berm.CanQuery = false
+	end
+
 	local function addLeaderboardMonument(position: Vector3)
 		local monument = Instance.new("Model")
 		monument.Name = "LeaderboardMonument"
 		monument.Parent = plaza
 
-		local plinth = makePart(monument, "Part", "Plinth", Vector3.new(64, 0.8, 18), CFrame.new(position + Vector3.new(0, 0.4, 0)), Color3.fromRGB(166, 154, 132), Enum.Material.WoodPlanks)
+		local plinth = makePart(monument, "Part", "Plinth", Vector3.new(58, 0.56, 15), CFrame.new(position + Vector3.new(0, 0.28, 0)), Color3.fromRGB(172, 164, 146), Enum.Material.SmoothPlastic)
 		plinth.CanQuery = false
-		local base = makePart(monument, "Part", "Base", Vector3.new(56, 0.5, 12), CFrame.new(position + Vector3.new(0, 0.92, 0)), Color3.fromRGB(122, 96, 68), Enum.Material.WoodPlanks)
+		local base = makePart(monument, "Part", "Base", Vector3.new(48, 0.32, 9.4), CFrame.new(position + Vector3.new(0, 0.72, 0.2)), Color3.fromRGB(132, 118, 94), Enum.Material.SmoothPlastic)
 		base.CanQuery = false
-		local baseGlow = makeGlowPart(monument, "BaseGlow", Vector3.new(56, 0.08, 12), base.CFrame * CFrame.new(0, 0.28, 0), Color3.fromRGB(214, 202, 176), 0.9)
+		local baseGlow = makeGlowPart(monument, "BaseGlow", Vector3.new(48, 0.08, 9.4), base.CFrame * CFrame.new(0, 0.22, 0), Color3.fromRGB(214, 202, 176), 0.92)
 		baseGlow.CanCollide = false
 		baseGlow.CanQuery = false
 
@@ -1223,9 +2152,9 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 			phase = 1.1,
 		})
 
-		local threshold = makePart(monument, "Part", "Threshold", Vector3.new(18, 0.22, 3.4), CFrame.new(position + Vector3.new(0, 0.52, 11.2)), Color3.fromRGB(122, 96, 68), Enum.Material.WoodPlanks)
+		local threshold = makePart(monument, "Part", "Threshold", Vector3.new(14, 0.16, 2.6), CFrame.new(position + Vector3.new(0, 0.46, 8.8)), Color3.fromRGB(148, 136, 112), Enum.Material.SmoothPlastic)
 		threshold.CanQuery = false
-		local thresholdGlow = makeGlowPart(monument, "ThresholdGlow", Vector3.new(17, 0.06, 0.9), threshold.CFrame * CFrame.new(0, 0.15, -1.08), Color3.fromRGB(255, 236, 196), 0.82)
+		local thresholdGlow = makeGlowPart(monument, "ThresholdGlow", Vector3.new(12.8, 0.05, 0.7), threshold.CFrame * CFrame.new(0, 0.12, -0.8), Color3.fromRGB(255, 236, 196), 0.86)
 		thresholdGlow.CanCollide = false
 		thresholdGlow.CanQuery = false
 		table.insert(animatedBoardEffects, {
@@ -1237,9 +2166,9 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 			phase = 1.7,
 		})
 
-		local headerBand = makePart(monument, "Part", "HeaderBand", Vector3.new(42, 1.2, 2.4), CFrame.new(position + Vector3.new(0, 21.4, -2.6)), Color3.fromRGB(88, 62, 40), Enum.Material.WoodPlanks)
+		local headerBand = makePart(monument, "Part", "HeaderBand", Vector3.new(34, 0.72, 1.6), CFrame.new(position + Vector3.new(0, 20.4, -0.2)), Color3.fromRGB(110, 92, 70), Enum.Material.SmoothPlastic)
 		headerBand.CanQuery = false
-		local headerGlow = makeGlowPart(monument, "HeaderGlow", Vector3.new(36, 0.12, 1.1), headerBand.CFrame * CFrame.new(0, 0.38, 0.58), Color3.fromRGB(236, 214, 156), 0.84)
+		local headerGlow = makeGlowPart(monument, "HeaderGlow", Vector3.new(30, 0.08, 0.8), headerBand.CFrame * CFrame.new(0, 0.24, 0.32), Color3.fromRGB(236, 214, 156), 0.9)
 		headerGlow.CanCollide = false
 		headerGlow.CanQuery = false
 		local headerFill = Instance.new("PointLight")
@@ -1273,7 +2202,7 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 			Vector3.new(-20.6, 8.2, -0.8),
 			Vector3.new(20.6, 8.2, -0.8),
 		}) do
-			local fin = makePart(monument, "Part", "SideFin", Vector3.new(2, 14, 4), CFrame.new(position + offset) * CFrame.Angles(0, math.rad(offset.X > 0 and -7 or 7), 0), Color3.fromRGB(96, 74, 50), Enum.Material.WoodPlanks)
+			local fin = makePart(monument, "Part", "SideFin", Vector3.new(1.2, 11.6, 2.6), CFrame.new(position + offset) * CFrame.Angles(0, math.rad(offset.X > 0 and -5 or 5), 0), Color3.fromRGB(116, 102, 82), Enum.Material.SmoothPlastic)
 			fin.CanQuery = false
 		end
 
@@ -1282,16 +2211,16 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 				monument,
 				"Part",
 				"LaneWing" .. tostring(index),
-				Vector3.new(3.8, 4.4, 14),
+				Vector3.new(2.6, 3.6, 12),
 				CFrame.new(position + Vector3.new(14.6 * direction, 2.2, 24)) * CFrame.Angles(0, math.rad(direction > 0 and -8 or 8), 0),
-				Color3.fromRGB(104, 80, 54),
-				Enum.Material.WoodPlanks
+				Color3.fromRGB(136, 126, 108),
+				Enum.Material.SmoothPlastic
 			)
 			wing.CanQuery = false
 			local wingGlow = makeGlowPart(
 				monument,
 				"LaneWingGlow" .. tostring(index),
-				Vector3.new(0.12, 3.4, 10),
+				Vector3.new(0.08, 2.8, 8),
 				wing.CFrame * CFrame.new(-1.88 * direction, 0, 0),
 				Color3.fromRGB(214, 202, 176),
 				0.84
@@ -1308,19 +2237,19 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 			})
 		end
 
-		local boardBase = makePart(monument, "Part", "BoardBase", Vector3.new(42, 0.7, 8.8), CFrame.new(position + Vector3.new(0, 1.12, 0.9)), Color3.fromRGB(114, 88, 60), Enum.Material.WoodPlanks)
+		local boardBase = makePart(monument, "Part", "BoardBase", Vector3.new(38.8, 0.42, 6.6), CFrame.new(position + Vector3.new(0, 0.96, 0.9)), Color3.fromRGB(154, 144, 126), Enum.Material.SmoothPlastic)
 		boardBase.CanQuery = false
-		local boardBaseGlow = makeGlowPart(monument, "BoardBaseGlow", Vector3.new(42, 0.08, 8.8), boardBase.CFrame * CFrame.new(0, 0.24, 0), Color3.fromRGB(230, 224, 210), 0.9)
+		local boardBaseGlow = makeGlowPart(monument, "BoardBaseGlow", Vector3.new(38.8, 0.06, 6.6), boardBase.CFrame * CFrame.new(0, 0.18, 0), Color3.fromRGB(230, 224, 210), 0.92)
 		boardBaseGlow.CanCollide = false
 		boardBaseGlow.CanQuery = false
 
-		local leftPillar = makePart(monument, "Part", "LeftPillar", Vector3.new(1.4, 20.4, 1.4), CFrame.new(position + Vector3.new(-18.8, 10.7, 0.9)), Color3.fromRGB(88, 62, 40), Enum.Material.WoodPlanks)
+		local leftPillar = makePart(monument, "Part", "LeftPillar", Vector3.new(0.9, 19.0, 0.9), CFrame.new(position + Vector3.new(-18.2, 10.0, 0.9)), Color3.fromRGB(118, 102, 82), Enum.Material.SmoothPlastic)
 		leftPillar.CanQuery = false
-		local rightPillar = makePart(monument, "Part", "RightPillar", Vector3.new(1.4, 20.4, 1.4), CFrame.new(position + Vector3.new(18.8, 10.7, 0.9)), Color3.fromRGB(88, 62, 40), Enum.Material.WoodPlanks)
+		local rightPillar = makePart(monument, "Part", "RightPillar", Vector3.new(0.9, 19.0, 0.9), CFrame.new(position + Vector3.new(18.2, 10.0, 0.9)), Color3.fromRGB(118, 102, 82), Enum.Material.SmoothPlastic)
 		rightPillar.CanQuery = false
-		local crown = makePart(monument, "Part", "Crown", Vector3.new(42.4, 1, 1.4), CFrame.new(position + Vector3.new(0, 20.2, 0.9)), Color3.fromRGB(92, 66, 42), Enum.Material.WoodPlanks)
+		local crown = makePart(monument, "Part", "Crown", Vector3.new(39.6, 0.56, 0.9), CFrame.new(position + Vector3.new(0, 19.6, 0.9)), Color3.fromRGB(132, 118, 94), Enum.Material.SmoothPlastic)
 		crown.CanQuery = false
-		local crownGlow = makeGlowPart(monument, "CrownGlow", Vector3.new(42.4, 0.08, 1), crown.CFrame * CFrame.new(0, 0.28, 0), Color3.fromRGB(236, 214, 156), 0.84)
+		local crownGlow = makeGlowPart(monument, "CrownGlow", Vector3.new(39.6, 0.06, 0.7), crown.CFrame * CFrame.new(0, 0.18, 0), Color3.fromRGB(236, 214, 156), 0.9)
 		table.insert(animatedBoardEffects, {
 			type = "crownGlow",
 			part = crownGlow,
@@ -1402,8 +2331,6 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 			})
 		end
 
-		attachWorldText(approachPad, "ARCHIVE", Vector3.new(0, 1.6, 8.8), Color3.fromRGB(118, 92, 58), Vector2.new(104, 18))
-
 		local controls = Instance.new("Model")
 		controls.Name = "Controls"
 		controls.Parent = monument
@@ -1461,7 +2388,6 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 			addControlFromRect(info.name, info)
 		end
 
-		attachWorldText(base, "GLOBAL LEADERBOARDS", Vector3.new(0, 14.2, 0), Color3.fromRGB(255, 228, 182), Vector2.new(220, 28))
 		return monument
 	end
 
@@ -1650,6 +2576,118 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 			)
 			seatBack.CanCollide = false
 			seatBack.CanQuery = false
+		end
+
+		if rolePalette.extra == "supply" then
+			local stockCrate = makePart(
+				npc,
+				"Part",
+				"StockCrate",
+				Vector3.new(2.4, 1.8, 2),
+				CFrame.new(startPosition + Vector3.new(-2.2, 0.98, -2.1)),
+				Color3.fromRGB(112, 86, 58),
+				Enum.Material.WoodPlanks
+			)
+			stockCrate.CanCollide = false
+			stockCrate.CanQuery = false
+			local stockTerminal = makePart(
+				npc,
+				"Part",
+				"StockTerminal",
+				Vector3.new(1.2, 1.6, 0.22),
+				CFrame.new(startPosition + Vector3.new(2.26, 1.42, -1.88)),
+				Color3.fromRGB(74, 96, 124),
+				Enum.Material.Metal
+			)
+			stockTerminal.CanCollide = false
+			stockTerminal.CanQuery = false
+			makeGlowPart(npc, "StockTerminalGlow", Vector3.new(0.92, 1.28, 0.08), stockTerminal.CFrame * CFrame.new(0, 0, -0.1), accent, 0.38).CanQuery = false
+		elseif rolePalette.extra == "command" then
+			local commandConsole = makePart(
+				npc,
+				"Part",
+				"CommandConsole",
+				Vector3.new(2.6, 1.12, 1.8),
+				CFrame.new(startPosition + Vector3.new(2.28, 0.64, -2.12)),
+				Color3.fromRGB(44, 58, 78),
+				Enum.Material.Metal
+			)
+			commandConsole.CanCollide = false
+			commandConsole.CanQuery = false
+			local commandScreen = makePart(
+				npc,
+				"Part",
+				"CommandScreen",
+				Vector3.new(1.76, 1.02, 0.08),
+				commandConsole.CFrame * CFrame.new(0, 0.78, -0.88),
+				Color3.fromRGB(112, 162, 228),
+				Enum.Material.Neon
+			)
+			commandScreen.CanCollide = false
+			commandScreen.CanQuery = false
+		elseif rolePalette.extra == "marshal" then
+			local launchBeacon = makePart(
+				npc,
+				"Part",
+				"LaunchBeacon",
+				Vector3.new(0.42, 3.2, 0.42),
+				CFrame.new(startPosition + Vector3.new(-2.6, 1.72, -2.04)),
+				Color3.fromRGB(84, 102, 132),
+				Enum.Material.Metal
+			)
+			launchBeacon.CanCollide = false
+			launchBeacon.CanQuery = false
+			makeGlowPart(npc, "LaunchBeaconGlow", Vector3.new(0.68, 0.68, 0.68), launchBeacon.CFrame * CFrame.new(0, 1.42, 0), accent, 0.14).CanQuery = false
+			local laneCase = makePart(
+				npc,
+				"Part",
+				"LaneCase",
+				Vector3.new(2.2, 1.2, 1.4),
+				CFrame.new(startPosition + Vector3.new(2.14, 0.72, -2.18)),
+				Color3.fromRGB(60, 72, 90),
+				Enum.Material.Metal
+			)
+			laneCase.CanCollide = false
+			laneCase.CanQuery = false
+		elseif rolePalette.extra == "ops" then
+			local opsBoard = makePart(
+				npc,
+				"Part",
+				"OpsBoard",
+				Vector3.new(2.2, 1.4, 0.18),
+				CFrame.new(startPosition + Vector3.new(2.2, 1.46, -2.08)),
+				Color3.fromRGB(86, 112, 64),
+				Enum.Material.Metal
+			)
+			opsBoard.CanCollide = false
+			opsBoard.CanQuery = false
+			makeGlowPart(npc, "OpsBoardGlow", Vector3.new(1.78, 1.02, 0.08), opsBoard.CFrame * CFrame.new(0, 0, -0.1), accent, 0.3).CanQuery = false
+			local stipendCrate = makePart(
+				npc,
+				"Part",
+				"StipendCrate",
+				Vector3.new(1.9, 1.1, 1.5),
+				CFrame.new(startPosition + Vector3.new(-2.14, 0.66, -1.98)),
+				Color3.fromRGB(98, 116, 72),
+				Enum.Material.WoodPlanks
+			)
+			stipendCrate.CanCollide = false
+			stipendCrate.CanQuery = false
+		elseif string.find(lowerTitle, "trainer", 1, true) then
+			local drillRack = makePart(
+				npc,
+				"Part",
+				"DrillRack",
+				Vector3.new(2.4, 1.4, 0.22),
+				CFrame.new(startPosition + Vector3.new(2.18, 1.38, -2.1)),
+				Color3.fromRGB(126, 98, 62),
+				Enum.Material.Metal
+			)
+			drillRack.CanCollide = false
+			drillRack.CanQuery = false
+			local drillGlow = makeGlowPart(npc, "DrillRackGlow", Vector3.new(1.88, 0.14, 0.08), drillRack.CFrame * CFrame.new(0, 0.42, -0.1), accent, 0.22)
+			drillGlow.CanCollide = false
+			drillGlow.CanQuery = false
 		end
 
 		local rootPart = Instance.new("Part")
@@ -2322,32 +3360,11 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 		apron.CanQuery = false
 	end
 
-	for _, info in ipairs({
-		{ "DRILL DISTRICT", Vector3.new(-68, 2.4, 33), Color3.fromRGB(244, 220, 164), Vector2.new(154, 22) },
-		{ "COMBAT DISTRICT", Vector3.new(68, 2.4, 33), Color3.fromRGB(244, 186, 154), Vector2.new(168, 22) },
-		{ "ARCHIVE WALK", Vector3.new(-86, 2.4, 82), Color3.fromRGB(232, 214, 176), Vector2.new(144, 22) },
-		{ "DEPLOY CORRIDOR", Vector3.new(0, 2.8, 78), Color3.fromRGB(255, 206, 182), Vector2.new(170, 22) },
-	}) do
-		local marker = makePart(
-			plaza,
-			"Part",
-			"DistrictMarker",
-			Vector3.new(8, 0.2, 8),
-			CFrame.new(worldPosition + info[2]),
-			Color3.fromRGB(40, 44, 52),
-			Enum.Material.Metal
-		)
-		marker.Transparency = 1
-		marker.CanCollide = false
-		marker.CanQuery = false
-		attachWorldText(marker, info[1], Vector3.new(0, 0, 0), info[3], info[4])
-	end
-
 	local southSpine = makePart(
 		plaza,
 		"Part",
 		"SouthCoreSpine",
-		Vector3.new(14, 0.2, 92),
+		Vector3.new(10, 0.18, 92),
 		CFrame.new(worldPosition + Vector3.new(0, 0.16, 44)),
 		Color3.fromRGB(98, 102, 92),
 		Enum.Material.DiamondPlate
@@ -2357,105 +3374,20 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 	local southSpineGuide = makeGlowPart(
 		plaza,
 		"SouthCoreSpineGuide",
-		Vector3.new(3.8, 0.08, 88),
+		Vector3.new(2.6, 0.08, 88),
 		CFrame.new(worldPosition + Vector3.new(0, 0.34, 44)),
 		Color3.fromRGB(210, 220, 242),
 		0.84
 	)
 	southSpineGuide.CanCollide = false
 	southSpineGuide.CanQuery = false
-	local spawnThreshold = makePart(
-		plaza,
-		"Part",
-		"SpawnThreshold",
-		Vector3.new(28, 0.32, 4.4),
-		CFrame.new(worldPosition + Vector3.new(0, 0.42, 26)),
-		Color3.fromRGB(122, 132, 148),
-		Enum.Material.Metal
-	)
-	spawnThreshold.CanCollide = false
-	spawnThreshold.CanQuery = false
-	local spawnThresholdGlow = makeGlowPart(
-		plaza,
-		"SpawnThresholdGlow",
-		Vector3.new(22, 0.08, 1.2),
-		spawnThreshold.CFrame * CFrame.new(0, 0.16, -1.12),
-		Color3.fromRGB(208, 220, 244),
-		0.78
-	)
-	spawnThresholdGlow.CanCollide = false
-	spawnThresholdGlow.CanQuery = false
-
-	for _, info in ipairs({
-		{ "SpawnFrameWingLeft", Vector3.new(-48, 0.7, 62), Vector3.new(28, 1.6, 2.8), math.rad(18), Color3.fromRGB(34, 38, 44) },
-		{ "SpawnFrameWingRight", Vector3.new(48, 0.7, 62), Vector3.new(28, 1.6, 2.8), math.rad(-18), Color3.fromRGB(34, 38, 44) },
-	}) do
-		local wing = makePart(
-			plaza,
-			"Part",
-			info[1],
-			info[3],
-			CFrame.new(worldPosition + info[2]) * CFrame.Angles(0, info[4], 0),
-			info[5],
-			Enum.Material.Metal
-		)
-		wing.CanQuery = false
-		local wingCap = makeGlowPart(
-			plaza,
-			info[1] .. "Cap",
-			Vector3.new(info[3].X - 4, 0.08, 0.9),
-			wing.CFrame * CFrame.new(0, 0.92, 0),
-			Color3.fromRGB(126, 144, 174),
-			0.84
-		)
-		wingCap.CanCollide = false
-		wingCap.CanQuery = false
-	end
-
-	for _, info in ipairs({
-		{ "SpawnGateLeft", Vector3.new(-16, 4.2, 24), Vector3.new(2.4, 8.4, 2.4) },
-		{ "SpawnGateRight", Vector3.new(16, 4.2, 24), Vector3.new(2.4, 8.4, 2.4) },
-	}) do
-		local pylon = makePart(
-			plaza,
-			"Part",
-			info[1],
-			info[3],
-			CFrame.new(worldPosition + info[2]),
-			Color3.fromRGB(74, 82, 96),
-			Enum.Material.Metal
-		)
-		pylon.CanQuery = false
-		local pylonGlow = makeGlowPart(
-			plaza,
-			info[1] .. "Glow",
-			Vector3.new(0.16, 5.8, 1.6),
-			pylon.CFrame * CFrame.new(0, 0.3, 0),
-			Color3.fromRGB(196, 216, 246),
-			0.7
-		)
-		pylonGlow.CanCollide = false
-		pylonGlow.CanQuery = false
-	end
-
-	local spawnGateHeader = makeGlowPart(
-		plaza,
-		"SpawnGateHeader",
-		Vector3.new(34, 0.12, 1.2),
-		CFrame.new(worldPosition + Vector3.new(0, 8.24, 24)),
-		Color3.fromRGB(202, 222, 248),
-		0.78
-	)
-	spawnGateHeader.CanCollide = false
-	spawnGateHeader.CanQuery = false
-
-	for index, zOffset in ipairs({ 30, 8, -18 }) do
+	for index, zOffset in ipairs({ 22, -6 }) do
 		local mast = makePart(
 			plaza,
 			"Part",
 			"AxisPylon" .. tostring(index),
-			Vector3.new(1.8, 6.2, 1.8),
-			CFrame.new(worldPosition + Vector3.new(0, 3.2, zOffset)),
+			Vector3.new(1.6, 5.2, 1.6),
+			CFrame.new(worldPosition + Vector3.new(0, 2.7, zOffset)),
 			Color3.fromRGB(70, 78, 92),
 			Enum.Material.Metal
 		)
@@ -2463,7 +3395,7 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 		local mastGlow = makeGlowPart(
 			plaza,
 			"AxisPylonGlow" .. tostring(index),
-			Vector3.new(0.16, 4.8, 1.2),
+			Vector3.new(0.16, 3.8, 1.0),
 			mast.CFrame * CFrame.new(0, 0.2, 0),
 			Color3.fromRGB(188, 208, 238),
 			0.72
@@ -2505,6 +3437,12 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 	end
 	if Config.Areas.Salvage then
 		activityModels.Salvage = makeSalvageRun(plaza, worldPosition + Config.Areas.Salvage.Offset, Config.Areas.Salvage, lobbyReturnAnchor)
+	end
+	if Config.Areas.Supporter then
+		activityModels.Supporter = makeSupporterLounge(plaza, worldPosition + Config.Areas.Supporter.Offset, Config.Areas.Supporter, lobbyReturnAnchor)
+	end
+	if Config.Areas.Vip then
+		activityModels.Vip = makeVipLounge(plaza, worldPosition + Config.Areas.Vip.Offset, Config.Areas.Vip, lobbyReturnAnchor)
 	end
 
 	local transitAreas = {
@@ -2550,6 +3488,22 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 			Title = Config.Areas.QuestBoard.Title,
 			TransitStyle = "deploy",
 		},
+		Supporter = {
+			Offset = Vector3.new(54, 0, 74),
+			Color = Config.Areas.Supporter.Color,
+			Accent = Config.Areas.Supporter.Accent,
+			Title = Config.Areas.Supporter.Title,
+			TransitStyle = "supporter",
+			RequiresSupporter = true,
+		},
+		Vip = {
+			Offset = Vector3.new(-54, 0, 78),
+			Color = Config.Areas.Vip.Color,
+			Accent = Config.Areas.Vip.Accent,
+			Title = Config.Areas.Vip.Title,
+			TransitStyle = "vip",
+			RequiresVip = true,
+		},
 	}
 
 	for areaName, palette in pairs(transitAreas) do
@@ -2589,87 +3543,135 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 		pulse.Brightness = 0.42
 		pulse.Color = palette.Accent
 		pulse.Parent = cap
-
-		attachWorldText(marker, palette.Title, Vector3.new(0, 4.1, 0), palette.Accent, Vector2.new(116, 22))
 	end
 
-	local trainingEntry = activityModels.Training and activityModels.Training:FindFirstChild("EntryPad")
-	if trainingEntry and trainingEntry:IsA("BasePart") then
-		addTravelPad(plaza, "TrainingTransit", worldPosition + transitAreas.Training.Offset, Config.Areas.Training, trainingEntry, "Train", "Training Yard", "Travel to the drill yard", Vector3.new(0, 4, 6))
-	end
-	local parkourEntry = activityModels.Parkour and activityModels.Parkour:FindFirstChild("StartPad")
-	if parkourEntry and parkourEntry:IsA("BasePart") then
-		addTravelPad(plaza, "ParkourTransit", worldPosition + transitAreas.Parkour.Offset, Config.Areas.Parkour, parkourEntry, "Parkour", "Parkour Line", "Travel to the movement course", Vector3.new(0, 4, 0))
-	end
-	local duelEntry = activityModels.Duel and activityModels.Duel:FindFirstChild("ReturnPad")
-	if duelEntry and duelEntry:IsA("BasePart") then
-		addTravelPad(plaza, "DuelTransit", worldPosition + transitAreas.Duel.Offset, Config.Areas.Duel, duelEntry, "Duel", "Duel Ring", "Travel to the spar ring", Vector3.new(0, 4, -6))
-	end
-	local rangeEntry = activityModels.TargetRange and activityModels.TargetRange:FindFirstChild("FiringLine")
-	if rangeEntry and rangeEntry:IsA("BasePart") then
-		addTravelPad(plaza, "RangeTransit", worldPosition + transitAreas.TargetRange.Offset, Config.Areas.TargetRange, rangeEntry, "Range", "Target Range", "Travel to the firing lanes", Vector3.new(0, 4, 0))
-	end
-	local salvageEntry = activityModels.Salvage and activityModels.Salvage:FindFirstChild("StartPad")
-	if salvageEntry and salvageEntry:IsA("BasePart") then
-		addTravelPad(plaza, "SalvageTransit", worldPosition + transitAreas.Salvage.Offset, Config.Areas.Salvage, salvageEntry, "Salvage", "Salvage Run", "Travel to the cache sweep lane", Vector3.new(0, 4, 0))
+	for areaName, travelInfo in pairs(Config.LobbyLayout.TransitPads) do
+		local areaModel = activityModels[areaName == "TargetRange" and "TargetRange" or areaName]
+		local entryPart = areaModel and areaModel:FindFirstChild(travelInfo.EntryPartName)
+		local areaPalette = transitAreas[areaName]
+		if areaPalette and entryPart and entryPart:IsA("BasePart") then
+			addTravelPad(plaza, travelInfo.Name, worldPosition + areaPalette.Offset, areaPalette, entryPart, travelInfo.Action, travelInfo.Object, travelInfo.Subtitle, travelInfo.TextOffset)
+		end
 	end
 
 	makeGuidePaths(plaza, worldPosition, transitAreas)
-
+	local laneEntries = Config.LaneEntries
+	local westDrillLayout = laneEntries.WestDrill
 	local westDrillLane = makeGlowPart(
 		plaza,
 		"WestDrillLane",
-		Vector3.new(10, 0.08, 46),
-		CFrame.new(worldPosition + Vector3.new(-68, 0.32, 4)),
-		Color3.fromRGB(236, 214, 152),
-		0.86
+		westDrillLayout.Lane.Size,
+		CFrame.new(worldPosition + westDrillLayout.Lane.Offset),
+		westDrillLayout.Lane.Color,
+		westDrillLayout.Lane.Transparency
 	)
 	westDrillLane.CanCollide = false
 	westDrillLane.CanQuery = false
-	for _, offset in ipairs({
-		Vector3.new(-82, 2.8, -18),
-		Vector3.new(-82, 2.8, 18),
-	}) do
+	local westEntryPad = makePart(
+		plaza,
+		"Part",
+		"WestDrillEntryPad",
+		westDrillLayout.EntryPad.Size,
+		CFrame.new(worldPosition + westDrillLayout.EntryPad.Offset),
+		westDrillLayout.EntryPad.Color,
+		Enum.Material.Concrete
+	)
+	westEntryPad.CanQuery = false
+	local westEntryGlow = makeGlowPart(
+		plaza,
+		"WestDrillEntryGlow",
+		westDrillLayout.EntryGlow.Size,
+		CFrame.new(worldPosition + westDrillLayout.EntryGlow.Offset),
+		westDrillLayout.EntryGlow.Color,
+		westDrillLayout.EntryGlow.Transparency
+	)
+	westEntryGlow.CanCollide = false
+	westEntryGlow.CanQuery = false
+	local westEntryHeader = makePart(
+		plaza,
+		"Part",
+		"WestDrillEntryHeader",
+		westDrillLayout.EntryHeader.Size,
+		CFrame.new(worldPosition + westDrillLayout.EntryHeader.Offset),
+		westDrillLayout.EntryHeader.Color,
+		Enum.Material.Metal
+	)
+	westEntryHeader.CanQuery = false
+	attachWorldText(westEntryHeader, westDrillLayout.EntryHeader.Text, Vector3.new(0, 0.82, 0), westDrillLayout.EntryHeader.TextColor, westDrillLayout.EntryHeader.TextSize)
+	for _, offset in ipairs(westDrillLayout.Scaffolds.Offsets) do
 		local scaffold = makePart(
 			plaza,
 			"Part",
 			"WestDrillScaffold",
-			Vector3.new(2.2, 5.6, 18),
+			westDrillLayout.Scaffolds.Size,
 			CFrame.new(worldPosition + offset),
-			Color3.fromRGB(118, 102, 72),
+			westDrillLayout.Scaffolds.Color,
 			Enum.Material.Metal
 		)
 		scaffold.CanQuery = false
 	end
 
+	local eastCombatLayout = laneEntries.EastCombat
 	local eastCombatSpine = makePart(
 		plaza,
 		"Part",
 		"EastCombatSpine",
-		Vector3.new(8, 1.8, 48),
-		CFrame.new(worldPosition + Vector3.new(68, 0.94, 3)),
-		Color3.fromRGB(58, 64, 70),
+		eastCombatLayout.Spine.Size,
+		CFrame.new(worldPosition + eastCombatLayout.Spine.Offset),
+		eastCombatLayout.Spine.Color,
 		Enum.Material.Metal
 	)
 	eastCombatSpine.CanQuery = false
 	local eastCombatStripe = makeGlowPart(
 		plaza,
 		"EastCombatStripe",
-		Vector3.new(1.2, 0.08, 44),
-		eastCombatSpine.CFrame * CFrame.new(0, 0.98, 0),
-		Color3.fromRGB(255, 188, 112),
-		0.76
+		eastCombatLayout.Stripe.Size,
+		CFrame.new(worldPosition + eastCombatLayout.Stripe.Offset),
+		eastCombatLayout.Stripe.Color,
+		eastCombatLayout.Stripe.Transparency
 	)
 	eastCombatStripe.CanCollide = false
 	eastCombatStripe.CanQuery = false
+	local eastEntryPad = makePart(
+		plaza,
+		"Part",
+		"EastCombatEntryPad",
+		eastCombatLayout.EntryPad.Size,
+		CFrame.new(worldPosition + eastCombatLayout.EntryPad.Offset),
+		eastCombatLayout.EntryPad.Color,
+		Enum.Material.Concrete
+	)
+	eastEntryPad.CanQuery = false
+	local eastEntryGlow = makeGlowPart(
+		plaza,
+		"EastCombatEntryGlow",
+		eastCombatLayout.EntryGlow.Size,
+		CFrame.new(worldPosition + eastCombatLayout.EntryGlow.Offset),
+		eastCombatLayout.EntryGlow.Color,
+		eastCombatLayout.EntryGlow.Transparency
+	)
+	eastEntryGlow.CanCollide = false
+	eastEntryGlow.CanQuery = false
+	local eastEntryHeader = makePart(
+		plaza,
+		"Part",
+		"EastCombatEntryHeader",
+		eastCombatLayout.EntryHeader.Size,
+		CFrame.new(worldPosition + eastCombatLayout.EntryHeader.Offset),
+		eastCombatLayout.EntryHeader.Color,
+		Enum.Material.Metal
+	)
+	eastEntryHeader.CanQuery = false
+	attachWorldText(eastEntryHeader, eastCombatLayout.EntryHeader.Text, Vector3.new(0, 0.82, 0), eastCombatLayout.EntryHeader.TextColor, eastCombatLayout.EntryHeader.TextSize)
 
+	local salvageLayout = laneEntries.Salvage
 	local salvageCorridor = makePart(
 		plaza,
 		"Part",
 		"SalvageCorridor",
-		Vector3.new(18, 0.24, 42),
-		CFrame.new(worldPosition + Vector3.new(-8, 0.16, -96)),
-		Color3.fromRGB(96, 86, 72),
+		salvageLayout.Corridor.Size,
+		CFrame.new(worldPosition + salvageLayout.Corridor.Offset),
+		salvageLayout.Corridor.Color,
 		Enum.Material.DiamondPlate
 	)
 	salvageCorridor.CanCollide = false
@@ -2677,25 +3679,54 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 	local salvageGuide = makeGlowPart(
 		plaza,
 		"SalvageCorridorGuide",
-		Vector3.new(3.2, 0.08, 36),
-		CFrame.new(worldPosition + Vector3.new(-8, 0.32, -96)),
-		Color3.fromRGB(232, 210, 156),
-		0.82
+		salvageLayout.Guide.Size,
+		CFrame.new(worldPosition + salvageLayout.Guide.Offset),
+		salvageLayout.Guide.Color,
+		salvageLayout.Guide.Transparency
 	)
 	salvageGuide.CanCollide = false
 	salvageGuide.CanQuery = false
+	local salvageEntryPad = makePart(
+		plaza,
+		"Part",
+		"SalvageEntryPad",
+		salvageLayout.EntryPad.Size,
+		CFrame.new(worldPosition + salvageLayout.EntryPad.Offset),
+		salvageLayout.EntryPad.Color,
+		Enum.Material.Concrete
+	)
+	salvageEntryPad.CanQuery = false
+	local salvageEntryGlow = makeGlowPart(
+		plaza,
+		"SalvageEntryGlow",
+		salvageLayout.EntryGlow.Size,
+		CFrame.new(worldPosition + salvageLayout.EntryGlow.Offset),
+		salvageLayout.EntryGlow.Color,
+		salvageLayout.EntryGlow.Transparency
+	)
+	salvageEntryGlow.CanCollide = false
+	salvageEntryGlow.CanQuery = false
+	local salvageEntryHeader = makePart(
+		plaza,
+		"Part",
+		"SalvageEntryHeader",
+		salvageLayout.EntryHeader.Size,
+		CFrame.new(worldPosition + salvageLayout.EntryHeader.Offset),
+		salvageLayout.EntryHeader.Color,
+		Enum.Material.Metal
+	)
+	salvageEntryHeader.CanQuery = false
+	attachWorldText(salvageEntryHeader, salvageLayout.EntryHeader.Text, Vector3.new(0, 0.82, 0), salvageLayout.EntryHeader.TextColor, salvageLayout.EntryHeader.TextSize)
 
 	local deployPad = makeDeployPad(plaza, worldPosition + Config.Areas.Deploy.Offset)
-	for index, offset in ipairs({
-		Vector3.new(-28, 0, 78),
-		Vector3.new(28, 0, 78),
-	}) do
+	local deployLaneLayout = Config.DeployLayout.Lane
+	for index, offset in ipairs(deployLaneLayout.DistrictBays.Offsets) do
 		local stagingBay = makePart(
 			plaza,
 			"Part",
 			"DeployDistrictBay" .. tostring(index),
-			Vector3.new(8, 3.4, 12),
-			CFrame.new(worldPosition + offset + Vector3.new(0, 2.1, 0)),
+			deployLaneLayout.DistrictBays.Size,
+			CFrame.new(worldPosition + offset),
 			Color3.fromRGB(84, 58, 58),
 			Enum.Material.Metal
 		)
@@ -2703,219 +3734,188 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 		local bayGlow = makeGlowPart(
 			plaza,
 			"DeployDistrictBayGlow" .. tostring(index),
-			Vector3.new(8, 0.12, 10),
+			deployLaneLayout.DistrictBays.GlowSize,
 			stagingBay.CFrame * CFrame.new(0, 2.18, 0),
 			Color3.fromRGB(255, 190, 160),
-			0.74
+			0.82
 		)
 		bayGlow.CanCollide = false
 		bayGlow.CanQuery = false
 	end
-	addCargoStack("WestCargoStack", worldPosition + Vector3.new(-86, 0, -22), Color3.fromRGB(160, 186, 234))
-	addCargoStack("EastCargoStack", worldPosition + Vector3.new(82, 0, -24), Color3.fromRGB(182, 232, 204))
-	addCargoStack("SouthCargoStack", worldPosition + Vector3.new(18, 0, 88), Color3.fromRGB(236, 214, 156))
-	addWatchTower("WestWatch", worldPosition + Vector3.new(-108, 0, -78), Color3.fromRGB(194, 214, 255))
-	addWatchTower("EastWatch", worldPosition + Vector3.new(108, 0, -78), Color3.fromRGB(214, 236, 196))
-	addLeaderboardMonument(worldPosition + Vector3.new(-92, 0, 90))
-	makePathSegment(plaza, "ArchiveWalkLink", worldPosition + Vector3.new(-34, 0, 54), worldPosition + Vector3.new(-88, 0, 76), Color3.fromRGB(220, 206, 168))
-	makePathSegment(plaza, "ArchiveWalkLinkWide", worldPosition + Vector3.new(-40, 0, 62), worldPosition + Vector3.new(-90, 0, 84), Color3.fromRGB(198, 184, 150))
-	makePathSegment(plaza, "DeploySpineLink", worldPosition + Vector3.new(0, 0, 44), worldPosition + Vector3.new(0, 0, 90), Color3.fromRGB(255, 188, 154))
-	for _, offset in ipairs({
-		Vector3.new(-58, 1.5, 68),
-		Vector3.new(-72, 1.5, 78),
-		Vector3.new(-86, 1.5, 88),
-	}) do
+	local lobbyLayout = Config.LobbyLayout
+	addCargoStack("WestCargoStack", worldPosition + lobbyLayout.CargoStacks.West, Color3.fromRGB(160, 186, 234))
+	addCargoStack("EastCargoStack", worldPosition + lobbyLayout.CargoStacks.East, Color3.fromRGB(182, 232, 204))
+	addCargoStack("SouthCargoStack", worldPosition + lobbyLayout.CargoStacks.South, Color3.fromRGB(236, 214, 156))
+	addWatchTower("WestWatch", worldPosition + lobbyLayout.WatchTowers.West, Color3.fromRGB(194, 214, 255))
+	addWatchTower("EastWatch", worldPosition + lobbyLayout.WatchTowers.East, Color3.fromRGB(214, 236, 196))
+	for _, screen in ipairs(lobbyLayout.PrivacyScreens) do
+		addPrivacyScreen(screen.name, worldPosition + screen.offset, screen.size, screen.rotationY, screen.color, screen.accent)
+	end
+	addLeaderboardMonument(worldPosition + lobbyLayout.LeaderboardOffset)
+	makePathSegment(plaza, "ArchiveWalkLink", worldPosition + lobbyLayout.ArchiveLane.LinkStart, worldPosition + lobbyLayout.ArchiveLane.LinkEnd, Color3.fromRGB(220, 206, 168))
+	makePathSegment(plaza, "ArchiveWalkLinkWide", worldPosition + lobbyLayout.ArchiveLane.LinkWideStart, worldPosition + lobbyLayout.ArchiveLane.LinkWideEnd, Color3.fromRGB(198, 184, 150))
+	makePathSegment(plaza, "ArchiveWalkLeadIn", worldPosition + lobbyLayout.ArchiveLane.LeadInStart, worldPosition + lobbyLayout.ArchiveLane.LeadInEnd, Color3.fromRGB(232, 220, 182))
+	local archiveEntryPad = makePart(
+		plaza,
+		"Part",
+		"ArchiveEntryPad",
+		Vector3.new(13.6, 0.18, 8.4),
+		CFrame.new(worldPosition + lobbyLayout.ArchiveLane.EntryPadOffset),
+		Color3.fromRGB(182, 170, 144),
+		Enum.Material.Concrete
+	)
+	archiveEntryPad.CanQuery = false
+	local archiveEntryGlow = makeGlowPart(
+		plaza,
+		"ArchiveEntryGlow",
+		Vector3.new(6.2, 0.04, 1.4),
+		CFrame.new(worldPosition + lobbyLayout.ArchiveLane.EntryGlowOffset),
+		Color3.fromRGB(248, 234, 192),
+		0.91
+	)
+	archiveEntryGlow.CanCollide = false
+	archiveEntryGlow.CanQuery = false
+	table.insert(animatedBoardEffects, {
+		type = "leaderPulse",
+		part = archiveEntryGlow,
+		baseTransparency = 0.91,
+		baseColor = Color3.fromRGB(232, 218, 176),
+		pulseColor = Color3.fromRGB(255, 244, 210),
+		phase = 1.9,
+	})
+	for index, entryOffset in ipairs({ lobbyLayout.ArchiveLane.EntryPylonLeftOffset, lobbyLayout.ArchiveLane.EntryPylonRightOffset }) do
+		local pylon = makePart(
+			plaza,
+			"Part",
+			"ArchiveEntryPylon" .. tostring(index),
+			Vector3.new(1.4, 5.4, 1.4),
+			CFrame.new(worldPosition + entryOffset),
+			Color3.fromRGB(96, 82, 64),
+			Enum.Material.Metal
+		)
+		pylon.CanQuery = false
+		local capGlow = makeGlowPart(
+			plaza,
+			"ArchiveEntryPylonGlow" .. tostring(index),
+			Vector3.new(1.4, 0.1, 1.4),
+			pylon.CFrame * CFrame.new(0, 2.34, 0),
+			Color3.fromRGB(255, 238, 204),
+			0.68
+		)
+		capGlow.CanCollide = false
+		capGlow.CanQuery = false
+	end
+	local archiveHeader = makePart(
+		plaza,
+		"Part",
+		"ArchiveEntryHeader",
+		Vector3.new(12.4, 0.56, 1.2),
+		CFrame.new(worldPosition + lobbyLayout.ArchiveLane.EntryHeaderOffset),
+		Color3.fromRGB(104, 84, 58),
+		Enum.Material.WoodPlanks
+	)
+	archiveHeader.CanQuery = false
+	attachWorldText(archiveHeader, "ARCHIVE", Vector3.new(0, 0.84, 0), Color3.fromRGB(240, 226, 186), Vector2.new(84, 16))
+	makePathSegment(plaza, "DeploySpineLink", worldPosition + deployLaneLayout.SpineLinkStart, worldPosition + deployLaneLayout.SpineLinkEnd, Color3.fromRGB(255, 188, 154))
+	makePathSegment(plaza, "DeploySpineLeadIn", worldPosition + deployLaneLayout.SpineLeadInStart, worldPosition + deployLaneLayout.SpineLeadInEnd, Color3.fromRGB(255, 206, 172))
+	local deployEntryPad = makePart(
+		plaza,
+		"Part",
+		"DeployEntryPad",
+		deployLaneLayout.EntryPad.Size,
+		CFrame.new(worldPosition + deployLaneLayout.EntryPad.Offset),
+		Color3.fromRGB(136, 96, 96),
+		Enum.Material.Concrete
+	)
+	deployEntryPad.CanQuery = false
+	local deployEntryGlow = makeGlowPart(
+		plaza,
+		"DeployEntryGlow",
+		deployLaneLayout.EntryGlow.Size,
+		CFrame.new(worldPosition + deployLaneLayout.EntryGlow.Offset),
+		Color3.fromRGB(255, 196, 164),
+		0.9
+	)
+	deployEntryGlow.CanCollide = false
+	deployEntryGlow.CanQuery = false
+	table.insert(animatedBoardEffects, {
+		type = "leaderPulse",
+		part = deployEntryGlow,
+		baseTransparency = 0.9,
+		baseColor = Color3.fromRGB(236, 184, 154),
+		pulseColor = Color3.fromRGB(255, 214, 188),
+		phase = 0.9,
+	})
+	for index, offset in ipairs(deployLaneLayout.EntryPylons.Offsets) do
+		local pylon = makePart(
+			plaza,
+			"Part",
+			"DeployEntryPylon" .. tostring(index),
+			deployLaneLayout.EntryPylons.Size,
+			CFrame.new(worldPosition + offset),
+			Color3.fromRGB(92, 52, 52),
+			Enum.Material.Metal
+		)
+		pylon.CanQuery = false
+		local capGlow = makeGlowPart(
+			plaza,
+			"DeployEntryPylonGlow" .. tostring(index),
+			Vector3.new(1.6, 0.1, 1.6),
+			pylon.CFrame * CFrame.new(0, 2.72, 0),
+			Color3.fromRGB(255, 188, 154),
+			0.68
+		)
+		capGlow.CanCollide = false
+		capGlow.CanQuery = false
+	end
+	local deployHeader = makePart(
+		plaza,
+		"Part",
+		"DeployEntryHeader",
+		deployLaneLayout.EntryHeader.Size,
+		CFrame.new(worldPosition + deployLaneLayout.EntryHeader.Offset),
+		Color3.fromRGB(110, 62, 62),
+		Enum.Material.Metal
+	)
+	deployHeader.CanQuery = false
+	attachWorldText(deployHeader, "LAUNCH LANE", Vector3.new(0, 0.88, 0), Color3.fromRGB(255, 212, 188), Vector2.new(106, 18))
+	for _, offset in ipairs(lobbyLayout.ArchiveLane.Bollards.Offsets) do
 		local bollard = makePart(
 			plaza,
 			"Part",
 			"ArchiveWalkBollard",
-			Vector3.new(1, 2.6, 1),
+			lobbyLayout.ArchiveLane.Bollards.Size,
 			CFrame.new(worldPosition + offset),
-			Color3.fromRGB(92, 82, 64),
+			lobbyLayout.ArchiveLane.Bollards.Color,
 			Enum.Material.Metal
 		)
 		bollard.CanQuery = false
 		local cap = makeGlowPart(
 			plaza,
 			"ArchiveWalkBollardGlow",
-			Vector3.new(1.3, 0.14, 1.3),
+			lobbyLayout.ArchiveLane.Bollards.GlowSize,
 			bollard.CFrame * CFrame.new(0, 1.22, 0),
-			Color3.fromRGB(255, 238, 204),
-			0.42
+			lobbyLayout.ArchiveLane.Bollards.GlowColor,
+			lobbyLayout.ArchiveLane.Bollards.GlowTransparency
 		)
 		cap.CanCollide = false
 		cap.CanQuery = false
 	end
-	for _, info in ipairs({
-		{ "ArchiveStand", Vector3.new(-72, 1.2, 82), Vector3.new(7.2, 2.2, 2.2), Color3.fromRGB(96, 82, 60), Enum.Material.WoodPlanks },
-		{ "ArchiveBench", Vector3.new(-60, 0.7, 74), Vector3.new(6.2, 1.0, 2.2), Color3.fromRGB(108, 96, 74), Enum.Material.WoodPlanks },
-		{ "ArchiveCase", Vector3.new(-76, 1.0, 88), Vector3.new(3.2, 1.6, 2.6), Color3.fromRGB(168, 154, 126), Enum.Material.SmoothPlastic },
-	}) do
+	for _, info in ipairs(lobbyLayout.ArchiveLane.Props) do
 		local prop = makePart(
 			plaza,
 			"Part",
-			info[1],
-			info[3],
-			CFrame.new(worldPosition + info[2]),
-			info[4],
-			info[5]
+			info.Name,
+			info.Size,
+			CFrame.new(worldPosition + info.Offset),
+			info.Color,
+			info.Material
 		)
 		prop.CanQuery = false
 	end
 
-	for _, info in ipairs({
-		{
-			"TrainingMarshal",
-			"Trainer Sol",
-			Vector3.new(-60, 0, -34),
-			Vector3.new(-60, 0, -34),
-			Color3.fromRGB(244, 212, 152),
-			0.18,
-			{
-				title = "Trainer Sol",
-				role = "Combat drill supervisor",
-				body = "Use the training yard to warm up movement, line up target drills, and get your hands settled before you step into a live run.",
-				actionLabel = "Train",
-				actionPanel = "",
-			},
-		},
-		{
-			"NorthPatrol",
-			"Quartermaster Rhea",
-			Vector3.new(0, 0, -46),
-			Vector3.new(0, 0, -46),
-			Color3.fromRGB(245, 215, 156),
-			0.1,
-			{
-				title = "Quartermaster Rhea",
-				role = "Supply corridor lead",
-				body = "Fresh bunker stock is routed through my lane. Weapons, cosmetics, and premium support are all logged through the quartermaster board.",
-				actionLabel = "Open Shop",
-				actionPanel = "Shop",
-			},
-		},
-		{
-			"WestPatrol",
-			"Officer Vale",
-			Vector3.new(-46, 0, 28),
-			Vector3.new(-46, 0, 28),
-			Color3.fromRGB(171, 205, 237),
-			0.35,
-			{
-				title = "Officer Vale",
-				role = "Fireteam command liaison",
-				body = "Solo runs are allowed, but organized squads survive longer. Keep your roster tight, lock privacy when needed, and assign a clear lead before deployment.",
-				actionLabel = "Open Squad",
-				actionPanel = "Squad",
-			},
-		},
-		{
-			"ParkourMarshal",
-			"Runner Kez",
-			Vector3.new(-70, 0, 16),
-			Vector3.new(-70, 0, 16),
-			Color3.fromRGB(206, 220, 255),
-			0.27,
-			{
-				title = "Runner Kez",
-				role = "Movement drill lead",
-				body = "The parkour line is for movement reps. Hit the platforms, chain your jumps, and get comfortable reading elevation before a live mission.",
-				actionLabel = "Run Course",
-				actionPanel = "",
-			},
-		},
-		{
-			"DuelMarshal",
-			"Arbiter Nox",
-			Vector3.new(60, 0, -34),
-			Vector3.new(60, 0, -34),
-			Color3.fromRGB(244, 182, 182),
-			0.74,
-			{
-				title = "Arbiter Nox",
-				role = "Spar ring referee",
-				body = "Step into either duel corner to stage a quick 1v1. Use the ring for bragging rights, screenshots, and pre-run squad rivalry.",
-				actionLabel = "Enter Ring",
-				actionPanel = "",
-			},
-		},
-		{
-			"RangeMarshal",
-			"Spotter Hale",
-			Vector3.new(70, 0, 16),
-			Vector3.new(70, 0, 16),
-			Color3.fromRGB(186, 238, 214),
-			0.69,
-			{
-				title = "Spotter Hale",
-				role = "Range controller",
-				body = "Use the target range to settle recoil, spacing, and aim before you burn deploy tokens on a live run.",
-				actionLabel = "Enter Range",
-				actionPanel = "",
-			},
-		},
-		{
-			"SalvageMarshal",
-			"Broker Venn",
-			Vector3.new(0, 0, -58),
-			Vector3.new(0, 0, -58),
-			Color3.fromRGB(244, 214, 168),
-			0.52,
-			{
-				title = "Broker Venn",
-				role = "Salvage route coordinator",
-				body = "The salvage lane is a speed sweep. Hit every cache, reach extract clean, and keep your run tight if you want repeatable payout.",
-				actionLabel = "Start Run",
-				actionPanel = "",
-			},
-		},
-		{
-			"EastPatrol",
-			"Dispatcher Iona",
-			Vector3.new(46, 0, 28),
-			Vector3.new(46, 0, 28),
-			Color3.fromRGB(173, 227, 214),
-			0.62,
-			{
-				title = "Dispatcher Iona",
-				role = "Comms and roster control",
-				body = "Use the comms lounge to spot online survivors and push invites before the next cycle starts. The social board stays live while you remain in lobby.",
-				actionLabel = "Open Comms",
-				actionPanel = "Social",
-			},
-		},
-		{
-			"SouthPatrol",
-			"Marshal Kade",
-			Vector3.new(0, 0, 54),
-			Vector3.new(0, 0, 54),
-			Color3.fromRGB(255, 214, 214),
-			0.82,
-			{
-				title = "Marshal Kade",
-				role = "Deployment marshal",
-				body = "Mission staging is armed and ready. Lock your loadout, spend any skill points, and use the HUD deploy button once the squad is set.",
-				actionLabel = "Close",
-				actionPanel = "",
-			},
-		},
-		{
-			"OpsCoordinator",
-			"Coordinator Nyra",
-			Vector3.new(0, 0, 40),
-			Vector3.new(0, 0, 40),
-			Color3.fromRGB(198, 228, 132),
-			0.54,
-			{
-				title = "Coordinator Nyra",
-				role = "Operations board keeper",
-				body = "Daily bunker stipends and weekly supporter crates rotate through my board. Check the live objective timing and collect anything ready before you deploy.",
-				actionLabel = "Open Ops Board",
-				actionPanel = "QuestBoard",
-			},
-		},
-	}) do
-		addPatrolNpc(info[1], info[2], worldPosition + info[3], worldPosition + info[4], info[5], info[6], info[7])
+	for _, info in ipairs(Config.LobbyNpcs) do
+		addPatrolNpc(info.Id, info.DisplayName, worldPosition + info.RouteStart, worldPosition + info.RouteEnd, info.Accent, info.Phase, info.Panel)
 	end
 
 	task.spawn(function()
@@ -3816,13 +4816,14 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 	local hub = Instance.new("Model")
 	hub.Name = "CentralHub"
 	hub.Parent = root
+	local hubLayout = Config.CentralHubLayout
 
 	local outerPad = makePart(
 		hub,
 		"Part",
 		"OuterPad",
-		Vector3.new(20, 0.24, 20),
-		CFrame.new(worldPosition + Vector3.new(0, 2.18, 0)),
+		hubLayout.OuterPad.Size,
+		CFrame.new(worldPosition + hubLayout.OuterPad.Offset),
 		Color3.fromRGB(118, 132, 152),
 		Enum.Material.Metal
 	)
@@ -3834,8 +4835,8 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 		hub,
 		"Part",
 		"HubPlinth",
-		Vector3.new(10, 0.8, 10),
-		CFrame.new(worldPosition + Vector3.new(0, 2.02, 0)),
+		hubLayout.Plinth.Size,
+		CFrame.new(worldPosition + hubLayout.Plinth.Offset),
 		Color3.fromRGB(78, 86, 98),
 		Enum.Material.Metal
 	)
@@ -3846,32 +4847,32 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 		hub,
 		"Part",
 		"InnerPad",
-		Vector3.new(6.5, 0.22, 6.5),
-		CFrame.new(worldPosition + Vector3.new(0, 2.5, 0)),
+		hubLayout.InnerPad.Size,
+		CFrame.new(worldPosition + hubLayout.InnerPad.Offset),
 		Color3.fromRGB(114, 126, 140),
 		Enum.Material.SmoothPlastic
 	)
 	innerPad.CanQuery = false
 	innerPad.CanCollide = false
 
-	local ring = makeGlowPart(hub, "HubRing", Vector3.new(18, 0.12, 18), CFrame.new(worldPosition + Vector3.new(0, 2.08, 0)), Color3.fromRGB(148, 176, 214), 0.56)
+	local ring = makeGlowPart(hub, "HubRing", hubLayout.HubRing.Size, CFrame.new(worldPosition + hubLayout.HubRing.Offset), Color3.fromRGB(148, 176, 214), 0.56)
 	ring.CanCollide = false
 	ring.CanQuery = false
-	local ringOuter = makeGlowPart(hub, "HubRingOuter", Vector3.new(24, 0.08, 24), CFrame.new(worldPosition + Vector3.new(0, 1.28, 0)), Color3.fromRGB(118, 142, 176), 0.82)
+	local ringOuter = makeGlowPart(hub, "HubRingOuter", hubLayout.HubRingOuter.Size, CFrame.new(worldPosition + hubLayout.HubRingOuter.Offset), Color3.fromRGB(118, 142, 176), 0.82)
 	ringOuter.CanCollide = false
 	ringOuter.CanQuery = false
 	local commandCore = makePart(
 		hub,
 		"Part",
 		"CommandCore",
-		Vector3.new(4.8, 1.6, 4.8),
-		CFrame.new(worldPosition + Vector3.new(0, 2.7, 0)),
+		hubLayout.CommandCore.Size,
+		CFrame.new(worldPosition + hubLayout.CommandCore.Offset),
 		Color3.fromRGB(86, 96, 112),
 		Enum.Material.SmoothPlastic
 	)
 	commandCore.CanQuery = false
 	commandCore.CanCollide = false
-	local commandGlow = makeGlowPart(hub, "CommandGlow", Vector3.new(5.6, 0.12, 5.6), CFrame.new(worldPosition + Vector3.new(0, 3.56, 0)), Color3.fromRGB(196, 214, 236), 0.56)
+	local commandGlow = makeGlowPart(hub, "CommandGlow", hubLayout.CommandGlow.Size, CFrame.new(worldPosition + hubLayout.CommandGlow.Offset), Color3.fromRGB(196, 214, 236), 0.56)
 	commandGlow.CanCollide = false
 	commandGlow.CanQuery = false
 	local commandLamp = Instance.new("PointLight")
@@ -3879,17 +4880,12 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 	commandLamp.Brightness = 0.62
 	commandLamp.Color = Color3.fromRGB(196, 214, 236)
 	commandLamp.Parent = commandGlow
-	for _, offset in ipairs({
-		Vector3.new(-7.2, 0.95, -7.2),
-		Vector3.new(7.2, 0.95, -7.2),
-		Vector3.new(-7.2, 0.95, 7.2),
-		Vector3.new(7.2, 0.95, 7.2),
-	}) do
+	for _, offset in ipairs(hubLayout.Bollards.Offsets) do
 		local bollard = makePart(
 			hub,
 			"Part",
 			"HubBollard",
-			Vector3.new(0.9, 2, 0.9),
+			hubLayout.Bollards.Size,
 			CFrame.new(worldPosition + offset),
 			Color3.fromRGB(92, 102, 116),
 			Enum.Material.Metal
@@ -3898,31 +4894,25 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 		makeGlowPart(hub, "HubBollardLamp", Vector3.new(1.2, 0.1, 1.2), bollard.CFrame * CFrame.new(0, 1.08, 0), Color3.fromRGB(170, 194, 226), 0.56)
 	end
 
-	for _, info in ipairs({
-		{"NorthRail", Vector3.new(0, 1.2, -10.6), Vector3.new(14, 1.6, 1)},
-		{"SouthRail", Vector3.new(0, 1.2, 10.6), Vector3.new(14, 1.6, 1)},
-	}) do
+	for _, info in ipairs(hubLayout.Rails) do
 		local rail = makePart(
 			hub,
 			"Part",
-			info[1],
-			info[3],
-			CFrame.new(worldPosition + info[2]),
+			info.Name,
+			info.Size,
+			CFrame.new(worldPosition + info.Offset),
 			Color3.fromRGB(78, 88, 102),
 			Enum.Material.Metal
 		)
 		rail.CanQuery = false
 	end
 
-	for _, offset in ipairs({
-		Vector3.new(-5.2, 0.9, 0),
-		Vector3.new(5.2, 0.9, 0),
-	}) do
+	for _, offset in ipairs(hubLayout.Consoles.Offsets) do
 		local console = makePart(
 			hub,
 			"Part",
 			"HubConsole",
-			Vector3.new(2.2, 1.1, 2.2),
+			hubLayout.Consoles.Size,
 			CFrame.new(worldPosition + offset),
 			Color3.fromRGB(92, 104, 118),
 			Enum.Material.DiamondPlate
@@ -3933,16 +4923,13 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 		consoleGlow.CanQuery = false
 	end
 
-	for _, info in ipairs({
-		{"NorthWalkway", Vector3.new(0, 0.25, -18), Vector3.new(12, 0.3, 14)},
-		{"SouthWalkway", Vector3.new(0, 0.25, 18), Vector3.new(12, 0.3, 14)},
-	}) do
+	for _, info in ipairs(hubLayout.Walkways) do
 		local walkway = makePart(
 			hub,
 			"Part",
-			info[1],
-			info[3],
-			CFrame.new(worldPosition + info[2]),
+			info.Name,
+			info.Size,
+			CFrame.new(worldPosition + info.Offset),
 			Color3.fromRGB(88, 98, 112),
 			Enum.Material.DiamondPlate
 		)
@@ -3950,17 +4937,12 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 		walkway.CanQuery = false
 	end
 
-	for _, offset in ipairs({
-		Vector3.new(0, 0.34, -13),
-		Vector3.new(0, 0.34, 13),
-		Vector3.new(-13, 0.34, 0),
-		Vector3.new(13, 0.34, 0),
-	}) do
+	for _, offset in ipairs(hubLayout.HubPlates.Offsets) do
 		local hubPlate = makePart(
 			hub,
 			"Part",
 			"HubPlate",
-			Vector3.new(7, 0.12, 4),
+			hubLayout.HubPlates.Size,
 			CFrame.new(worldPosition + offset),
 			Color3.fromRGB(102, 114, 128),
 			Enum.Material.Metal
@@ -3969,18 +4951,13 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 		hubPlate.CanQuery = false
 	end
 
-	for _, info in ipairs({
-		{"NorthNav", Vector3.new(0, 2.1, -8.6), Vector3.new(5.6, 0.12, 8)},
-		{"SouthNav", Vector3.new(0, 2.1, 8.6), Vector3.new(5.6, 0.12, 8)},
-		{"WestNav", Vector3.new(-8.6, 2.1, 0), Vector3.new(8, 0.12, 5.6)},
-		{"EastNav", Vector3.new(8.6, 2.1, 0), Vector3.new(8, 0.12, 5.6)},
-	}) do
+	for _, info in ipairs(hubLayout.NavPlates) do
 		local navPlate = makePart(
 			hub,
 			"Part",
-			info[1],
-			info[3],
-			CFrame.new(worldPosition + info[2]),
+			info.Name,
+			info.Size,
+			CFrame.new(worldPosition + info.Offset),
 			Color3.fromRGB(118, 128, 142),
 			Enum.Material.Metal
 		)
@@ -3992,8 +4969,8 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 		hub,
 		"Part",
 		"CommandPlate",
-		Vector3.new(12, 0.12, 4),
-		CFrame.new(worldPosition + Vector3.new(0, 2.12, 0)),
+		hubLayout.CommandPlate.Size,
+		CFrame.new(worldPosition + hubLayout.CommandPlate.Offset),
 		Color3.fromRGB(154, 176, 206),
 		Enum.Material.Neon
 	)
@@ -4001,7 +4978,6 @@ local function makeCentralHub(root: Instance, worldPosition: Vector3)
 	commandPlate.CanQuery = false
 	commandPlate.Transparency = 0.78
 
-	attachWorldText(commandCore, "COMMAND HUB", Vector3.new(0, 2.8, 0), Color3.fromRGB(235, 239, 244), Vector2.new(160, 34))
 end
 
 makeStation = function(root: Instance, name: string, worldPosition: Vector3, palette)
@@ -4105,14 +5081,15 @@ local function makeSpawn(root: Instance, worldPosition: Vector3)
 	local spawnZone = Instance.new("Model")
 	spawnZone.Name = "SpawnZone"
 	spawnZone.Parent = root
+	local spawnLayout = Config.SpawnLayout
 
 	local apron = makePart(
 		spawnZone,
 		"Part",
 		"SpawnApron",
-		Vector3.new(38, 0.8, 30),
-		CFrame.new(worldPosition + Vector3.new(0, 0.4, 18)),
-		Color3.fromRGB(78, 86, 98),
+		spawnLayout.Apron.Size,
+		CFrame.new(worldPosition + spawnLayout.Apron.Offset),
+		spawnLayout.Apron.Color,
 		Enum.Material.DiamondPlate
 	)
 	apron.CanCollide = false
@@ -4122,692 +5099,281 @@ local function makeSpawn(root: Instance, worldPosition: Vector3)
 		spawnZone,
 		"Part",
 		"SpawnFrame",
-		Vector3.new(42, 0.12, 34),
-		CFrame.new(worldPosition + Vector3.new(0, 0.9, 18)),
-		Color3.fromRGB(132, 148, 176),
+		spawnLayout.Frame.Size,
+		CFrame.new(worldPosition + spawnLayout.Frame.Offset),
+		spawnLayout.Frame.Color,
 		Enum.Material.Metal
 	)
-	frame.Transparency = 0.8
+	frame.Transparency = spawnLayout.Frame.Transparency
 	frame.CanCollide = false
 	frame.CanQuery = false
 
 	local guide = makeGlowPart(
 		spawnZone,
 		"SpawnGuide",
-		Vector3.new(4.2, 0.08, 30),
-		CFrame.new(worldPosition + Vector3.new(0, 0.84, 14)),
-		Color3.fromRGB(186, 212, 244),
-		0.72
+		spawnLayout.Guide.Size,
+		CFrame.new(worldPosition + spawnLayout.Guide.Offset),
+		spawnLayout.Guide.Color,
+		spawnLayout.Guide.Transparency
 	)
 	guide.CanCollide = false
 	guide.CanQuery = false
 
-	for _, info in ipairs({
-		{ "SpawnWingLeft", Vector3.new(-22, 0.64, 19), Vector3.new(10, 0.48, 18), math.rad(14) },
-		{ "SpawnWingRight", Vector3.new(22, 0.64, 19), Vector3.new(10, 0.48, 18), math.rad(-14) },
-	}) do
+	for _, info in ipairs(spawnLayout.Wings) do
 		local wing = makePart(
 			spawnZone,
 			"Part",
-			info[1],
-			info[3],
-			CFrame.new(worldPosition + info[2]) * CFrame.Angles(0, info[4], 0),
-			Color3.fromRGB(64, 72, 84),
+			info.Name,
+			info.Size,
+			CFrame.new(worldPosition + info.Offset) * CFrame.Angles(0, info.RotationY, 0),
+			info.Color,
 			Enum.Material.Metal
 		)
 		wing.CanCollide = false
 		wing.CanQuery = false
 	end
 
-	local gateLeft = makePart(spawnZone, "Part", "SpawnGateLeft", Vector3.new(2.4, 7.2, 2.4), CFrame.new(worldPosition + Vector3.new(-13.5, 3.6, 27)), Color3.fromRGB(66, 74, 88), Enum.Material.Metal)
-	local gateRight = makePart(spawnZone, "Part", "SpawnGateRight", Vector3.new(2.4, 7.2, 2.4), CFrame.new(worldPosition + Vector3.new(13.5, 3.6, 27)), Color3.fromRGB(66, 74, 88), Enum.Material.Metal)
+	local gateLeft = makePart(spawnZone, "Part", "SpawnGateLeft", spawnLayout.Gate.Left.Size, CFrame.new(worldPosition + spawnLayout.Gate.Left.Offset), spawnLayout.Gate.Left.Color, Enum.Material.Metal)
+	local gateRight = makePart(spawnZone, "Part", "SpawnGateRight", spawnLayout.Gate.Right.Size, CFrame.new(worldPosition + spawnLayout.Gate.Right.Offset), spawnLayout.Gate.Right.Color, Enum.Material.Metal)
 	gateLeft.CanQuery = false
 	gateRight.CanQuery = false
-	local gateTop = makePart(spawnZone, "Part", "SpawnGateTop", Vector3.new(30, 0.9, 2.6), CFrame.new(worldPosition + Vector3.new(0, 7.2, 27)), Color3.fromRGB(78, 86, 98), Enum.Material.Metal)
+	local gateTop = makePart(spawnZone, "Part", "SpawnGateTop", spawnLayout.Gate.Top.Size, CFrame.new(worldPosition + spawnLayout.Gate.Top.Offset), spawnLayout.Gate.Top.Color, Enum.Material.Metal)
 	gateTop.CanCollide = false
 	gateTop.CanQuery = false
-	local gateTopGlow = makeGlowPart(spawnZone, "SpawnGateTopGlow", Vector3.new(22, 0.08, 0.8), gateTop.CFrame * CFrame.new(0, -0.24, -0.88), Color3.fromRGB(222, 232, 244), 0.72)
+	local gateTopGlow = makeGlowPart(spawnZone, "SpawnGateTopGlow", spawnLayout.Gate.TopGlow.Size, CFrame.new(worldPosition + spawnLayout.Gate.TopGlow.Offset), spawnLayout.Gate.TopGlow.Color, spawnLayout.Gate.TopGlow.Transparency)
 	gateTopGlow.CanCollide = false
 	gateTopGlow.CanQuery = false
 
-	for _, offset in ipairs({
-		Vector3.new(0, 0.88, 20),
-		Vector3.new(0, 0.88, 3),
-		Vector3.new(0, 0.88, -18),
-	}) do
+	for _, offset in ipairs(spawnLayout.AxisPylons.Offsets) do
 		local axisPylon = makePart(
 			spawnZone,
 			"Part",
 			"SpawnAxisPylon",
-			Vector3.new(0.9, 1.2, 0.9),
+			spawnLayout.AxisPylons.PartSize,
 			CFrame.new(worldPosition + offset),
-			Color3.fromRGB(108, 118, 134),
+			spawnLayout.AxisPylons.Color,
 			Enum.Material.Metal
 		)
 		axisPylon.CanCollide = false
 		axisPylon.CanQuery = false
-		local axisPylonGlow = makeGlowPart(spawnZone, "SpawnAxisPylonGlow", Vector3.new(1.4, 0.08, 1.4), axisPylon.CFrame * CFrame.new(0, 0.66, 0), Color3.fromRGB(232, 238, 246), 0.7)
+		local axisPylonGlow = makeGlowPart(spawnZone, "SpawnAxisPylonGlow", spawnLayout.AxisPylons.GlowSize, axisPylon.CFrame * CFrame.new(0, 0.66, 0), spawnLayout.AxisPylons.GlowColor, spawnLayout.AxisPylons.GlowTransparency)
 		axisPylonGlow.CanCollide = false
 		axisPylonGlow.CanQuery = false
 	end
 
-	local leftBeacon = makePart(spawnZone, "Part", "SpawnBeaconLeft", Vector3.new(2, 8, 2), CFrame.new(worldPosition + Vector3.new(-20, 4, 18)), Color3.fromRGB(74, 82, 96), Enum.Material.Metal)
-	local rightBeacon = makePart(spawnZone, "Part", "SpawnBeaconRight", Vector3.new(2, 8, 2), CFrame.new(worldPosition + Vector3.new(20, 4, 18)), Color3.fromRGB(74, 82, 96), Enum.Material.Metal)
+	local leftBeacon = makePart(spawnZone, "Part", "SpawnBeaconLeft", spawnLayout.Beacons.PartSize, CFrame.new(worldPosition + spawnLayout.Beacons.LeftOffset), spawnLayout.Beacons.Color, Enum.Material.Metal)
+	local rightBeacon = makePart(spawnZone, "Part", "SpawnBeaconRight", spawnLayout.Beacons.PartSize, CFrame.new(worldPosition + spawnLayout.Beacons.RightOffset), spawnLayout.Beacons.Color, Enum.Material.Metal)
 	leftBeacon.CanQuery = false
 	rightBeacon.CanQuery = false
-	makeGlowPart(spawnZone, "SpawnBeaconLeftGlow", Vector3.new(2.2, 0.14, 2.2), leftBeacon.CFrame * CFrame.new(0, 4.1, 0), Color3.fromRGB(186, 212, 244), 0.46)
-	makeGlowPart(spawnZone, "SpawnBeaconRightGlow", Vector3.new(2.2, 0.14, 2.2), rightBeacon.CFrame * CFrame.new(0, 4.1, 0), Color3.fromRGB(186, 212, 244), 0.46)
+	makeGlowPart(spawnZone, "SpawnBeaconLeftGlow", spawnLayout.Beacons.GlowSize, leftBeacon.CFrame * CFrame.new(0, 4.1, 0), spawnLayout.Beacons.GlowColor, spawnLayout.Beacons.GlowTransparency)
+	makeGlowPart(spawnZone, "SpawnBeaconRightGlow", spawnLayout.Beacons.GlowSize, rightBeacon.CFrame * CFrame.new(0, 4.1, 0), spawnLayout.Beacons.GlowColor, spawnLayout.Beacons.GlowTransparency)
 
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "LobbySpawn"
-	spawn.Size = Vector3.new(18, 1, 18)
+	spawn.Size = spawnLayout.SpawnLocation.Size
 	spawn.Anchored = true
 	spawn.CanCollide = true
 	spawn.Neutral = true
 	spawn.Enabled = true
 	spawn.Duration = 0
 	spawn.Material = Enum.Material.Concrete
-	spawn.Color = Color3.fromRGB(110, 122, 138)
-	spawn.CFrame = CFrame.new(worldPosition + Vector3.new(0, 1.5, 18))
+	spawn.Color = spawnLayout.SpawnLocation.Color
+	spawn.CFrame = CFrame.new(worldPosition + spawnLayout.SpawnLocation.Offset)
 	spawn.Parent = spawnZone
 	CollectionService:AddTag(spawn, "LobbySpawn")
-	attachWorldText(spawn, "SPAWN", Vector3.new(0, 2.6, 0), Color3.fromRGB(228, 236, 246), Vector2.new(120, 28))
 	return spawn
 end
 
 makeDeployPad = function(root: Instance, worldPosition: Vector3)
-	local bayModel = Instance.new("Model")
-	bayModel.Name = "DeployBay"
-	bayModel.Parent = root
+	local deployModel = Instance.new("Model")
+	deployModel.Name = "DeployVoteDeck"
+	deployModel.Parent = root
+	local voteDeckLayout = Config.DeployLayout.VoteDeck
+	local deployAccent = voteDeckLayout.LaunchPad.GlowColor
 
-	local deployWallColor = Color3.fromRGB(72, 42, 42)
-	local deployTrimColor = Color3.fromRGB(156, 88, 88)
-	local deployAccent = Color3.fromRGB(255, 188, 154)
-
-	local bayFloor = makePart(
-		bayModel,
+	local floor = makePart(
+		deployModel,
 		"Part",
-		"DeployBayFloor",
-		Vector3.new(34, 0.45, 42),
-		CFrame.new(worldPosition + Vector3.new(0, 0.24, -4)),
-		Color3.fromRGB(106, 84, 84),
-		Enum.Material.DiamondPlate
-	)
-	bayFloor.CanCollide = false
-	bayFloor.CanQuery = false
-
-	local launchConcourse = makePart(
-		root,
-		"Part",
-		"DeployConcourse",
-		Vector3.new(46, 0.36, 54),
-		CFrame.new(worldPosition + Vector3.new(0, 0.18, -24)),
-		Color3.fromRGB(110, 92, 90),
+		"DeckFloor",
+		voteDeckLayout.Floor.Size,
+		CFrame.new(worldPosition + voteDeckLayout.Floor.Offset),
+		voteDeckLayout.Floor.Color,
 		Enum.Material.Concrete
 	)
-	launchConcourse.CanCollide = false
-	launchConcourse.CanQuery = false
+	floor.CanCollide = false
+	floor.CanQuery = false
 
-	local concourseInset = makePart(
-		root,
+	local inset = makePart(
+		deployModel,
 		"Part",
-		"DeployConcourseInset",
-		Vector3.new(34, 0.08, 42),
-		CFrame.new(worldPosition + Vector3.new(0, 0.4, -24)),
-		Color3.fromRGB(154, 136, 130),
+		"DeckInset",
+		voteDeckLayout.Frame.Size,
+		CFrame.new(worldPosition + voteDeckLayout.Frame.Offset),
+		voteDeckLayout.Frame.Color,
 		Enum.Material.SmoothPlastic
 	)
-	concourseInset.CanCollide = false
-	concourseInset.CanQuery = false
+	inset.CanCollide = false
+	inset.CanQuery = false
 
-	local concourseGuide = makeGlowPart(
-		root,
-		"DeployConcourseGuide",
-		Vector3.new(6, 0.08, 36),
-		CFrame.new(worldPosition + Vector3.new(0, 0.44, -24)),
-		Color3.fromRGB(255, 204, 172),
-		0.82
-	)
-	concourseGuide.CanCollide = false
-	concourseGuide.CanQuery = false
-	local launchLaneMarker = makePart(
-		root,
+	local board = makePart(
+		deployModel,
 		"Part",
-		"DeployLaunchLaneMarker",
-		Vector3.new(6, 0.2, 6),
-		CFrame.new(worldPosition + Vector3.new(0, 1.4, -10)),
-		Color3.fromRGB(48, 36, 36),
-		Enum.Material.Metal
-	)
-	launchLaneMarker.Transparency = 1
-	launchLaneMarker.CanCollide = false
-	launchLaneMarker.CanQuery = false
-	attachWorldText(launchLaneMarker, "LAUNCH", Vector3.new(0, 0, 0), Color3.fromRGB(255, 212, 188), Vector2.new(92, 18))
-
-	local voteApron = makePart(
-		root,
-		"Part",
-		"DeployVoteApron",
-		Vector3.new(24, 0.22, 12),
-		CFrame.new(worldPosition + Vector3.new(0, 0.52, -44)),
-		Color3.fromRGB(132, 92, 92),
-		Enum.Material.Metal
-	)
-	voteApron.CanCollide = false
-	voteApron.CanQuery = false
-	voteApron.Transparency = 0.18
-	local voteApronGlow = makeGlowPart(
-		root,
-		"DeployVoteApronGlow",
-		Vector3.new(20, 0.08, 7.2),
-		voteApron.CFrame * CFrame.new(0, 0.16, 0),
-		Color3.fromRGB(255, 172, 148),
-		0.72
-	)
-	voteApronGlow.CanCollide = false
-	voteApronGlow.CanQuery = false
-	attachWorldText(voteApron, "MISSION AIRLOCK", Vector3.new(0, 2.5, 0), Color3.fromRGB(255, 218, 202), Vector2.new(164, 24))
-	attachWorldText(voteApron, "Squad route and launch pad", Vector3.new(0, 1.35, 0), Color3.fromRGB(244, 194, 176), Vector2.new(192, 16))
-
-	for index, direction in ipairs({ -1, 1 }) do
-		local signalPylon = makePart(
-			root,
-			"Part",
-			"DeploySignalPylon" .. tostring(index),
-			Vector3.new(2.4, 11.5, 2.4),
-			CFrame.new(worldPosition + Vector3.new(14 * direction, 5.8, -46)),
-			Color3.fromRGB(92, 58, 58),
-			Enum.Material.Metal
-		)
-		signalPylon.CanQuery = false
-		local signalGlow = makeGlowPart(
-			root,
-			"DeploySignalPylonGlow" .. tostring(index),
-			Vector3.new(0.16, 8.2, 1.5),
-			signalPylon.CFrame * CFrame.new(0, 0.2, 0),
-			Color3.fromRGB(255, 198, 166),
-			0.72
-		)
-		signalGlow.CanCollide = false
-		signalGlow.CanQuery = false
-	end
-
-	local signalHeader = makeGlowPart(
-		root,
-		"DeploySignalHeader",
-		Vector3.new(30, 0.12, 1.4),
-		CFrame.new(worldPosition + Vector3.new(0, 11.36, -46)),
-		Color3.fromRGB(255, 214, 188),
-		0.78
-	)
-	signalHeader.CanCollide = false
-	signalHeader.CanQuery = false
-
-	for index, direction in ipairs({ -1, 1 }) do
-		local sideWing = makePart(
-			root,
-			"Part",
-			"DeployConcourseWing" .. tostring(index),
-			Vector3.new(5.2, 4.2, 24),
-			CFrame.new(worldPosition + Vector3.new(17.8 * direction, 2.1, -23)) * CFrame.Angles(0, math.rad(direction > 0 and -8 or 8), 0),
-			Color3.fromRGB(80, 50, 50),
-			Enum.Material.Metal
-		)
-		sideWing.CanQuery = false
-		local sideStrip = makeGlowPart(
-			root,
-			"DeployConcourseWingGlow" .. tostring(index),
-			Vector3.new(0.16, 3.2, 18),
-			sideWing.CFrame * CFrame.new(-2.18 * direction, 0, 0),
-			Color3.fromRGB(255, 188, 154),
-			0.76
-		)
-		sideStrip.CanCollide = false
-		sideStrip.CanQuery = false
-	end
-
-	for index, direction in ipairs({ -1, 1 }) do
-		local routeConsole = makePart(
-			root,
-			"Part",
-			"DeployRouteConsole" .. tostring(index),
-			Vector3.new(2.8, 2.4, 2.2),
-			CFrame.new(worldPosition + Vector3.new(9.6 * direction, 1.3, -29)),
-			Color3.fromRGB(88, 58, 58),
-			Enum.Material.Metal
-		)
-		routeConsole.CanQuery = false
-		local routeScreen = makeGlowPart(
-			root,
-			"DeployRouteConsoleScreen" .. tostring(index),
-			Vector3.new(1.6, 1.2, 0.1),
-			routeConsole.CFrame * CFrame.new(0, 0.3, -1.06),
-			Color3.fromRGB(255, 196, 172),
-			0.42
-		)
-		routeScreen.CanCollide = false
-		routeScreen.CanQuery = false
-	end
-
-	local bayLeftWall = makePart(
-		bayModel,
-		"Part",
-		"DeployBayLeft",
-		Vector3.new(2.6, 16, 26),
-		CFrame.new(worldPosition + Vector3.new(-16, 8, -4)),
-		deployWallColor,
-		Enum.Material.Metal
-	)
-	bayLeftWall.CanQuery = false
-
-	local bayRightWall = makePart(
-		bayModel,
-		"Part",
-		"DeployBayRight",
-		Vector3.new(2.6, 16, 26),
-		CFrame.new(worldPosition + Vector3.new(16, 8, -4)),
-		deployWallColor,
-		Enum.Material.Metal
-	)
-	bayRightWall.CanQuery = false
-
-	local bayCanopy = makePart(
-		bayModel,
-		"Part",
-		"DeployBayCanopy",
-		Vector3.new(34, 2, 20),
-		CFrame.new(worldPosition + Vector3.new(0, 13.5, -4)),
-		Color3.fromRGB(58, 34, 34),
-		Enum.Material.Metal
-	)
-	bayCanopy.CanQuery = false
-
-	local bayFrontBrace = makePart(
-		bayModel,
-		"Part",
-		"DeployBayFrontBrace",
-		Vector3.new(30, 1.2, 2.4),
-		CFrame.new(worldPosition + Vector3.new(0, 11.3, -14.8)),
-		Color3.fromRGB(132, 66, 66),
-		Enum.Material.Metal
-	)
-	bayFrontBrace.CanQuery = false
-
-	local bayCrown = makePart(
-		bayModel,
-		"Part",
-		"DeployBayCrown",
-		Vector3.new(24, 1.6, 6),
-		CFrame.new(worldPosition + Vector3.new(0, 15.4, -10.2)),
-		Color3.fromRGB(92, 48, 48),
-		Enum.Material.Metal
-	)
-	bayCrown.CanQuery = false
-	makeGlowPart(bayModel, "DeployBayCrownGlow", Vector3.new(24.4, 0.18, 6.4), bayCrown.CFrame * CFrame.new(0, 0.6, 0), deployAccent, 0.72)
-
-	local bayRear = makePart(
-		bayModel,
-		"Part",
-		"DeployBayRear",
-		Vector3.new(34, 14, 2),
-		CFrame.new(worldPosition + Vector3.new(0, 7, 8.5)),
-		Color3.fromRGB(88, 46, 46),
-		Enum.Material.Metal
-	)
-	bayRear.CanQuery = false
-
-	local bayLeftInset = makePart(
-		bayModel,
-		"Part",
-		"DeployLeftInset",
-		Vector3.new(4, 8, 8),
-		CFrame.new(worldPosition + Vector3.new(-12.2, 4.5, 6.4)),
-		Color3.fromRGB(48, 30, 30),
+		"VoteBoard",
+		voteDeckLayout.Board.Size,
+		CFrame.new(worldPosition + voteDeckLayout.Board.Offset),
+		voteDeckLayout.Board.Color,
 		Enum.Material.SmoothPlastic
 	)
-	bayLeftInset.CanQuery = false
+	board.CanQuery = false
+	attachDeployVoteBoard(board)
 
-	local bayRightInset = makePart(
-		bayModel,
+	local boardHeader = makePart(
+		deployModel,
 		"Part",
-		"DeployRightInset",
-		Vector3.new(4, 8, 8),
-		CFrame.new(worldPosition + Vector3.new(12.2, 4.5, 6.4)),
-		Color3.fromRGB(48, 30, 30),
-		Enum.Material.SmoothPlastic
+		"VoteBoardHeader",
+		voteDeckLayout.FrameGlow.Size,
+		CFrame.new(worldPosition + voteDeckLayout.FrameGlow.Offset),
+		voteDeckLayout.FrameGlow.Color,
+		Enum.Material.WoodPlanks
 	)
-	bayRightInset.CanQuery = false
+	boardHeader.CanQuery = false
+	boardHeader.Transparency = voteDeckLayout.FrameGlow.Transparency
 
-	local bayChevronLeft = makeGlowPart(
-		bayModel,
-		"DeployBayChevronLeft",
-		Vector3.new(4.8, 0.12, 1.1),
-		CFrame.new(worldPosition + Vector3.new(-8.2, 0.86, -11.2)) * CFrame.Angles(0, math.rad(18), 0),
-		deployAccent,
-		0.72
+	local boardBase = makePart(
+		deployModel,
+		"Part",
+		"VoteBoardBase",
+		Vector3.new(voteDeckLayout.Frame.Size.X + 1.2, voteDeckLayout.Frame.Size.Y + 1.2, 1.2),
+		CFrame.new(worldPosition + voteDeckLayout.Frame.Offset + Vector3.new(0, 0, -0.7)),
+		voteDeckLayout.Frame.Color,
+		Enum.Material.WoodPlanks
 	)
-	local bayChevronRight = makeGlowPart(
-		bayModel,
-		"DeployBayChevronRight",
-		Vector3.new(4.8, 0.12, 1.1),
-		CFrame.new(worldPosition + Vector3.new(8.2, 0.86, -11.2)) * CFrame.Angles(0, math.rad(-18), 0),
-		deployAccent,
-		0.72
-	)
-	bayChevronLeft.CanCollide = false
-	bayChevronLeft.CanQuery = false
-	bayChevronRight.CanCollide = false
-	bayChevronRight.CanQuery = false
+	boardBase.CanCollide = false
+	boardBase.CanQuery = false
 
-	makeGlowPart(bayModel, "DeployBayStripLeft", Vector3.new(0.2, 10, 18), CFrame.new(worldPosition + Vector3.new(-14.8, 7.4, -2)), deployTrimColor, 0.82)
-	makeGlowPart(bayModel, "DeployBayStripRight", Vector3.new(0.2, 10, 18), CFrame.new(worldPosition + Vector3.new(14.8, 7.4, -2)), deployTrimColor, 0.82)
-	makeGlowPart(bayModel, "DeployBayLintel", Vector3.new(20, 0.24, 1), CFrame.new(worldPosition + Vector3.new(0, 12, -10.8)), deployAccent, 0.72)
-
-	for _, offset in ipairs({
-		Vector3.new(-10.2, 10.8, -2.4),
-		Vector3.new(10.2, 10.8, -2.4),
-	}) do
-		local bayLight = makeGlowPart(bayModel, "DeployBayLight", Vector3.new(5.4, 0.18, 1), CFrame.new(worldPosition + offset), deployAccent, 0.64)
-		local fill = Instance.new("PointLight")
-		fill.Range = 24
-		fill.Brightness = 0.82
-		fill.Color = Color3.fromRGB(255, 208, 182)
-		fill.Parent = bayLight
+	for index, xOffset in ipairs({ -11.5, 11.5 }) do
+		local support = makePart(
+			deployModel,
+			"Part",
+			"VoteBoardSupport" .. tostring(index),
+			Vector3.new(2.2, 18, 2.2),
+			CFrame.new(worldPosition + Vector3.new(xOffset, 9, -24.2)),
+			Color3.fromRGB(108, 82, 66),
+			Enum.Material.WoodPlanks
+		)
+		support.CanQuery = false
 	end
 
-	local pad = makePart(
-		root,
+	local padPalette = voteDeckLayout.Pads.Palettes
+	for index, padOffset in ipairs(voteDeckLayout.Pads.Offsets) do
+		local votePad = makePart(
+			deployModel,
+			"Part",
+			"VotePad" .. tostring(index),
+			voteDeckLayout.Pads.Size,
+			CFrame.new(worldPosition + padOffset),
+			padPalette[index].base,
+			Enum.Material.Metal
+		)
+		votePad.CanQuery = false
+		votePad:SetAttribute("VoteOptionIndex", index)
+		CollectionService:AddTag(votePad, "MapVotePad")
+
+		local voteGlow = makeGlowPart(
+			deployModel,
+			"VotePadGlow" .. tostring(index),
+			voteDeckLayout.Pads.GlowSize,
+			votePad.CFrame * CFrame.new(0, 0.46, 0),
+			padPalette[index].glow,
+			0.58
+		)
+		voteGlow.CanCollide = false
+		voteGlow.CanQuery = false
+
+		local voteRing = makeGlowPart(
+			deployModel,
+			"VotePadRing" .. tostring(index),
+			Vector3.new(voteDeckLayout.Pads.Size.X + 0.8, 0.08, voteDeckLayout.Pads.Size.Z + 0.8),
+			votePad.CFrame * CFrame.new(0, 0.5, 0),
+			padPalette[index].glow,
+			0.86
+		)
+		voteRing.CanCollide = false
+		voteRing.CanQuery = false
+
+		local votePrompt = Instance.new("ProximityPrompt")
+		votePrompt.Name = "VotePrompt"
+		votePrompt.ActionText = "Vote"
+		votePrompt.ObjectText = "Map Vote"
+		votePrompt.KeyboardKeyCode = Enum.KeyCode.E
+		votePrompt.HoldDuration = 0
+		votePrompt.RequiresLineOfSight = false
+		votePrompt.MaxActivationDistance = 10
+		votePrompt.Parent = votePad
+
+		attachWorldText(votePad, "PAD " .. tostring(index), voteDeckLayout.Pads.TextOffset, padPalette[index].glow, voteDeckLayout.Pads.TextSize)
+	end
+
+	local launchPad = makePart(
+		deployModel,
 		"Part",
 		"DeployPad",
-		Vector3.new(24, 1, 24),
-		CFrame.new(worldPosition),
-		Color3.fromRGB(154, 86, 86),
+		voteDeckLayout.LaunchPad.Size,
+		CFrame.new(worldPosition + voteDeckLayout.LaunchPad.Offset),
+		voteDeckLayout.LaunchPad.Color,
 		Enum.Material.Metal
 	)
-	pad.CanQuery = false
-	pad.Transparency = 0.04
-	pad:SetAttribute("DeployPad", true)
-	pad:SetAttribute("RequiresDeployTokens", true)
-	CollectionService:AddTag(pad, "DeployPad")
+	launchPad.CanQuery = false
+	launchPad:SetAttribute("DeployPad", true)
+	launchPad:SetAttribute("RequiresDeployTokens", true)
+	CollectionService:AddTag(launchPad, "DeployPad")
 
-	local outerRing = makeGlowPart(root, "DeployOuterRing", Vector3.new(24, 0.1, 24), CFrame.new(worldPosition + Vector3.new(0, 0.7, 0)), Color3.fromRGB(255, 176, 122), 0.72)
-	local innerRing = makeGlowPart(root, "DeployInnerRing", Vector3.new(12, 0.08, 12), CFrame.new(worldPosition + Vector3.new(0, 0.9, 0)), Color3.fromRGB(255, 228, 214), 0.66)
-	local leftPylon = makePart(root, "Part", "DeployPylonLeft", Vector3.new(2, 14, 2), CFrame.new(worldPosition + Vector3.new(-11, 7, -11)), Color3.fromRGB(72, 40, 40), Enum.Material.Metal)
-	local rightPylon = makePart(root, "Part", "DeployPylonRight", Vector3.new(2, 14, 2), CFrame.new(worldPosition + Vector3.new(11, 7, -11)), Color3.fromRGB(72, 40, 40), Enum.Material.Metal)
-	leftPylon.CanQuery = false
-	rightPylon.CanQuery = false
-	makeGlowPart(root, "DeployHeader", Vector3.new(18, 0.24, 1.4), CFrame.new(worldPosition + Vector3.new(0, 13, -11)), Color3.fromRGB(255, 162, 142), 0.62)
-	attachWorldText(pad, "DEPLOY", Vector3.new(0, 6, 0), Color3.fromRGB(255, 214, 214), Vector2.new(120, 30))
-	outerRing.Name = "DeployOuterRing"
-	innerRing.Name = "DeployInnerRing"
-
-	local runway = makePart(
-		root,
-		"Part",
-		"DeployRunway",
-		Vector3.new(22, 0.3, 32),
-		CFrame.new(worldPosition + Vector3.new(0, 0.76, -22)),
-		Color3.fromRGB(116, 94, 94),
-		Enum.Material.DiamondPlate
+	local launchGlow = makeGlowPart(
+		deployModel,
+		"LaunchPadGlow",
+		voteDeckLayout.LaunchPad.GlowSize,
+		launchPad.CFrame * CFrame.new(0, 0.52, 0),
+		deployAccent,
+		voteDeckLayout.LaunchPad.GlowTransparency
 	)
-	runway.CanCollide = false
-	runway.CanQuery = false
-
-	local runwayThreshold = makePart(
-		root,
-		"Part",
-		"DeployRunwayThreshold",
-		Vector3.new(18, 0.24, 4),
-		CFrame.new(worldPosition + Vector3.new(0, 0.92, -5.4)),
-		Color3.fromRGB(138, 92, 92),
-		Enum.Material.Metal
-	)
-	runwayThreshold.CanCollide = false
-	runwayThreshold.CanQuery = false
-	local thresholdGlow = makeGlowPart(
-		root,
-		"DeployRunwayThresholdGlow",
-		Vector3.new(16, 0.08, 1.2),
-		runwayThreshold.CFrame * CFrame.new(0, 0.16, -1.1),
-		Color3.fromRGB(255, 212, 178),
-		0.66
-	)
-	thresholdGlow.CanCollide = false
-	thresholdGlow.CanQuery = false
-
-	local runwayFrame = makePart(
-		root,
-		"Part",
-		"DeployRunwayFrame",
-		Vector3.new(26, 0.12, 36),
-		CFrame.new(worldPosition + Vector3.new(0, 0.92, -22)),
-		Color3.fromRGB(92, 54, 54),
-		Enum.Material.Metal
-	)
-	runwayFrame.CanCollide = false
-	runwayFrame.CanQuery = false
-	runwayFrame.Transparency = 0.78
-
-	local runwayGuide = makeGlowPart(
-		root,
-		"DeployRunwayGuide",
-		Vector3.new(4, 0.08, 26),
-		CFrame.new(worldPosition + Vector3.new(0, 0.84, -22)),
-		Color3.fromRGB(255, 196, 154),
-		0.72
-	)
-	runwayGuide.Name = "DeployRunwayGuide"
-
-	local runwaySideLeft = makeGlowPart(
-		root,
-		"DeployRunwaySideLeft",
-		Vector3.new(0.22, 0.08, 26),
-		CFrame.new(worldPosition + Vector3.new(-8.8, 0.84, -22)),
-		Color3.fromRGB(238, 150, 134),
-		0.74
-	)
-	runwaySideLeft.Name = "DeployRunwaySideLeft"
-
-	local runwaySideRight = makeGlowPart(
-		root,
-		"DeployRunwaySideRight",
-		Vector3.new(0.22, 0.08, 26),
-		CFrame.new(worldPosition + Vector3.new(8.8, 0.84, -22)),
-		Color3.fromRGB(238, 150, 134),
-		0.74
-	)
-	runwaySideRight.Name = "DeployRunwaySideRight"
-
-	for _, offset in ipairs({
-		Vector3.new(-9.5, 1.4, -30),
-		Vector3.new(9.5, 1.4, -30),
-		Vector3.new(-15.5, 1.4, -42),
-		Vector3.new(15.5, 1.4, -42),
-	}) do
-		local bollard = makePart(
-			root,
-			"Part",
-			"DeployRunwayBollard",
-			Vector3.new(1.4, 2.8, 1.4),
-			CFrame.new(worldPosition + offset),
-			Color3.fromRGB(108, 64, 64),
-			Enum.Material.Metal
-		)
-		bollard.CanQuery = false
-		local lamp = makeGlowPart(root, "DeployRunwayLamp", Vector3.new(1.8, 0.14, 1.8), bollard.CFrame * CFrame.new(0, 1.5, 0), Color3.fromRGB(255, 188, 154), 0.54)
-		local lampLight = Instance.new("PointLight")
-		lampLight.Range = 12
-		lampLight.Brightness = 0.62
-		lampLight.Color = Color3.fromRGB(255, 204, 178)
-		lampLight.Parent = lamp
-	end
-
-	for _, offset in ipairs({
-		Vector3.new(-12.8, 0.9, -22),
-		Vector3.new(12.8, 0.9, -22),
-	}) do
-		local sideBeacon = makePart(
-			root,
-			"Part",
-			"DeployRunwayBeacon",
-			Vector3.new(1.2, 3.6, 1.2),
-			CFrame.new(worldPosition + offset),
-			Color3.fromRGB(118, 62, 62),
-			Enum.Material.Metal
-		)
-		sideBeacon.CanQuery = false
-		local beaconGlow = makeGlowPart(root, "DeployRunwayBeaconLight", Vector3.new(1.4, 1.4, 1.4), sideBeacon.CFrame * CFrame.new(0, 1.8, 0), Color3.fromRGB(255, 156, 132), 0.28)
-		local beaconLight = Instance.new("PointLight")
-		beaconLight.Range = 14
-		beaconLight.Brightness = 0.58
-		beaconLight.Color = Color3.fromRGB(255, 176, 148)
-		beaconLight.Parent = beaconGlow
-	end
-
-	local prepCrateLeft = makePart(root, "Part", "DeployPrepCrateLeft", Vector3.new(3.2, 2.6, 3.2), CFrame.new(worldPosition + Vector3.new(-11.4, 1.4, 4.8)), Color3.fromRGB(92, 62, 54), Enum.Material.WoodPlanks)
-	local prepCrateRight = makePart(root, "Part", "DeployPrepCrateRight", Vector3.new(3.2, 2.6, 3.2), CFrame.new(worldPosition + Vector3.new(11.4, 1.4, 4.8)), Color3.fromRGB(92, 62, 54), Enum.Material.WoodPlanks)
-	prepCrateLeft.CanQuery = false
-	prepCrateRight.CanQuery = false
-
-	local prepLockerLeft = makePart(root, "Part", "DeployPrepLockerLeft", Vector3.new(2.4, 8, 2.4), CFrame.new(worldPosition + Vector3.new(-12.4, 4, 8.2)), Color3.fromRGB(86, 52, 52), Enum.Material.Metal)
-	local prepLockerRight = makePart(root, "Part", "DeployPrepLockerRight", Vector3.new(2.4, 8, 2.4), CFrame.new(worldPosition + Vector3.new(12.4, 4, 8.2)), Color3.fromRGB(86, 52, 52), Enum.Material.Metal)
-	prepLockerLeft.CanQuery = false
-	prepLockerRight.CanQuery = false
-	local prepBenchLeft = makePart(root, "Part", "DeployPrepBenchLeft", Vector3.new(5.2, 1.2, 2.2), CFrame.new(worldPosition + Vector3.new(-8.8, 0.72, 10.6)), Color3.fromRGB(118, 86, 72), Enum.Material.WoodPlanks)
-	local prepBenchRight = makePart(root, "Part", "DeployPrepBenchRight", Vector3.new(5.2, 1.2, 2.2), CFrame.new(worldPosition + Vector3.new(8.8, 0.72, 10.6)), Color3.fromRGB(118, 86, 72), Enum.Material.WoodPlanks)
-	prepBenchLeft.CanQuery = false
-	prepBenchRight.CanQuery = false
-
-	local gateModel = Instance.new("Model")
-	gateModel.Name = "DeployGate"
-	gateModel.Parent = root
-
-	local gateLeft = makePart(gateModel, "Part", "GateLeft", Vector3.new(6, 20, 4), CFrame.new(worldPosition + Vector3.new(-18, 10, -14)), Color3.fromRGB(64, 34, 34), Enum.Material.Metal)
-	local gateRight = makePart(gateModel, "Part", "GateRight", Vector3.new(6, 20, 4), CFrame.new(worldPosition + Vector3.new(18, 10, -14)), Color3.fromRGB(64, 34, 34), Enum.Material.Metal)
-	local gateTop = makePart(gateModel, "Part", "GateTop", Vector3.new(42, 3, 4), CFrame.new(worldPosition + Vector3.new(0, 19, -14)), Color3.fromRGB(96, 48, 48), Enum.Material.Metal)
-	local blastDoor = makePart(gateModel, "Part", "BlastDoor", Vector3.new(24, 16, 2), CFrame.new(worldPosition + Vector3.new(0, 8, -15.2)), Color3.fromRGB(108, 56, 56), Enum.Material.DiamondPlate)
-	gateLeft.CanQuery = false
-	gateRight.CanQuery = false
-	gateTop.CanQuery = false
-	blastDoor.CanQuery = false
-
-	local leftTower = makePart(gateModel, "Part", "GateTowerLeft", Vector3.new(4, 24, 6), CFrame.new(worldPosition + Vector3.new(-23, 12, -12)), Color3.fromRGB(82, 42, 42), Enum.Material.Metal)
-	local rightTower = makePart(gateModel, "Part", "GateTowerRight", Vector3.new(4, 24, 6), CFrame.new(worldPosition + Vector3.new(23, 12, -12)), Color3.fromRGB(82, 42, 42), Enum.Material.Metal)
-	local upperBridge = makePart(gateModel, "Part", "GateBridge", Vector3.new(54, 2, 6), CFrame.new(worldPosition + Vector3.new(0, 23, -12)), Color3.fromRGB(112, 58, 58), Enum.Material.Metal)
-	leftTower.CanQuery = false
-	rightTower.CanQuery = false
-	upperBridge.CanQuery = false
-
-	local gateCrown = makePart(gateModel, "Part", "GateCrown", Vector3.new(28, 2, 6), CFrame.new(worldPosition + Vector3.new(0, 26.2, -12)), Color3.fromRGB(138, 72, 72), Enum.Material.Metal)
-	gateCrown.CanQuery = false
-	makeGlowPart(gateModel, "GateCrownGlow", Vector3.new(28.4, 0.18, 6.4), gateCrown.CFrame * CFrame.new(0, 0.7, 0), Color3.fromRGB(255, 188, 164), 0.64)
-
-	for _, offset in ipairs({
-		Vector3.new(-32, 15, -13.5),
-		Vector3.new(32, 15, -13.5),
-	}) do
-		local wing = makePart(gateModel, "Part", "GateWing", Vector3.new(6, 18, 3), CFrame.new(worldPosition + offset), Color3.fromRGB(92, 48, 48), Enum.Material.Metal)
-		wing.CanQuery = false
-		makeGlowPart(gateModel, "GateWingGlow", Vector3.new(6.4, 0.16, 3.4), wing.CFrame * CFrame.new(0, 8.5, 0), Color3.fromRGB(255, 176, 154), 0.76)
-	end
-
-	for _, offset in ipairs({
-		Vector3.new(-13, 8, -13.2),
-		Vector3.new(13, 8, -13.2),
-	}) do
-		local brace = makePart(gateModel, "Part", "GateBrace", Vector3.new(10, 2, 2), CFrame.new(worldPosition + offset) * CFrame.Angles(0, 0, math.rad(22 * (offset.X > 0 and -1 or 1))), Color3.fromRGB(134, 72, 72), Enum.Material.Metal)
-		brace.CanQuery = false
-	end
-
-	local gateLight = makeGlowPart(gateModel, "GateLight", Vector3.new(24, 0.26, 1), CFrame.new(worldPosition + Vector3.new(0, 16.5, -12.2)), Color3.fromRGB(255, 164, 144), 0.46)
-	local gateFill = Instance.new("PointLight")
-	gateFill.Range = 28
-	gateFill.Brightness = 0.88
-	gateFill.Color = Color3.fromRGB(255, 188, 164)
-	gateFill.Parent = gateLight
-	local bridgeLight = makeGlowPart(gateModel, "BridgeLight", Vector3.new(34, 0.18, 1.2), CFrame.new(worldPosition + Vector3.new(0, 21.8, -8.8)), Color3.fromRGB(255, 150, 136), 0.56)
-	local bridgeFill = Instance.new("PointLight")
-	bridgeFill.Range = 20
-	bridgeFill.Brightness = 0.52
-	bridgeFill.Color = Color3.fromRGB(255, 172, 152)
-	bridgeFill.Parent = bridgeLight
-	attachWorldText(gateTop, "MISSION AIRLOCK", Vector3.new(0, 2.8, 0), Color3.fromRGB(255, 214, 214), Vector2.new(170, 30))
-	attachWorldText(gateTop, "Squads launch into their own run instance", Vector3.new(0, 1.55, 0), Color3.fromRGB(255, 194, 180), Vector2.new(248, 18))
-
-	for _, offset in ipairs({
-		Vector3.new(-23, 21, -9),
-		Vector3.new(23, 21, -9),
-	}) do
-		local beacon = makeGlowPart(gateModel, "WarningBeacon", Vector3.new(1.8, 1.8, 1.8), CFrame.new(worldPosition + offset), Color3.fromRGB(255, 118, 118), 0.22)
-		local light = Instance.new("PointLight")
-		light.Range = 16
-		light.Brightness = 0.72
-		light.Color = Color3.fromRGB(255, 108, 108)
-		light.Parent = beacon
-	end
-
-	local stagingPlate = makePart(root, "Part", "DeployStagingPlate", Vector3.new(12, 0.18, 6), CFrame.new(worldPosition + Vector3.new(0, 0.82, 8.4)), Color3.fromRGB(138, 96, 96), Enum.Material.Metal)
-	stagingPlate.CanCollide = false
-	stagingPlate.CanQuery = false
-	stagingPlate.Transparency = 0.24
-	makeGlowPart(root, "DeployStagingGuide", Vector3.new(8, 0.08, 2), CFrame.new(worldPosition + Vector3.new(0, 0.96, 5.8)), Color3.fromRGB(255, 194, 168), 0.64)
-
-	attachWorldText(stagingPlate, "READY BAY", Vector3.new(0, 2.2, 0), Color3.fromRGB(255, 198, 184), Vector2.new(124, 28))
-	attachWorldText(stagingPlate, "Squad up, confirm the vote, then deploy", Vector3.new(0, 1.1, 0), Color3.fromRGB(244, 190, 176), Vector2.new(230, 18))
-
-	local stagingStrutLeft = makePart(root, "Part", "DeployStagingStrutLeft", Vector3.new(1.4, 7.2, 1.4), CFrame.new(worldPosition + Vector3.new(-12, 3.6, 13.2)), Color3.fromRGB(86, 52, 52), Enum.Material.Metal)
-	local stagingStrutRight = makePart(root, "Part", "DeployStagingStrutRight", Vector3.new(1.4, 7.2, 1.4), CFrame.new(worldPosition + Vector3.new(12, 3.6, 13.2)), Color3.fromRGB(86, 52, 52), Enum.Material.Metal)
-	stagingStrutLeft.CanQuery = false
-	stagingStrutRight.CanQuery = false
-
-	local stagingCrown = makePart(root, "Part", "DeployStagingCrown", Vector3.new(14, 0.9, 3), CFrame.new(worldPosition + Vector3.new(0, 8.2, 11.8)), Color3.fromRGB(118, 70, 70), Enum.Material.Metal)
-	stagingCrown.CanQuery = false
-	makeGlowPart(root, "DeployStagingCrownGlow", Vector3.new(14.4, 0.12, 3.4), stagingCrown.CFrame * CFrame.new(0, 0.4, 0), Color3.fromRGB(255, 194, 168), 0.68)
+	launchGlow.CanCollide = false
+	launchGlow.CanQuery = false
+	attachWorldText(launchPad, voteDeckLayout.LaunchPad.Text, voteDeckLayout.LaunchPad.TextOffset, voteDeckLayout.LaunchPad.TextColor, voteDeckLayout.LaunchPad.TextSize)
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "DeployPrompt"
-	prompt.ActionText = "Deploy"
-	prompt.ObjectText = "Main Game"
+	prompt.ActionText = "Launch Run"
+	prompt.ObjectText = "Mission Vote Ready"
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.HoldDuration = 0
 	prompt.RequiresLineOfSight = false
 	prompt.MaxActivationDistance = 12
-	prompt.Parent = pad
+	prompt.Parent = launchPad
 
-	for index, offset in ipairs({
-		Vector3.new(-18, 2.1, -38),
-		Vector3.new(18, 2.1, -38),
-		Vector3.new(-18, 2.1, -12),
-		Vector3.new(18, 2.1, -12),
-	}) do
+	for _, offset in ipairs(voteDeckLayout.Pylons.Offsets) do
 		local pylon = makePart(
-			root,
+			deployModel,
 			"Part",
-			"DeployConcoursePylon" .. tostring(index),
-			Vector3.new(1.2, 3.6, 1.2),
+			"DeckPylon",
+			voteDeckLayout.Pylons.Size,
 			CFrame.new(worldPosition + offset),
-			Color3.fromRGB(94, 62, 62),
+			voteDeckLayout.Pylons.Color,
 			Enum.Material.Metal
 		)
 		pylon.CanQuery = false
-		local pylonCap = makeGlowPart(
-			root,
-			"DeployConcoursePylonCap" .. tostring(index),
-			Vector3.new(1.6, 0.16, 1.6),
-			pylon.CFrame * CFrame.new(0, 1.82, 0),
-			Color3.fromRGB(255, 188, 154),
-			0.42
+		local cap = makeGlowPart(
+			deployModel,
+			"DeckPylonCap",
+			voteDeckLayout.Pylons.GlowSize,
+			pylon.CFrame * CFrame.new(0, 2.12, 0),
+			voteDeckLayout.Pylons.GlowColor,
+			voteDeckLayout.Pylons.GlowTransparency
 		)
-		pylonCap.CanCollide = false
-		pylonCap.CanQuery = false
-		local pylonLight = Instance.new("PointLight")
-		pylonLight.Range = 12
-		pylonLight.Brightness = 0.24
-		pylonLight.Color = Color3.fromRGB(255, 204, 176)
-		pylonLight.Parent = pylonCap
+		cap.CanCollide = false
+		cap.CanQuery = false
 	end
 
-	return pad, prompt
+	return launchPad, prompt
 end
 
 makeGuidePaths = function(root: Instance, origin: Vector3, areaConfig)
@@ -5043,6 +5609,31 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 	cameraEnd.CanQuery = false
 
 	attachLabel(marker, "DROP ZONE", "Forward breach staging", Color3.fromRGB(255, 196, 128))
+	local dropZoneGui = marker:FindFirstChild("Sign")
+	if dropZoneGui and dropZoneGui:IsA("BillboardGui") then
+		dropZoneGui.Size = UDim2.fromOffset(112, 32)
+		dropZoneGui.StudsOffset = Vector3.new(0, 1.0, 0)
+		dropZoneGui.MaxDistance = 22
+		local frame = dropZoneGui:FindFirstChildOfClass("Frame")
+		if frame then
+			frame.BackgroundTransparency = 0.72
+			local stroke = frame:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Transparency = 0.58
+				stroke.Thickness = 1
+			end
+		end
+		local labels = frame and frame:GetChildren() or {}
+		for _, child in ipairs(labels) do
+			if child:IsA("TextLabel") then
+				if child.Font == Enum.Font.GothamBlack then
+					child.TextSize = 10
+				else
+					child.TextSize = 8
+				end
+			end
+		end
+	end
 
 	return mission, spawn, cameraStart, cameraEnd
 end
@@ -5056,22 +5647,36 @@ function LobbyWorld.start()
 	root.Parent = Workspace
 	root:SetAttribute("WorldType", "LobbyHub")
 	root:SetAttribute("PlayerCountMax", Config.SquadSize.Max)
-	makeOpenSkyLobby(root, Config.Origin)
 
-	local lobbyAnchor = root:FindFirstChild("OpenSkyLobby")
-	if lobbyAnchor and lobbyAnchor:IsA("Model") then
-		local anchorPart = lobbyAnchor:FindFirstChild("OuterGround")
-		if anchorPart and anchorPart:IsA("BasePart") then
-			CollectionService:AddTag(anchorPart, "LobbyAnchor")
+	local lobbyAnchor = cloneDesignerLobbyTemplate(root)
+	if lobbyAnchor then
+		wireDesignerLobby(root, lobbyAnchor)
+	else
+		makeOpenSkyLobby(root, Config.Origin)
+		lobbyAnchor = root:FindFirstChild("OpenSkyLobby")
+		if lobbyAnchor and lobbyAnchor:IsA("Model") then
+			local anchorPart = lobbyAnchor:FindFirstChild("OuterGround")
+			if anchorPart and anchorPart:IsA("BasePart") then
+				CollectionService:AddTag(anchorPart, "LobbyAnchor")
+			end
 		end
 	end
 
-	local compositionRoot = (lobbyAnchor and lobbyAnchor:IsA("Model")) and lobbyAnchor or root
-	makeSpawn(compositionRoot, Config.Origin + Config.SpawnOffset)
-	makeCentralHub(compositionRoot, Config.Origin + Config.SpawnOffset + Vector3.new(0, 0, 0))
+	local compositionRoot = lobbyAnchor or root
+	if not compositionRoot:FindFirstChild("LobbySpawn", true) then
+		makeSpawn(compositionRoot, Config.Origin + Config.SpawnOffset)
+	end
+	if not compositionRoot:FindFirstChild("CentralHub", true) then
+		makeCentralHub(compositionRoot, Config.Origin + Config.SpawnOffset + Config.LobbyLayout.CentralHubOffset)
+	end
+	publishDesignerLobbyExport(compositionRoot)
 	local mission, missionSpawn, cameraStart, cameraEnd = makeMissionStaging(root, Config.Origin + Config.MissionOffset)
-	root:SetAttribute("DeployPadName", "")
-	root:SetAttribute("DeployPromptName", "")
+	if not root:GetAttribute("DeployPadName") then
+		root:SetAttribute("DeployPadName", "")
+	end
+	if not root:GetAttribute("DeployPromptName") then
+		root:SetAttribute("DeployPromptName", "")
+	end
 	root:SetAttribute("LootMultiplierAt4", Config.GetScaledLootMultiplier(4))
 	root:SetAttribute("DifficultyAt4", Config.GetScaledDifficulty(4))
 	root:SetAttribute("MissionModelName", mission.Name)

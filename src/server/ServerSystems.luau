@@ -23,6 +23,7 @@ local RoleService = require(servicesFolder:WaitForChild("RoleService"))
 local SkillTreeService = require(servicesFolder:WaitForChild("SkillTreeService"))
 local SubscriptionService = require(servicesFolder:WaitForChild("SubscriptionService"))
 local TokenService = require(servicesFolder:WaitForChild("TokenService"))
+local AntiExploitService = require(servicesFolder:WaitForChild("AntiExploitService"))
 local SquadService = require(servicesFolder:WaitForChild("SquadService"))
 local RewardService = require(servicesFolder:WaitForChild("RewardService"))
 local DailyOpsService = require(servicesFolder:WaitForChild("DailyOpsService"))
@@ -57,6 +58,7 @@ local function buildBootstrapData(player, services, config)
 	local weeklyRewardState = services.RewardService:GetWeeklyRewardState(player)
 	local dailyOpsState = services.DailyOpsService:GetState(player)
 	local identity = services.RoleService:GetIdentity(player)
+	local activities = services.PersistenceService:GetActivityStats(player)
 
 	return {
 		gameTitle = config.GameTitle,
@@ -95,7 +97,7 @@ local function buildBootstrapData(player, services, config)
 			events = RemoteNames.Events,
 			functions = RemoteNames.Functions,
 		},
-		progression = Contracts.makeProgressionProfile(equippedWeapon, equippedCosmetic, unlocks, weaponExperience, stats, skillTree, subscription, identity),
+		progression = Contracts.makeProgressionProfile(equippedWeapon, equippedCosmetic, unlocks, weaponExperience, stats, skillTree, subscription, identity, activities),
 		subscriptionState = subscription,
 		seasonalEventState = services.ShopService:GetSeasonalEventState(),
 		lobbyState = Contracts.makeLobbyState(
@@ -161,6 +163,9 @@ function ServerSystems.start()
 	local tokenService = TokenService.new(context)
 	context.TokenService = tokenService
 
+	local antiExploitService = AntiExploitService.new(context)
+	context.AntiExploitService = antiExploitService
+
 	local squadService = SquadService.new(context)
 	context.SquadService = squadService
 
@@ -180,6 +185,7 @@ function ServerSystems.start()
 	context.InventoryService = inventoryService
 	skillTreeService:SetInventoryService(inventoryService)
 	gamePassService:SetInventoryService(inventoryService)
+	gamePassService:SetSubscriptionService(subscriptionService)
 
 	local shopService = ShopService.new(context)
 	context.ShopService = shopService
@@ -215,7 +221,14 @@ function ServerSystems.start()
 	roleService:Start()
 	skillTreeService:Start()
 	subscriptionService:Start()
+	subscriptionService.StateChanged:Connect(function(player)
+		if player and player.Parent then
+			gamePassService:RefreshDerivedState(player)
+			roleService:Apply(player)
+		end
+	end)
 	tokenService:Start()
+	antiExploitService:Start()
 	squadService:Start()
 	leaderboardService:Start()
 	leaderstatsService:Start()
@@ -231,6 +244,10 @@ function ServerSystems.start()
 	instanceDeploymentService:Start()
 	adminService:Start()
 	nameplateService:Start()
+
+	local function guardRequest(player, actionKey, limit, windowSeconds)
+		return antiExploitService:AllowRequest(player, actionKey, limit, windowSeconds)
+	end
 
 	remotes:SetFunctionHandler(RemoteNames.Functions.GetBootstrapData, function(player)
 		return buildBootstrapData(player, context, GameFlowConfig)
@@ -256,12 +273,21 @@ function ServerSystems.start()
 		return inventoryService:BuildProgressionPayload(player)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.ClaimDailyReward, function(player)
+		if not guardRequest(player, "ClaimDailyReward", 3, 5) then
+			return false, "rate_limited"
+		end
 		return rewardService:ClaimDailyReward(player)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.ClaimDailyOpsReward, function(player, taskId)
+		if not guardRequest(player, "ClaimDailyOpsReward", 4, 5) then
+			return false, "rate_limited"
+		end
 		return dailyOpsService:ClaimReward(player, taskId)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.ClaimWeeklyRewardCrate, function(player)
+		if not guardRequest(player, "ClaimWeeklyRewardCrate", 2, 8) then
+			return false, "rate_limited"
+		end
 		return rewardService:ClaimWeeklyRewardCrate(player)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.GetSquadDirectory, function(player)
@@ -271,51 +297,97 @@ function ServerSystems.start()
 		return squadService:GetInviteablePlayers(player)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.CreateOrJoinSquad, function(player, squadId)
+		if not guardRequest(player, "CreateOrJoinSquad", 4, 3) then
+			return false, "rate_limited"
+		end
 		return squadService:CreateOrJoinSquad(player, squadId)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.SendSquadInvite, function(player, targetUserId)
+		if not guardRequest(player, "SendSquadInvite", 4, 6) then
+			return false, "rate_limited"
+		end
 		return squadService:SendInvite(player, targetUserId)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.RespondToSquadInvite, function(player, fromSquadId, acceptInvite)
+		if not guardRequest(player, "RespondToSquadInvite", 4, 6) then
+			return false, "rate_limited"
+		end
 		return squadService:RespondToInvite(player, fromSquadId, acceptInvite)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.SetSquadPrivacy, function(player, isPrivate)
+		if not guardRequest(player, "SetSquadPrivacy", 4, 4) then
+			return false, "rate_limited"
+		end
 		return squadService:SetPrivacyForLeader(player, isPrivate)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.LeaveSquad, function(player)
+		if not guardRequest(player, "LeaveSquad", 4, 4) then
+			return false, "rate_limited"
+		end
 		return squadService:LeaveSquad(player)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.RequestDeploy, function(player)
+		if not guardRequest(player, "RequestDeploy", 2, 2.5) then
+			return false, "rate_limited"
+		end
 		return flowService:RequestDeployment(player)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.RequestMapVote, function(player, optionId)
+		if not guardRequest(player, "RequestMapVote", 5, 2) then
+			return false, "rate_limited"
+		end
 		return flowService:RequestMapVote(player, optionId)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.RequestDuel, function(player, action)
+		if not guardRequest(player, "RequestDuel", 4, 3) then
+			return false, "rate_limited"
+		end
 		return duelService:RequestDuel(player, action)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.GetShopCatalog, function()
 		return shopService:GetCatalog()
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.PurchaseShopItem, function(player, request)
+		if not guardRequest(player, "PurchaseShopItem", 5, 4) then
+			return false, "rate_limited"
+		end
+		if not antiExploitService:ValidateShopRequest(player, request) then
+			return false, "invalid_request"
+		end
 		return shopService:Purchase(player, request)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.EquipLoadoutItem, function(player, request)
+		if not guardRequest(player, "EquipLoadoutItem", 8, 4) then
+			return false, "rate_limited"
+		end
+		if not antiExploitService:ValidateShopRequest(player, request) then
+			return false, "invalid_request"
+		end
 		return shopService:EquipItem(player, request)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.SpendSkillPoint, function(player, skillId)
+		if not guardRequest(player, "SpendSkillPoint", 8, 4) then
+			return false, "rate_limited"
+		end
 		return skillTreeService:SpendSkillPoint(player, skillId)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.RespecSkillTree, function(player)
+		if not guardRequest(player, "RespecSkillTree", 2, 10) then
+			return false, "rate_limited"
+		end
 		return skillTreeService:Respec(player)
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.AdminCommand, function(player, commandId)
+		if not guardRequest(player, "AdminCommand", 6, 3) then
+			return false, "rate_limited"
+		end
 		return adminService:Execute(player, commandId)
 	end)
 
 	controller = {
 		Remotes = remotes,
 		TokenService = tokenService,
+		AntiExploitService = antiExploitService,
 		PersistenceService = persistenceService,
 		GamePassService = gamePassService,
 		RoleService = roleService,
