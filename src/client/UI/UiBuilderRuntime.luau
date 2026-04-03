@@ -849,7 +849,7 @@ local function createNpcDialoguePopup(lobby, lobbyRefs)
 end
 
 local function createAdminPopup(lobby, lobbyRefs)
-	local adminPopup = createPopup(lobby, "AdminPopup", UDim2.new(0, 836, 0, 822), UDim2.new(0.5, -418, 0.05, 0), {
+	local adminPopup = createPopup(lobby, "AdminPopup", UDim2.new(0, 836, 0, 874), UDim2.new(0.5, -418, 0.05, 0), {
 		backgroundColor = Color3.fromRGB(48, 40, 30),
 		gradientStart = Color3.fromRGB(64, 54, 40),
 		gradientEnd = Color3.fromRGB(30, 24, 18),
@@ -878,7 +878,7 @@ local function createAdminPopup(lobby, lobbyRefs)
 		BackgroundColor3 = Color3.fromRGB(32, 26, 20),
 		BorderSizePixel = 0,
 		Position = UDim2.new(0, 246, 0, 152),
-		Size = UDim2.new(1, -268, 0, 68),
+		Size = UDim2.new(1, -268, 0, 96),
 		Parent = adminPopup,
 	})
 	addCorner(adminTargetSummaryCard, UDim.new(0, 16))
@@ -889,12 +889,45 @@ local function createAdminPopup(lobby, lobbyRefs)
 	setFixedText(adminTargetRole, 14)
 	local adminTargetMeta = label(adminTargetSummaryCard, "TargetMeta", "Select a player from the server roster or leave it on self for local commands.", UDim2.new(0, 14, 0, 34), UDim2.new(1, -28, 0, 20), Theme.Fonts.Body, Theme.Colors.Muted)
 	setFixedText(adminTargetMeta, 12)
+	local adminTargetStats = label(adminTargetSummaryCard, "TargetStats", "Lv.1 | Tokens 0 | Runs 0 | Kills 0", UDim2.new(0, 14, 0, 58), UDim2.new(1, -28, 0, 22), Theme.Fonts.Body, Color3.fromRGB(226, 208, 176))
+	setFixedText(adminTargetStats, 13)
+
+	local adminOverviewStrip = new("Frame", {
+		Name = "AdminOverviewStrip",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, 246, 0, 258),
+		Size = UDim2.new(1, -268, 0, 54),
+		Parent = adminPopup,
+	})
+	local function createOverviewCard(name, xOffset, width, titleText, valueText, accentColor)
+		local card = new("Frame", {
+			Name = name,
+			BackgroundColor3 = Color3.fromRGB(34, 28, 22),
+			BackgroundTransparency = 0.04,
+			BorderSizePixel = 0,
+			Position = UDim2.new(0, xOffset, 0, 0),
+			Size = UDim2.new(0, width, 1, 0),
+			Parent = adminOverviewStrip,
+		})
+		addCorner(card, UDim.new(0, 14))
+		addStroke(card, accentColor, 0.22, 1)
+		local title = label(card, "Title", titleText, UDim2.new(0, 12, 0, 8), UDim2.new(1, -24, 0, 14), Theme.Fonts.Body, Theme.Colors.Muted)
+		setFixedText(title, 11)
+		local value = label(card, "Value", valueText, UDim2.new(0, 12, 0, 24), UDim2.new(1, -24, 0, 18), Theme.Fonts.Heading, Theme.Colors.Text)
+		setFixedText(value, 14)
+		return value
+	end
+	local adminRoleValue = createOverviewCard("RoleCard", 0, 132, "ROLE", "MOD", Color3.fromRGB(196, 166, 108))
+	local adminEventValue = createOverviewCard("EventCard", 146, 150, "EVENT", "AUTO", Color3.fromRGB(102, 132, 188))
+	local adminMissionValue = createOverviewCard("MissionCard", 310, 150, "RUN STATE", "LOBBY", Color3.fromRGB(94, 156, 108))
+	local adminTargetValue = createOverviewCard("TargetCard", 474, 92, "TARGET", "SELF", Color3.fromRGB(168, 122, 74))
 
 	local adminTabStrip = new("Frame", {
 		Name = "AdminTabStrip",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0, 246, 0, 234),
+		Position = UDim2.new(0, 246, 0, 326),
 		Size = UDim2.new(1, -268, 0, 40),
 		Parent = adminPopup,
 	})
@@ -917,8 +950,8 @@ local function createAdminPopup(lobby, lobbyRefs)
 		BackgroundColor3 = Color3.fromRGB(28, 24, 18),
 		BackgroundTransparency = 0.08,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0, 246, 0, 284),
-		Size = UDim2.new(1, -268, 1, -340),
+		Position = UDim2.new(0, 246, 0, 376),
+		Size = UDim2.new(1, -268, 1, -432),
 		Parent = adminPopup,
 	})
 	addCorner(adminContentFrame, UDim.new(0, 18))
@@ -950,7 +983,7 @@ local function createAdminPopup(lobby, lobbyRefs)
 		return section
 	end
 
-	local sessionSection = createAdminSection(adminPages.Session, "SessionSection", "Session Actions", "Fast recovery and lobby control for the current server squad.", UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 166), Color3.fromRGB(94, 156, 108))
+	local sessionSection = createAdminSection(adminPages.Session, "SessionSection", "Session Actions", "Fast recovery and lobby control for the current server squad.", UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 212), Color3.fromRGB(94, 156, 108))
 	local adminHealButton = createButton(sessionSection, "HealButton", "Heal Self", UDim2.new(0, 170, 0, 40), UDim2.new(0, 16, 0, 92), Color3.fromRGB(94, 156, 108))
 	adminHealButton.AnchorPoint = Vector2.zero
 	setFixedText(adminHealButton, 15, Enum.TextXAlignment.Center)
@@ -966,6 +999,12 @@ local function createAdminPopup(lobby, lobbyRefs)
 	local adminRefreshButton = createButton(sessionSection, "RefreshButton", "Refresh Access", UDim2.new(0, 264, 0, 40), UDim2.new(0, 294, 0, 138), Theme.Colors.Backdrop)
 	adminRefreshButton.AnchorPoint = Vector2.zero
 	setFixedText(adminRefreshButton, 15, Enum.TextXAlignment.Center)
+	local adminRestoreSquadButton = createButton(sessionSection, "RestoreSquadButton", "Restore Squad", UDim2.new(0, 264, 0, 40), UDim2.new(0, 16, 0, 184), Color3.fromRGB(92, 164, 138))
+	adminRestoreSquadButton.AnchorPoint = Vector2.zero
+	setFixedText(adminRestoreSquadButton, 15, Enum.TextXAlignment.Center)
+	local adminOpenLiveOpsButton = createButton(sessionSection, "OpenLiveOpsButton", "Jump To Live Ops", UDim2.new(0, 264, 0, 40), UDim2.new(0, 294, 0, 184), Color3.fromRGB(98, 124, 184))
+	adminOpenLiveOpsButton.AnchorPoint = Vector2.zero
+	setFixedText(adminOpenLiveOpsButton, 15, Enum.TextXAlignment.Center)
 
 	local progressionEconomySection = createAdminSection(adminPages.Progression, "EconomySection", "Economy Grants", "Quick progression boosts for controlled testing and admin recovery.", UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 166), Color3.fromRGB(188, 142, 76))
 	local adminTokensButton = createButton(progressionEconomySection, "TokensButton", "+250 Tokens", UDim2.new(0, 154, 0, 40), UDim2.new(0, 16, 0, 92), Color3.fromRGB(188, 142, 76))
@@ -987,7 +1026,7 @@ local function createAdminPopup(lobby, lobbyRefs)
 	adminGrantXpTargetButton.AnchorPoint = Vector2.zero
 	setFixedText(adminGrantXpTargetButton, 15, Enum.TextXAlignment.Center)
 
-	local progressionLoadoutSection = createAdminSection(adminPages.Progression, "LoadoutSection", "Target Loadout", "Direct profile changes for the selected operator.", UDim2.new(0, 0, 0, 184), UDim2.new(1, 0, 0, 118), Color3.fromRGB(122, 94, 172))
+	local progressionLoadoutSection = createAdminSection(adminPages.Progression, "LoadoutSection", "Target Loadout", "Direct profile changes for the selected operator.", UDim2.new(0, 0, 0, 184), UDim2.new(1, 0, 0, 164), Color3.fromRGB(122, 94, 172))
 	local adminHealTargetButton = createButton(progressionLoadoutSection, "HealTargetButton", "Heal Target", UDim2.new(0, 154, 0, 40), UDim2.new(0, 16, 0, 62), Color3.fromRGB(82, 154, 118))
 	adminHealTargetButton.AnchorPoint = Vector2.zero
 	setFixedText(adminHealTargetButton, 15, Enum.TextXAlignment.Center)
@@ -997,6 +1036,54 @@ local function createAdminPopup(lobby, lobbyRefs)
 	local adminGrantCosmeticsButton = createButton(progressionLoadoutSection, "GrantCosmeticsButton", "Give All Cosmetics", UDim2.new(0, 154, 0, 40), UDim2.new(0, 352, 0, 62), Color3.fromRGB(122, 94, 172))
 	adminGrantCosmeticsButton.AnchorPoint = Vector2.zero
 	setFixedText(adminGrantCosmeticsButton, 15, Enum.TextXAlignment.Center)
+	local adminGrantBundleButton = createButton(progressionLoadoutSection, "GrantBundleButton", "Grant Target Bundle", UDim2.new(0, 248, 0, 40), UDim2.new(0, 16, 0, 108), Color3.fromRGB(176, 134, 88))
+	adminGrantBundleButton.AnchorPoint = Vector2.zero
+	setFixedText(adminGrantBundleButton, 15, Enum.TextXAlignment.Center)
+	local adminRestoreTargetButton = createButton(progressionLoadoutSection, "RestoreTargetButton", "Restore Target", UDim2.new(0, 248, 0, 40), UDim2.new(0, 280, 0, 108), Color3.fromRGB(88, 152, 122))
+	adminRestoreTargetButton.AnchorPoint = Vector2.zero
+	setFixedText(adminRestoreTargetButton, 15, Enum.TextXAlignment.Center)
+
+	local statEditorSection = createAdminSection(adminPages.Progression, "StatEditorSection", "Stat Editor", "Set exact values for the selected target. Use this for leaderboard testing or account recovery.", UDim2.new(0, 0, 0, 366), UDim2.new(1, 0, 0, 220), Color3.fromRGB(104, 132, 198))
+	local function createAdminValueEditor(parent, name, labelText, yOffset, buttonText, accentColor)
+		local row = new("Frame", {
+			Name = name,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Position = UDim2.new(0, 16, 0, yOffset),
+			Size = UDim2.new(1, -32, 0, 36),
+			Parent = parent,
+		})
+		local fieldLabel = label(row, "Label", labelText, UDim2.new(0, 0, 0, 8), UDim2.new(0, 96, 0, 18), Theme.Fonts.Body, Theme.Colors.Text)
+		setFixedText(fieldLabel, 13)
+		local input = new("TextBox", {
+			Name = "Input",
+			BackgroundColor3 = Color3.fromRGB(26, 30, 38),
+			BorderSizePixel = 0,
+			Position = UDim2.new(0, 104, 0, 0),
+			Size = UDim2.new(0, 150, 1, 0),
+			ClearTextOnFocus = false,
+			PlaceholderText = "Enter value",
+			Text = "",
+			TextColor3 = Theme.Colors.Text,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Font = Theme.Fonts.Body,
+			Parent = row,
+		})
+		addCorner(input, UDim.new(0, 10))
+		addStroke(input, Color3.fromRGB(118, 136, 164), 0.18, 1)
+		local button = createButton(row, "ApplyButton", buttonText, UDim2.new(0, 128, 1, 0), UDim2.new(1, 0, 0, 0), accentColor)
+		button.AnchorPoint = Vector2.new(1, 0)
+		setFixedText(button, 14, Enum.TextXAlignment.Center)
+		return input, button
+	end
+	local adminLevelInput, adminApplyLevelButton = createAdminValueEditor(statEditorSection, "LevelEditor", "Level", 70, "Apply Level", Color3.fromRGB(92, 138, 198))
+	local adminKillsInput, adminApplyKillsButton = createAdminValueEditor(statEditorSection, "KillsEditor", "Kills", 108, "Apply Kills", Color3.fromRGB(188, 124, 84))
+	local adminRunsInput, adminApplyRunsButton = createAdminValueEditor(statEditorSection, "RunsEditor", "Runs", 146, "Apply Runs", Color3.fromRGB(104, 156, 118))
+	local adminTokensInput, adminApplyTokensButton = createAdminValueEditor(statEditorSection, "TokensEditor", "Tokens", 184, "Apply Tokens", Color3.fromRGB(188, 152, 82))
+	local adminMaxLevelButton = createButton(statEditorSection, "MaxLevelButton", "Set Max Level", UDim2.new(0, 168, 0, 36), UDim2.new(1, -16, 0, 30), Color3.fromRGB(122, 104, 196))
+	adminMaxLevelButton.AnchorPoint = Vector2.new(1, 0)
+	setFixedText(adminMaxLevelButton, 14, Enum.TextXAlignment.Center)
 
 	local liveOpsEventSection = createAdminSection(adminPages.LiveOps, "EventSection", "Event Mode", "Control seasonal rotation and force a live event state when needed.", UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 122), Color3.fromRGB(112, 140, 196))
 	local adminEventLabel = label(liveOpsEventSection, "EventLabel", "Event Mode: Auto Rotation", UDim2.new(0, 16, 0, 64), UDim2.new(1, -32, 0, 20), Theme.Fonts.Body, Color3.fromRGB(255, 226, 166))
@@ -1077,7 +1164,7 @@ local function createAdminPopup(lobby, lobbyRefs)
 	adminToggleSupportBotsButton.AnchorPoint = Vector2.zero
 	setFixedText(adminToggleSupportBotsButton, 14, Enum.TextXAlignment.Center)
 
-	local accessSection = createAdminSection(adminPages.Access, "AccessSection", "Access Control", "Restrict role changes and severe moderation actions to the owner path.", UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 178), Color3.fromRGB(148, 86, 86))
+	local accessSection = createAdminSection(adminPages.Access, "AccessSection", "Access Control", "Restrict role changes and severe moderation actions to the owner path.", UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 224), Color3.fromRGB(148, 86, 86))
 	local adminRoleModButton = createButton(accessSection, "RoleModButton", "Make Mod", UDim2.new(0, 170, 0, 40), UDim2.new(0, 16, 0, 92), Color3.fromRGB(86, 118, 188))
 	adminRoleModButton.AnchorPoint = Vector2.zero
 	setFixedText(adminRoleModButton, 15, Enum.TextXAlignment.Center)
@@ -1093,6 +1180,11 @@ local function createAdminPopup(lobby, lobbyRefs)
 	local adminTerminateButton = createButton(accessSection, "TerminateButton", "Terminate Target", UDim2.new(0, 264, 0, 40), UDim2.new(0, 294, 0, 138), Color3.fromRGB(158, 86, 86))
 	adminTerminateButton.AnchorPoint = Vector2.zero
 	setFixedText(adminTerminateButton, 15, Enum.TextXAlignment.Center)
+	local adminUnbanButton = createButton(accessSection, "UnbanButton", "Clear Ban", UDim2.new(0, 264, 0, 40), UDim2.new(0, 16, 0, 184), Color3.fromRGB(102, 116, 140))
+	adminUnbanButton.AnchorPoint = Vector2.zero
+	setFixedText(adminUnbanButton, 15, Enum.TextXAlignment.Center)
+	local adminAccessHint = label(accessSection, "AccessHint", "Owner-only actions apply to the selected roster target and immediately refresh their access state if they remain in-server.", UDim2.new(0, 16, 0, 72), UDim2.new(1, -32, 0, 16), Theme.Fonts.Body, Color3.fromRGB(214, 198, 184))
+	setFixedText(adminAccessHint, 12)
 
 	local closeAdminButton = createButton(adminPopup, "CloseAdminButton", "Close", UDim2.new(0, 108, 0, 38), UDim2.new(1, -22, 1, -44), Theme.Colors.Backdrop)
 	closeAdminButton.AnchorPoint = Vector2.new(1, 0)
@@ -1105,6 +1197,11 @@ local function createAdminPopup(lobby, lobbyRefs)
 	lobbyRefs.AdminTargetName = adminTargetName
 	lobbyRefs.AdminTargetRole = adminTargetRole
 	lobbyRefs.AdminTargetMeta = adminTargetMeta
+	lobbyRefs.AdminTargetStats = adminTargetStats
+	lobbyRefs.AdminRoleValue = adminRoleValue
+	lobbyRefs.AdminEventValue = adminEventValue
+	lobbyRefs.AdminMissionValue = adminMissionValue
+	lobbyRefs.AdminTargetValue = adminTargetValue
 	lobbyRefs.AdminTabs = adminTabs
 	lobbyRefs.AdminPages = adminPages
 	lobbyRefs.AdminHealButton = adminHealButton
@@ -1116,16 +1213,30 @@ local function createAdminPopup(lobby, lobbyRefs)
 	lobbyRefs.AdminReviveSquadButton = adminReviveSquadButton
 	lobbyRefs.AdminReturnButton = adminReturnButton
 	lobbyRefs.AdminRefreshButton = adminRefreshButton
+	lobbyRefs.AdminRestoreSquadButton = adminRestoreSquadButton
+	lobbyRefs.AdminOpenLiveOpsButton = adminOpenLiveOpsButton
 	lobbyRefs.AdminGrantTokensTargetButton = adminGrantTokensTargetButton
 	lobbyRefs.AdminGrantXpTargetButton = adminGrantXpTargetButton
 	lobbyRefs.AdminHealTargetButton = adminHealTargetButton
 	lobbyRefs.AdminGrantWeaponsButton = adminGrantWeaponsButton
 	lobbyRefs.AdminGrantCosmeticsButton = adminGrantCosmeticsButton
+	lobbyRefs.AdminGrantBundleButton = adminGrantBundleButton
+	lobbyRefs.AdminRestoreTargetButton = adminRestoreTargetButton
+	lobbyRefs.AdminLevelInput = adminLevelInput
+	lobbyRefs.AdminApplyLevelButton = adminApplyLevelButton
+	lobbyRefs.AdminKillsInput = adminKillsInput
+	lobbyRefs.AdminApplyKillsButton = adminApplyKillsButton
+	lobbyRefs.AdminRunsInput = adminRunsInput
+	lobbyRefs.AdminApplyRunsButton = adminApplyRunsButton
+	lobbyRefs.AdminTokensInput = adminTokensInput
+	lobbyRefs.AdminApplyTokensButton = adminApplyTokensButton
+	lobbyRefs.AdminMaxLevelButton = adminMaxLevelButton
 	lobbyRefs.AdminTerminateButton = adminTerminateButton
 	lobbyRefs.AdminRoleModButton = adminRoleModButton
 	lobbyRefs.AdminRoleAdminButton = adminRoleAdminButton
 	lobbyRefs.AdminRoleClearButton = adminRoleClearButton
 	lobbyRefs.AdminBanButton = adminBanButton
+	lobbyRefs.AdminUnbanButton = adminUnbanButton
 	lobbyRefs.AdminEventLabel = adminEventLabel
 	lobbyRefs.AdminEventAutoButton = adminEventAutoButton
 	lobbyRefs.AdminEventOffButton = adminEventOffButton
@@ -2086,7 +2197,7 @@ local function createLobbyChrome(lobby, lobbyRefs, combatOverlay, hitMarker, rew
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(1, 1),
 		Position = UDim2.new(1, -18, 1, -18),
-		Size = UDim2.new(0, 236, 0, 74),
+		Size = UDim2.new(0, 236, 0, 114),
 		Visible = false,
 		Parent = lobby,
 	})
@@ -2109,6 +2220,28 @@ local function createLobbyChrome(lobby, lobbyRefs, combatOverlay, hitMarker, rew
 	setFixedText(combatAmmo, 18)
 	local combatStatus = label(combatHud, "Status", "WEAPON READY", UDim2.new(1, -114, 0, 40), UDim2.new(0, 102, 0, 16), Theme.Fonts.Body, Theme.Colors.AccentSoft, Enum.TextXAlignment.Right)
 	setFixedText(combatStatus, 10)
+	local combatProgressLabel = label(combatHud, "ProgressLabel", "WAVE PRESSURE", UDim2.new(0, 12, 0, 62), UDim2.new(1, -24, 0, 14), Theme.Fonts.Body, Theme.Colors.Muted)
+	setFixedText(combatProgressLabel, 10)
+	local combatProgressTrack = new("Frame", {
+		Name = "ProgressTrack",
+		BackgroundColor3 = Color3.fromRGB(22, 28, 36),
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, 12, 0, 80),
+		Size = UDim2.new(1, -24, 0, 10),
+		Parent = combatHud,
+	})
+	addCorner(combatProgressTrack, UDim.new(0, 999))
+	local combatProgressFill = new("Frame", {
+		Name = "Fill",
+		BackgroundColor3 = Color3.fromRGB(132, 182, 244),
+		BorderSizePixel = 0,
+		Size = UDim2.new(0.32, 0, 1, 0),
+		Parent = combatProgressTrack,
+	})
+	addCorner(combatProgressFill, UDim.new(0, 999))
+	addGradient(combatProgressFill, Color3.fromRGB(132, 182, 244), Color3.fromRGB(84, 148, 236), 0)
+	local combatProgressText = label(combatHud, "ProgressText", "0/0 hostiles cleared", UDim2.new(0, 12, 0, 94), UDim2.new(1, -24, 0, 12), Theme.Fonts.Body, Theme.Colors.AccentSoft)
+	setFixedText(combatProgressText, 10)
 	local combatLeaveButton = createButton(combatHud, "CombatLeaveButton", "Leave Mission", UDim2.new(0, 118, 0, 28), UDim2.new(1, -12, 1, -10), Theme.Colors.Backdrop)
 	combatLeaveButton.AnchorPoint = Vector2.new(1, 1)
 	combatLeaveButton.Visible = false
@@ -2117,6 +2250,10 @@ local function createLobbyChrome(lobby, lobbyRefs, combatOverlay, hitMarker, rew
 	lobbyRefs.CombatWeapon = combatWeapon
 	lobbyRefs.CombatAmmo = combatAmmo
 	lobbyRefs.CombatStatus = combatStatus
+	lobbyRefs.CombatProgressLabel = combatProgressLabel
+	lobbyRefs.CombatProgressTrack = combatProgressTrack
+	lobbyRefs.CombatProgressFill = combatProgressFill
+	lobbyRefs.CombatProgressText = combatProgressText
 	lobbyRefs.CombatLeaveButton = combatLeaveButton
 
 	local function createQuickAccessGlyph(parent, iconKind)
@@ -2262,6 +2399,11 @@ local function createLobbyChrome(lobby, lobbyRefs, combatOverlay, hitMarker, rew
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Parent = button,
 		})
+		subtitle.Visible = subtitleText ~= ""
+		if not subtitle.Visible then
+			title.Position = UDim2.new(0, 36, 0.5, -6)
+			title.Size = UDim2.new(1, -54, 0, 12)
+		end
 		subtitle.TextTransparency = 0.08
 		subtitle.Visible = true
 		local arrow = new("TextLabel", {
@@ -2323,12 +2465,12 @@ local function createLobbyChrome(lobby, lobbyRefs, combatOverlay, hitMarker, rew
 	quickAccessTag.Visible = true
 	local quickAccessBody = label(quickAccessBar, "Body", "Bunker systems and squad tools.", UDim2.new(0, 14, 0, 40), UDim2.new(1, -28, 0, 14), Theme.Fonts.Body, Theme.Colors.Muted)
 	setFixedText(quickAccessBody, 9)
-	quickAccessBody.Visible = true
+	quickAccessBody.Visible = false
 	local quickAccessButtons = new("Frame", {
 		Name = "Buttons",
 		BackgroundTransparency = 1,
-		Position = UDim2.new(0, 10, 0, 78),
-		Size = UDim2.new(1, -20, 1, -156),
+		Position = UDim2.new(0, 10, 0, 54),
+		Size = UDim2.new(1, -20, 1, -132),
 		Parent = quickAccessBar,
 	})
 	new("UIListLayout", {
@@ -2337,13 +2479,13 @@ local function createLobbyChrome(lobby, lobbyRefs, combatOverlay, hitMarker, rew
 		Padding = UDim.new(0, 6),
 		Parent = quickAccessButtons,
 	})
-	local shopQuickButton = createQuickAccessButton(quickAccessButtons, "ShopQuickButton", "Shop", "Quartermaster", "shop", Theme.Colors.AccentWarm, 1)
-	local inventoryQuickButton = createQuickAccessButton(quickAccessButtons, "InventoryQuickButton", "Inventory", "Loadout and skins", "inventory", Theme.Colors.CommandBlue, 2)
-	local skillTreeQuickButton = createQuickAccessButton(quickAccessButtons, "SkillTreeQuickButton", "Skill Tree", "Branch upgrades", "skill", Color3.fromRGB(118, 132, 166), 3)
-	local activitiesQuickButton = createQuickAccessButton(quickAccessButtons, "ActivitiesQuickButton", "Activities", "Training and side lanes", "activity", Theme.Colors.CommandOlive, 4)
-	local squadQuickButton = createQuickAccessButton(quickAccessButtons, "SquadQuickButton", "Squad", "Fireteam control", "squad", Theme.Colors.CommandBlue, 5)
-	local inviteQuickButton = createQuickAccessButton(quickAccessButtons, "InviteQuickButton", "Invite", "Open comms roster", "invite", Theme.Colors.CommandTeal, 6)
-	local settingsQuickButton = createQuickAccessButton(quickAccessButtons, "SettingsQuickButton", "Settings", "Local comfort", "settings", Theme.Colors.Backdrop, 7)
+	local shopQuickButton = createQuickAccessButton(quickAccessButtons, "ShopQuickButton", "Shop", "", "shop", Theme.Colors.AccentWarm, 1)
+	local inventoryQuickButton = createQuickAccessButton(quickAccessButtons, "InventoryQuickButton", "Inventory", "", "inventory", Theme.Colors.CommandBlue, 2)
+	local skillTreeQuickButton = createQuickAccessButton(quickAccessButtons, "SkillTreeQuickButton", "Skill Tree", "", "skill", Color3.fromRGB(118, 132, 166), 3)
+	local activitiesQuickButton = createQuickAccessButton(quickAccessButtons, "ActivitiesQuickButton", "Activities", "", "activity", Theme.Colors.CommandOlive, 4)
+	local squadQuickButton = createQuickAccessButton(quickAccessButtons, "SquadQuickButton", "Squad", "", "squad", Theme.Colors.CommandBlue, 5)
+	local inviteQuickButton = createQuickAccessButton(quickAccessButtons, "InviteQuickButton", "Invite", "", "invite", Theme.Colors.CommandTeal, 6)
+	local settingsQuickButton = createQuickAccessButton(quickAccessButtons, "SettingsQuickButton", "Settings", "", "settings", Theme.Colors.Backdrop, 7)
 	local quickAccessFooterRule = new("Frame", {
 		Name = "FooterRule",
 		BackgroundColor3 = Theme.Colors.BunkerAccent,
@@ -2979,24 +3121,24 @@ function UiBuilder.create(playerGui)
 	local previewCard = createInsetCard(centerPane, "PreviewCard", UDim2.new(0, 14, 0, 214), UDim2.new(1, -28, 1, -228), Color3.fromRGB(30, 40, 50), Color3.fromRGB(112, 162, 214))
 	local previewTitle = label(previewCard, "PreviewTitle", "Weapon Preview", UDim2.new(0, 14, 0, 14), UDim2.new(1, -28, 0, 20), Theme.Fonts.Heading, Color3.fromRGB(236, 244, 255))
 	setFixedText(previewTitle, 17)
-	local previewBody = label(previewCard, "PreviewBody", "Selected stock appears here with live bunker weapon stats and cosmetic preview.", UDim2.new(0, 14, 0, 38), UDim2.new(1, -28, 0, 28), Theme.Fonts.Body, Color3.fromRGB(182, 202, 224))
-	setFixedText(previewBody, 11)
+	local previewBody = label(previewCard, "PreviewBody", "Selected stock appears here with live bunker weapon stats and cosmetic preview.", UDim2.new(0, 14, 0, 38), UDim2.new(1, -28, 0, 34), Theme.Fonts.Body, Color3.fromRGB(182, 202, 224))
+	setFixedText(previewBody, 12)
 	local previewViewport = new("ViewportFrame", {
 		Name = "PreviewViewport",
 		BackgroundColor3 = Color3.fromRGB(20, 26, 34),
 		BackgroundTransparency = 0.04,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0, 14, 0, 72),
-		Size = UDim2.new(1, -28, 0, 96),
+		Position = UDim2.new(0, 14, 0, 78),
+		Size = UDim2.new(1, -28, 0, 128),
 		Parent = previewCard,
 	})
 	addCorner(previewViewport, UDim.new(0, 16))
 	addStroke(previewViewport, Color3.fromRGB(112, 162, 214), 0.14, 1)
-	local previewStats = label(previewCard, "PreviewStats", "DMG -- | RNG -- | RATE -- | AMMO --", UDim2.new(0, 14, 0, 182), UDim2.new(1, -28, 0, 16), Theme.Fonts.Heading, Color3.fromRGB(236, 216, 154))
-	setFixedText(previewStats, 12)
-	local previewCosmetic = label(previewCard, "PreviewCosmetic", "Preview Cosmetic: None", UDim2.new(0, 14, 0, 202), UDim2.new(1, -28, 0, 16), Theme.Fonts.Body, Color3.fromRGB(144, 202, 160))
-	setFixedText(previewCosmetic, 12)
-	local previewCompareTitle = label(previewCard, "PreviewCompareTitle", "Compared To Equipped", UDim2.new(0, 14, 0, 230), UDim2.new(1, -28, 0, 14), Theme.Fonts.Heading, Color3.fromRGB(168, 198, 236))
+	local previewStats = label(previewCard, "PreviewStats", "DMG -- | RNG -- | RATE -- | AMMO --", UDim2.new(0, 14, 0, 218), UDim2.new(1, -28, 0, 30), Theme.Fonts.Heading, Color3.fromRGB(236, 216, 154))
+	setFixedText(previewStats, 11)
+	local previewCosmetic = label(previewCard, "PreviewCosmetic", "Preview Cosmetic: None", UDim2.new(0, 14, 0, 250), UDim2.new(1, -28, 0, 22), Theme.Fonts.Body, Color3.fromRGB(144, 202, 160))
+	setFixedText(previewCosmetic, 11)
+	local previewCompareTitle = label(previewCard, "PreviewCompareTitle", "Compared To Equipped", UDim2.new(0, 14, 0, 278), UDim2.new(1, -28, 0, 14), Theme.Fonts.Heading, Color3.fromRGB(168, 198, 236))
 	setFixedText(previewCompareTitle, 10)
 	local previewCompareRows = {}
 	local compareDefinitions = {
@@ -3006,12 +3148,12 @@ function UiBuilder.create(playerGui)
 		{ key = "Ammo", title = "Ammo", color = Color3.fromRGB(144, 208, 152) },
 	}
 	for index, definition in ipairs(compareDefinitions) do
-		local y = 250 + ((index - 1) * 18)
+		local y = 298 + ((index - 1) * 20)
 		local row = new("Frame", {
 			Name = definition.key .. "CompareRow",
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0, 14, 0, y),
-			Size = UDim2.new(1, -28, 0, 16),
+			Size = UDim2.new(1, -28, 0, 18),
 			Parent = previewCard,
 		})
 		local rowLabel = label(row, "Label", definition.title, UDim2.new(0, 0, 0, 0), UDim2.new(0, 48, 1, 0), Theme.Fonts.Body, Color3.fromRGB(192, 210, 228))
@@ -3021,7 +3163,7 @@ function UiBuilder.create(playerGui)
 			BackgroundColor3 = Color3.fromRGB(26, 34, 42),
 			BorderSizePixel = 0,
 			Position = UDim2.new(0, 54, 0.5, -4),
-			Size = UDim2.new(1, -136, 0, 8),
+			Size = UDim2.new(1, -144, 0, 8),
 			Parent = row,
 		})
 		addCorner(barBack, UDim.new(0, 6))
@@ -3033,9 +3175,9 @@ function UiBuilder.create(playerGui)
 			Parent = barBack,
 		})
 		addCorner(barFill, UDim.new(0, 6))
-		local rowDelta = label(row, "Delta", "=", UDim2.new(1, -78, 0, 0), UDim2.new(0, 26, 1, 0), Theme.Fonts.Heading, Color3.fromRGB(236, 244, 255))
+		local rowDelta = label(row, "Delta", "=", UDim2.new(1, -86, 0, 0), UDim2.new(0, 32, 1, 0), Theme.Fonts.Heading, Color3.fromRGB(236, 244, 255))
 		setFixedText(rowDelta, 10)
-		local rowValue = label(row, "Value", "--", UDim2.new(1, -48, 0, 0), UDim2.new(0, 48, 1, 0), Theme.Fonts.Body, Color3.fromRGB(192, 210, 228))
+		local rowValue = label(row, "Value", "--", UDim2.new(1, -50, 0, 0), UDim2.new(0, 50, 1, 0), Theme.Fonts.Body, Color3.fromRGB(192, 210, 228))
 		setFixedText(rowValue, 10)
 		previewCompareRows[definition.key] = {
 			BarFill = barFill,
@@ -3701,16 +3843,16 @@ function UiBuilder.create(playerGui)
 		BackgroundTransparency = 0.04,
 		BorderSizePixel = 0,
 		Position = UDim2.new(0, 14, 0, 72),
-		Size = UDim2.new(1, -28, 0, 110),
+		Size = UDim2.new(1, -28, 0, 126),
 		Parent = previewCard,
 	})
 	addCorner(previewViewport, UDim.new(0, 16))
 	addStroke(previewViewport, Color3.fromRGB(112, 162, 214), 0.14, 1)
-	local previewStats = label(previewCard, "PreviewStats", "DMG -- | RNG -- | RATE -- | AMMO --", UDim2.new(0, 14, 0, 188), UDim2.new(1, -28, 0, 14), Theme.Fonts.Heading, Color3.fromRGB(236, 216, 154))
-	setFixedText(previewStats, 12)
-	local previewCosmetic = label(previewCard, "PreviewCosmetic", "Preview Cosmetic: None", UDim2.new(0, 14, 0, 206), UDim2.new(1, -28, 0, 14), Theme.Fonts.Body, Color3.fromRGB(144, 202, 160))
-	setFixedText(previewCosmetic, 12)
-	local previewCompareTitle = label(previewCard, "PreviewCompareTitle", "Compared To Equipped", UDim2.new(0, 14, 0, 232), UDim2.new(1, -28, 0, 14), Theme.Fonts.Heading, Color3.fromRGB(168, 198, 236))
+	local previewStats = label(previewCard, "PreviewStats", "DMG -- | RNG -- | RATE -- | AMMO --", UDim2.new(0, 14, 0, 204), UDim2.new(1, -28, 0, 28), Theme.Fonts.Heading, Color3.fromRGB(236, 216, 154))
+	setFixedText(previewStats, 11)
+	local previewCosmetic = label(previewCard, "PreviewCosmetic", "Preview Cosmetic: None", UDim2.new(0, 14, 0, 236), UDim2.new(1, -28, 0, 18), Theme.Fonts.Body, Color3.fromRGB(144, 202, 160))
+	setFixedText(previewCosmetic, 11)
+	local previewCompareTitle = label(previewCard, "PreviewCompareTitle", "Compared To Equipped", UDim2.new(0, 14, 0, 262), UDim2.new(1, -28, 0, 16), Theme.Fonts.Heading, Color3.fromRGB(168, 198, 236))
 	setFixedText(previewCompareTitle, 10)
 	local previewCompareRows = {}
 	local compareDefinitions = {
@@ -3720,22 +3862,22 @@ function UiBuilder.create(playerGui)
 		{ key = "Ammo", title = "Ammo", color = Color3.fromRGB(144, 208, 152) },
 	}
 	for index, definition in ipairs(compareDefinitions) do
-		local y = 250 + ((index - 1) * 16)
+		local y = 282 + ((index - 1) * 20)
 		local row = new("Frame", {
 			Name = definition.key .. "CompareRow",
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0, 14, 0, y),
-			Size = UDim2.new(1, -28, 0, 14),
+			Size = UDim2.new(1, -28, 0, 18),
 			Parent = previewCard,
 		})
-		local rowLabel = label(row, "Label", definition.title, UDim2.new(0, 0, 0, 0), UDim2.new(0, 42, 1, 0), Theme.Fonts.Body, Color3.fromRGB(192, 210, 228))
+		local rowLabel = label(row, "Label", definition.title, UDim2.new(0, 0, 0, 0), UDim2.new(0, 48, 1, 0), Theme.Fonts.Body, Color3.fromRGB(192, 210, 228))
 		setFixedText(rowLabel, 10)
 		local barBack = new("Frame", {
 			Name = "BarBack",
 			BackgroundColor3 = Color3.fromRGB(26, 34, 42),
 			BorderSizePixel = 0,
-			Position = UDim2.new(0, 48, 0.5, -3),
-			Size = UDim2.new(1, -124, 0, 7),
+			Position = UDim2.new(0, 54, 0.5, -4),
+			Size = UDim2.new(1, -144, 0, 8),
 			Parent = row,
 		})
 		addCorner(barBack, UDim.new(0, 6))

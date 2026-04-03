@@ -105,6 +105,25 @@ function MissionService:_getExtractionPad()
 	return runtime and runtime:FindFirstChild("ExtractionPad")
 end
 
+function MissionService:_getExtractionPads()
+	local mission = self:_getMissionModel()
+	local runtime = mission and mission:FindFirstChild("MissionRuntime")
+	if not runtime then
+		return {}
+	end
+
+	local pads = {}
+	local primary = runtime:FindFirstChild("ExtractionPad")
+	local secondary = runtime:FindFirstChild("ExtractionPadB")
+	if primary and primary:IsA("BasePart") then
+		table.insert(pads, primary)
+	end
+	if secondary and secondary:IsA("BasePart") then
+		table.insert(pads, secondary)
+	end
+	return pads
+end
+
 function MissionService:_isCharacterInsideExtractionPad(rootPart, pad)
 	if not rootPart or not pad then
 		return false
@@ -116,6 +135,17 @@ function MissionService:_isCharacterInsideExtractionPad(rootPart, pad)
 	return math.abs(localPoint.X) <= (half.X + buffer)
 		and math.abs(localPoint.Z) <= (half.Z + buffer)
 		and math.abs(localPoint.Y) <= 8
+end
+
+function MissionService:_getExtractionVariant(mission)
+	local currentMission = mission or self._activeMission
+	if self:_isEvacEscortScenario(currentMission) then
+		return "moving"
+	end
+	if self:_isPowerCellScenario(currentMission) then
+		return "split"
+	end
+	return "standard"
 end
 
 function MissionService:_getLobbyRoot()
@@ -577,6 +607,35 @@ function MissionService:_buildMissionPayload(player, status)
 	local objective = self:_getMissionObjective()
 	local objectiveHealth = objective and objective:GetAttribute("ObjectiveHealth") or self._missionConfig.Mission.ObjectiveMaxHealth
 	local objectivePercent = math.floor((objectiveHealth / self._missionConfig.Mission.ObjectiveMaxHealth) * 100)
+	local objectiveLabel = "Defend Core"
+	local objectiveCurrent = objectivePercent
+	local objectiveTarget = 100
+	local phaseTimerDuration = mission and mission.phaseTimerDuration or nil
+	local phaseTimerRemaining = nil
+	if mission and mission.phaseTimerEndsAt and phaseTimerDuration then
+		phaseTimerRemaining = math.max(0, mission.phaseTimerEndsAt - os.clock())
+	end
+	if self:_isCommanderHuntScenario(mission) then
+		objectiveLabel = "Commander"
+		objectiveCurrent = objective and (objective:GetAttribute("CommanderEliminated") == true and 1 or 0) or 0
+		objectiveTarget = 1
+	elseif self:_isEvacEscortScenario(mission) then
+		objectiveLabel = "Checkpoints"
+		objectiveCurrent = objective and (objective:GetAttribute("ReachedEvacCheckpoint") or 0) or 0
+		objectiveTarget = objective and (objective:GetAttribute("RequiredEvacCheckpoints") or 3) or 3
+	elseif self:_isPowerRelayScenario(mission) then
+		objectiveLabel = "Relay Nodes"
+		objectiveCurrent = objective and (objective:GetAttribute("StabilizedRelayNodes") or 0) or 0
+		objectiveTarget = objective and (objective:GetAttribute("RequiredRelayNodes") or 3) or 3
+	elseif self:_isPowerCellScenario(mission) then
+		objectiveLabel = "Power Cells"
+		objectiveCurrent = objective and (objective:GetAttribute("DeliveredPowerCells") or 0) or 0
+		objectiveTarget = objective and (objective:GetAttribute("RequiredPowerCells") or self._missionConfig.Mission.PowerCellRequiredCount) or self._missionConfig.Mission.PowerCellRequiredCount
+	elseif self:_isNestScenario(mission) then
+		objectiveLabel = "Nests"
+		objectiveCurrent = objective and (objective:GetAttribute("DestroyedNests") or 0) or 0
+		objectiveTarget = objective and (objective:GetAttribute("RequiredNests") or self._missionConfig.Mission.NestRequiredCount) or self._missionConfig.Mission.NestRequiredCount
+	end
 	return {
 		stage = "Mission",
 		status = status,
@@ -586,6 +645,14 @@ function MissionService:_buildMissionPayload(player, status)
 		wave = mission and mission.wave or 0,
 		totalWaves = self._missionConfig.Mission.WaveCount,
 		objectiveHealthPercent = objectivePercent,
+		objectiveLabel = objectiveLabel,
+		objectiveCurrent = objectiveCurrent,
+		objectiveTarget = objectiveTarget,
+		remainingZombies = mission and mission.remainingZombies or 0,
+		waveTargetHostiles = mission and mission.waveTargetHostiles or 0,
+		phaseTimerLabel = mission and mission.phaseTimerLabel or "",
+		phaseTimerDuration = phaseTimerDuration or 0,
+		phaseTimerRemaining = phaseTimerRemaining or 0,
 		weaponName = weaponDefinition and weaponDefinition.DisplayName or nil,
 		weaponType = weaponDefinition and weaponDefinition.WeaponType or nil,
 		currentAmmo = weaponState and weaponState.currentAmmo or nil,
@@ -1005,6 +1072,7 @@ function MissionService:_getExtractionFinalePlan(mission)
 		label = "Extraction breach detected",
 		stateText = "Extraction under pressure",
 		notifyText = "Extraction breach detected. Hold the pad.",
+		variant = self:_getExtractionVariant(currentMission),
 		color = Color3.fromRGB(255, 132, 132),
 		countBonus = 0,
 		healthScale = 1,
@@ -1027,6 +1095,7 @@ function MissionService:_getExtractionFinalePlan(mission)
 		plan.label = "Convoy tail breach"
 		plan.stateText = "Escort survivors board now"
 		plan.notifyText = "The convoy tail is collapsing. Board under pressure and hold the exit."
+		plan.variant = "moving"
 		plan.color = Color3.fromRGB(255, 196, 138)
 		plan.countBonus = 1
 		plan.forceBrute = true
@@ -1039,8 +1108,9 @@ function MissionService:_getExtractionFinalePlan(mission)
 		plan.forceScreamer = true
 	elseif self:_isPowerCellScenario(currentMission) then
 		plan.label = "Recovery pack collapse"
-		plan.stateText = "Recovery pack closing"
-		plan.notifyText = "A recovery pack is swarming the dropped cells. Clear them and board immediately."
+		plan.stateText = "Board both extraction pads"
+		plan.notifyText = "A recovery pack is swarming the dropped cells. Split the squad across both pads and board immediately."
+		plan.variant = "split"
 		plan.color = Color3.fromRGB(255, 224, 132)
 		plan.forceRunner = true
 	elseif self:_isNestScenario(currentMission) then
@@ -1229,6 +1299,7 @@ function MissionService:_scheduleObjectivePressure(mission, scaledStats)
 			end
 
 			mission.remainingZombies += pressureCount
+			mission.waveTargetHostiles = (mission.waveTargetHostiles or 0) + pressureCount
 			self:_notifyParty(mission.party, ("%s %s"):format(plan.notifyText or (plan.label .. " inbound."), laneNames and #laneNames > 0 and ("Watch " .. table.concat(laneNames, " / ")) or "Hold the objective"))
 			self:_fireMissionState(mission.party, plan.stateText or plan.label)
 
@@ -1317,6 +1388,7 @@ function MissionService:_startExtractionPressure(mission)
 	}
 
 	mission.remainingZombies += finaleCount
+	mission.waveTargetHostiles = (mission.waveTargetHostiles or 0) + finaleCount
 	self:_notifyParty(mission.party, plan.notifyText or "Extraction breach detected. Hold the pad.")
 	self:_fireMissionState(mission.party, plan.stateText or plan.label)
 
@@ -2449,6 +2521,7 @@ function MissionService:_clearDownedState(player, restoreHealth)
 end
 
 function MissionService:_getBossProfile(mission, overrideKey)
+	local modifierId = mission and mission.modifier and mission.modifier.Id or nil
 	local useWarden = overrideKey == "warden_hulk" or self:_isCommanderHuntScenario(mission)
 	if useWarden then
 		return {
@@ -2475,6 +2548,43 @@ function MissionService:_getBossProfile(mission, overrideKey)
 			rewardTokens = self._missionConfig.Mission.WardenBossReward or self._missionConfig.Mission.BossReward or 0,
 			lootChanceScale = self._missionConfig.Mission.WardenBossLootChanceScale or self._missionConfig.Mission.BossLootChanceScale or 0.75,
 			experienceBonus = self._missionConfig.Mission.WardenBossExperienceBonus or self._missionConfig.Mission.BossExperienceBonus or 0,
+			primaryAbility = "slam",
+			secondaryAbility = "summon",
+		}
+	end
+	local useRelayBoss = overrideKey == "relay_overseer"
+		or self:_isPowerRelayScenario(mission)
+		or modifierId == "modifier_blackout"
+	if useRelayBoss then
+		return {
+			key = "relay_overseer",
+			name = "RELAY OVERSEER",
+			displayName = "Relay Overseer",
+			notifyName = "Relay Overseer",
+			fillColor = Color3.fromRGB(116, 196, 255),
+			outlineColor = Color3.fromRGB(218, 248, 255),
+			textColor = Color3.fromRGB(208, 238, 255),
+			enragedFillColor = Color3.fromRGB(142, 228, 255),
+			enragedOutlineColor = Color3.fromRGB(228, 250, 255),
+			enragedTextColor = Color3.fromRGB(222, 244, 255),
+			weakFillColor = Color3.fromRGB(154, 255, 236),
+			weakOutlineColor = Color3.fromRGB(226, 255, 246),
+			weakTextColor = Color3.fromRGB(214, 255, 236),
+			healthScale = self._missionConfig.Mission.RelayBossHealthScale or self._missionConfig.Mission.BossHealthScale,
+			damageScale = self._missionConfig.Mission.RelayBossDamageScale or self._missionConfig.Mission.BossDamageScale,
+			slamRadius = self._missionConfig.Mission.BossSlamRadius,
+			slamDamage = self._missionConfig.Mission.BossSlamDamage,
+			summonCount = 0,
+			summonCooldown = self._missionConfig.Mission.RelayBossPulseCooldown or self._missionConfig.Mission.BossSummonCooldown,
+			enrageThreshold = self._missionConfig.Mission.RelayBossEnrageThreshold or self._missionConfig.Mission.BossEnrageThreshold,
+			rewardTokens = self._missionConfig.Mission.RelayBossReward or self._missionConfig.Mission.BossReward or 0,
+			lootChanceScale = self._missionConfig.Mission.RelayBossLootChanceScale or self._missionConfig.Mission.BossLootChanceScale or 0.75,
+			experienceBonus = self._missionConfig.Mission.RelayBossExperienceBonus or self._missionConfig.Mission.BossExperienceBonus or 0,
+			primaryAbility = "artillery",
+			primaryRange = self._missionConfig.Mission.RelayBossArtilleryRange or self._missionConfig.Mission.ArtilleryPreferredDistance,
+			primaryCooldown = self._missionConfig.Mission.RelayBossArtilleryCooldown or self._missionConfig.Mission.ArtilleryVolleyCooldown,
+			secondaryAbility = "pulse",
+			secondaryCooldown = self._missionConfig.Mission.RelayBossPulseCooldown or self._missionConfig.Mission.ScreamerPulseCooldown or self._missionConfig.Mission.BossSummonCooldown,
 		}
 	end
 	return {
@@ -2501,7 +2611,67 @@ function MissionService:_getBossProfile(mission, overrideKey)
 		rewardTokens = self._missionConfig.Mission.BossReward or 0,
 		lootChanceScale = self._missionConfig.Mission.BossLootChanceScale or 0.75,
 		experienceBonus = self._missionConfig.Mission.BossExperienceBonus or 0,
+		primaryAbility = "slam",
+		secondaryAbility = "summon",
 	}
+end
+
+function MissionService:_performBossPrimaryAbility(bossProfile, zombie, root, scaledStats, targetDistance)
+	local ability = bossProfile and bossProfile.primaryAbility or "slam"
+	if ability == "artillery" then
+		local range = bossProfile and bossProfile.primaryRange or self._missionConfig.Mission.ArtilleryPreferredDistance
+		if targetDistance <= range then
+			self:_artilleryBarrage(zombie, root, scaledStats)
+			return true
+		end
+		return false
+	end
+	local range = bossProfile and bossProfile.slamRadius or self._missionConfig.Mission.BossSlamRadius
+	if targetDistance <= range then
+		self:_bossSlam(zombie, root, scaledStats)
+		return true
+	end
+	return false
+end
+
+function MissionService:_performBossSecondaryAbility(bossProfile, zombie, root, scaledStats)
+	local ability = bossProfile and bossProfile.secondaryAbility or "summon"
+	if ability == "pulse" then
+		self:_screamerPulse(zombie, root)
+		return true
+	end
+	self:_bossSummonAdds(root, scaledStats)
+	return true
+end
+
+function MissionService:_grantWeaponMasteryRewards(player, weaponId, previousLevel, nextLevel)
+	if not player or not weaponId or nextLevel <= previousLevel then
+		return
+	end
+
+	local rewardTable = self._missionConfig.WeaponMasteryRewards and self._missionConfig.WeaponMasteryRewards[weaponId]
+	if type(rewardTable) ~= "table" then
+		return
+	end
+
+	for level = previousLevel + 1, nextLevel do
+		local reward = rewardTable[level]
+		if reward and reward.itemId then
+			local rewardId = ("weapon_mastery_%s_%d"):format(weaponId, level)
+			if not self._persistenceService:HasClaimedReward(player, rewardId) then
+				self._persistenceService:MarkRewardClaimed(player, rewardId)
+				if self._inventoryService and not self._inventoryService:IsUnlocked(player, reward.itemId) then
+					self._inventoryService:UnlockItem(player, reward.itemId)
+				end
+				self:_notifyParty({ player }, ("%s mastery Lv.%d unlocked %s."):format(
+					(self._inventoryService and self._inventoryService:GetWeaponDefinition(weaponId).DisplayName) or "Weapon",
+					level,
+					reward.label or reward.itemId
+				))
+				self:_emitProgressionUpdate(player)
+			end
+		end
+	end
 end
 
 function MissionService:_getObjectiveStateText(mission)
@@ -2914,14 +3084,17 @@ function MissionService:_bossSummonAdds(root, scaledStats)
 		return
 	end
 
-	local count = self._missionConfig.Mission.BossSummonCount
 	local profile = self:_getBossProfile(mission)
-	local count = profile.summonCount
+	local count = profile.summonCount or self._missionConfig.Mission.BossSummonCount
+	if count <= 0 then
+		return
+	end
 	self:_notifyParty(mission.party, ("%s is calling reinforcements."):format(profile.notifyName))
 	for summonIndex = 1, count do
 		local angle = (math.pi * 2 / count) * summonIndex
 		local offset = Vector3.new(math.cos(angle) * 11, 0, math.sin(angle) * 11)
 		mission.remainingZombies += 1
+		mission.waveTargetHostiles = (mission.waveTargetHostiles or 0) + 1
 		self:_spawnZombie(root.Position + offset, {
 			health = math.max(28, math.floor((scaledStats.health or 40) * 0.72)),
 			damage = math.max(5, math.floor((scaledStats.damage or 8) * 0.9)),
@@ -4178,12 +4351,460 @@ function MissionService:_applyPlayerMissionStats(player)
 	character:SetAttribute("Downed", false)
 	character:SetAttribute("BleedoutFinalizing", false)
 	player:SetAttribute("MissionMedkits", player:GetAttribute("MissionMedkits") or 0)
+	player:SetAttribute("MissionAmmoCrates", player:GetAttribute("MissionAmmoCrates") or self._missionConfig.Mission.SquadAmmoCrateCount or 1)
+	player:SetAttribute("MissionSensorBeacons", player:GetAttribute("MissionSensorBeacons") or self._missionConfig.Mission.SensorBeaconCount or 1)
+	player:SetAttribute("MissionBarriers", player:GetAttribute("MissionBarriers") or self._missionConfig.Mission.BarrierCount or 1)
+	player:SetAttribute("MissionReviveStims", player:GetAttribute("MissionReviveStims") or self._missionConfig.Mission.ReviveStimCount or 1)
 
 	local maxHealth = 100 + self._inventoryService:GetMaxHealthBonus(player)
 	humanoid.MaxHealth = maxHealth
 	humanoid.Health = maxHealth
 	humanoid.WalkSpeed = 16
 	character:SetAttribute("MissionDashing", false)
+end
+
+function MissionService:_grantAmmoUtility(player, amount)
+	local state = self._weaponState[player.UserId]
+	if not state then
+		return false
+	end
+
+	local weapon = self._inventoryService:GetWeaponDefinition(state.weaponId)
+	if weapon.WeaponType == "Melee" then
+		return false
+	end
+
+	state.reserveAmmo += math.max(1, math.floor(amount or 0))
+	return true
+end
+
+function MissionService:_markZombieWithSensor(zombie, duration)
+	if not zombie or not zombie.Parent then
+		return
+	end
+
+	local existing = zombie:FindFirstChild("SensorReveal")
+	if existing then
+		existing:Destroy()
+	end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "SensorReveal"
+	highlight.FillColor = Color3.fromRGB(108, 214, 255)
+	highlight.OutlineColor = Color3.fromRGB(214, 248, 255)
+	highlight.FillTransparency = 0.7
+	highlight.OutlineTransparency = 0.08
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = zombie
+	Debris:AddItem(highlight, duration or 1.5)
+end
+
+function MissionService:_deploySensorBeacon(player, rootPart)
+	local mission = self._activeMission
+	if not mission or not mission.runtime or not rootPart then
+		return false
+	end
+
+	local duration = self._missionConfig.Mission.SensorBeaconDuration or 12
+	local radius = self._missionConfig.Mission.SensorBeaconRadius or 42
+	local pulseInterval = self._missionConfig.Mission.SensorBeaconPulseInterval or 1.8
+	local beacon = Instance.new("Part")
+	beacon.Name = ("SensorBeacon_%d"):format(player.UserId)
+	beacon.Size = Vector3.new(1.4, 2.8, 1.4)
+	beacon.Anchored = true
+	beacon.CanCollide = false
+	beacon.CanQuery = false
+	beacon.Material = Enum.Material.Neon
+	beacon.Color = Color3.fromRGB(122, 226, 255)
+	beacon.CFrame = CFrame.new(self:_getContainedSpawnPosition(rootPart.Position, 4) + Vector3.new(0, 1.4, 0))
+	beacon.Parent = mission.runtime
+
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(162, 238, 255)
+	light.Brightness = 1.6
+	light.Range = 18
+	light.Parent = beacon
+
+	Debris:AddItem(beacon, duration + 0.5)
+	self:_emitPulse(beacon.CFrame, Vector3.new(4, 4, 4), Color3.fromRGB(132, 228, 255), 0.4, 0.16)
+
+	task.spawn(function()
+		local expiresAt = os.clock() + duration
+		while self._activeMission == mission and beacon.Parent and os.clock() < expiresAt do
+			self:_emitPulse(beacon.CFrame * CFrame.new(0, -1.2, 0), Vector3.new(radius * 2, 0.16, radius * 2), Color3.fromRGB(112, 224, 255), 0.78, 0.22)
+			for _, zombie in ipairs(mission.zombiesFolder:GetChildren()) do
+				if zombie:IsA("Model") then
+					local zombieRoot = zombie.PrimaryPart or zombie:FindFirstChild("HumanoidRootPart")
+					local zombieHumanoid = zombie:FindFirstChildOfClass("Humanoid")
+					if zombieRoot and zombieHumanoid and zombieHumanoid.Health > 0 and (zombieRoot.Position - beacon.Position).Magnitude <= radius then
+						self:_markZombieWithSensor(zombie, math.min(pulseInterval + 0.25, 2.2))
+					end
+				end
+			end
+			task.wait(pulseInterval)
+		end
+	end)
+
+	return true
+end
+
+function MissionService:_deployBarrier(player, rootPart)
+	local mission = self._activeMission
+	if not mission or not mission.runtime or not rootPart then
+		return false
+	end
+
+	local forward = rootPart.CFrame.LookVector
+	if forward.Magnitude <= 0.01 then
+		forward = Vector3.new(0, 0, -1)
+	end
+	local barrier = Instance.new("Part")
+	barrier.Name = ("SquadBarrier_%d"):format(player.UserId)
+	barrier.Size = Vector3.new(9, 5, 1.2)
+	barrier.Anchored = true
+	barrier.CanCollide = true
+	barrier.CanQuery = true
+	barrier.Material = Enum.Material.ForceField
+	barrier.Color = Color3.fromRGB(118, 196, 255)
+	local barrierPosition = self:_getContainedSpawnPosition(rootPart.Position + forward.Unit * 7, 6) + Vector3.new(0, 2.5, 0)
+	barrier.CFrame = CFrame.lookAt(barrierPosition, barrierPosition + forward.Unit)
+	barrier.Parent = mission.runtime
+	barrier:SetAttribute("BarrierHealth", self._missionConfig.Mission.BarrierHealth or 420)
+
+	local frame = Instance.new("SelectionBox")
+	frame.Name = "BarrierFrame"
+	frame.Color3 = Color3.fromRGB(198, 238, 255)
+	frame.LineThickness = 0.05
+	frame.SurfaceTransparency = 0.82
+	frame.Adornee = barrier
+	frame.Parent = barrier
+
+	self:_emitPulse(barrier.CFrame, Vector3.new(10, 6, 4), Color3.fromRGB(122, 202, 255), 0.52, 0.16)
+	Debris:AddItem(barrier, self._missionConfig.Mission.BarrierDuration or 14)
+	return true
+end
+
+function MissionService:_useReviveStim(player)
+	local mission = self._activeMission
+	local character = player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	if not mission or not rootPart then
+		return false
+	end
+
+	local radius = self._missionConfig.Mission.ReviveStimRadius or 14
+	local nearestPlayer = nil
+	local nearestDistance = math.huge
+	for userId in pairs(mission.downedStates or {}) do
+		local candidate = Players:GetPlayerByUserId(userId)
+		local candidateCharacter = candidate and candidate.Character
+		local candidateRoot = candidateCharacter and candidateCharacter:FindFirstChild("HumanoidRootPart")
+		if candidate and candidate ~= player and candidateRoot and self:_isCharacterDowned(candidateCharacter) then
+			local distance = (candidateRoot.Position - rootPart.Position).Magnitude
+			if distance <= radius and distance < nearestDistance then
+				nearestDistance = distance
+				nearestPlayer = candidate
+			end
+		end
+	end
+
+	if not nearestPlayer then
+		return false
+	end
+
+	self:_clearDownedState(nearestPlayer, true)
+	self:_emitPulse(rootPart.CFrame * CFrame.new(0, 0.5, 0), Vector3.new(radius * 1.4, 3.2, radius * 1.4), Color3.fromRGB(156, 244, 182), 0.5, 0.18)
+	self:_notifyParty(mission.party, ("%s stim-revived %s."):format(player.DisplayName, nearestPlayer.DisplayName))
+	self:_fireMissionState(mission.party, ("%s revived"):format(nearestPlayer.DisplayName))
+	return true
+end
+
+function MissionService:_createAmmoCrateTool(player)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		return
+	end
+
+	local existing = backpack:FindFirstChild("MissionAmmoCrate")
+	if existing then
+		existing:Destroy()
+	end
+
+	local character = player.Character
+	if character then
+		local equipped = character:FindFirstChild("MissionAmmoCrate")
+		if equipped then
+			equipped:Destroy()
+		end
+	end
+
+	local tool = Instance.new("Tool")
+	tool.Name = "MissionAmmoCrate"
+	tool.ToolTip = "Ammo Crate"
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(1.2, 0.9, 1.2)
+	handle.Material = Enum.Material.Metal
+	handle.Color = Color3.fromRGB(106, 136, 184)
+	handle.Parent = tool
+
+	local function refreshState()
+		local count = player:GetAttribute("MissionAmmoCrates") or 0
+		tool.ToolTip = ("Ammo Crate x%d"):format(count)
+		tool.Enabled = count > 0
+	end
+
+	tool.Equipped:Connect(function()
+		refreshState()
+	end)
+
+	tool.Activated:Connect(function()
+		local characterNow = player.Character
+		local rootPart = characterNow and characterNow:FindFirstChild("HumanoidRootPart")
+		local humanoid = characterNow and characterNow:FindFirstChildOfClass("Humanoid")
+		if not rootPart or not humanoid or humanoid.Health <= 0 or self:_isCharacterDowned(characterNow) then
+			return
+		end
+
+		local count = player:GetAttribute("MissionAmmoCrates") or 0
+		if count <= 0 then
+			return
+		end
+
+		local bonus = self._missionConfig.Mission.SquadAmmoCrateAmmoBonus or 18
+		local radius = self._missionConfig.Mission.SquadAmmoCrateRadius or 24
+		local helpedPlayers = 0
+		for _, squadmate in ipairs(self:_getLivePartyMembers()) do
+			local squadCharacter = squadmate.Character
+			local squadRoot = squadCharacter and squadCharacter:FindFirstChild("HumanoidRootPart")
+			local squadHumanoid = squadCharacter and squadCharacter:FindFirstChildOfClass("Humanoid")
+			if squadRoot and squadHumanoid and squadHumanoid.Health > 0 and (squadRoot.Position - rootPart.Position).Magnitude <= radius then
+				if self:_grantAmmoUtility(squadmate, bonus) then
+					helpedPlayers += 1
+					self:_fireMissionState({ squadmate }, "Ammo crate restock")
+				end
+			end
+		end
+
+		if helpedPlayers <= 0 then
+			self:_fireMissionState({ player }, "No squadmates nearby for crate")
+			return
+		end
+
+		player:SetAttribute("MissionAmmoCrates", count - 1)
+		self:_emitPulse(rootPart.CFrame * CFrame.new(0, -2.4, 0), Vector3.new(radius * 2, 0.18, radius * 2), Color3.fromRGB(132, 176, 236), 0.52, 0.2)
+		self:_emitReloadEffect(handle, Color3.fromRGB(144, 182, 238))
+		self:_notifyParty(self._activeMission and self._activeMission.party or { player }, ("%s dropped an ammo crate."):format(player.DisplayName))
+		refreshState()
+	end)
+
+	refreshState()
+	tool.Parent = backpack
+end
+
+function MissionService:_createSensorBeaconTool(player)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		return
+	end
+
+	local existing = backpack:FindFirstChild("MissionSensorBeacon")
+	if existing then
+		existing:Destroy()
+	end
+
+	local character = player.Character
+	if character then
+		local equipped = character:FindFirstChild("MissionSensorBeacon")
+		if equipped then
+			equipped:Destroy()
+		end
+	end
+
+	local tool = Instance.new("Tool")
+	tool.Name = "MissionSensorBeacon"
+	tool.ToolTip = "Sensor Beacon"
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.9, 1.2, 0.9)
+	handle.Material = Enum.Material.Neon
+	handle.Color = Color3.fromRGB(118, 228, 255)
+	handle.Parent = tool
+
+	local function refreshState()
+		local count = player:GetAttribute("MissionSensorBeacons") or 0
+		tool.ToolTip = ("Sensor Beacon x%d"):format(count)
+		tool.Enabled = count > 0
+	end
+
+	tool.Equipped:Connect(function()
+		refreshState()
+	end)
+
+	tool.Activated:Connect(function()
+		local characterNow = player.Character
+		local rootPart = characterNow and characterNow:FindFirstChild("HumanoidRootPart")
+		local humanoid = characterNow and characterNow:FindFirstChildOfClass("Humanoid")
+		if not rootPart or not humanoid or humanoid.Health <= 0 or self:_isCharacterDowned(characterNow) then
+			return
+		end
+
+		local count = player:GetAttribute("MissionSensorBeacons") or 0
+		if count <= 0 then
+			return
+		end
+
+		if not self:_deploySensorBeacon(player, rootPart) then
+			return
+		end
+
+		player:SetAttribute("MissionSensorBeacons", count - 1)
+		self:_emitReloadEffect(handle, Color3.fromRGB(132, 228, 255))
+		self:_notifyParty(self._activeMission and self._activeMission.party or { player }, ("%s deployed a sensor beacon."):format(player.DisplayName))
+		self:_fireMissionState({ player }, "Beacon active")
+		refreshState()
+	end)
+
+	refreshState()
+	tool.Parent = backpack
+end
+
+function MissionService:_createBarrierTool(player)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		return
+	end
+
+	local existing = backpack:FindFirstChild("MissionBarrier")
+	if existing then
+		existing:Destroy()
+	end
+
+	local character = player.Character
+	if character then
+		local equipped = character:FindFirstChild("MissionBarrier")
+		if equipped then
+			equipped:Destroy()
+		end
+	end
+
+	local tool = Instance.new("Tool")
+	tool.Name = "MissionBarrier"
+	tool.ToolTip = "Barrier"
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(1.2, 1.2, 0.5)
+	handle.Material = Enum.Material.Metal
+	handle.Color = Color3.fromRGB(88, 126, 196)
+	handle.Parent = tool
+
+	local function refreshState()
+		local count = player:GetAttribute("MissionBarriers") or 0
+		tool.ToolTip = ("Barrier x%d"):format(count)
+		tool.Enabled = count > 0
+	end
+
+	tool.Equipped:Connect(refreshState)
+	tool.Activated:Connect(function()
+		local characterNow = player.Character
+		local rootPart = characterNow and characterNow:FindFirstChild("HumanoidRootPart")
+		local humanoid = characterNow and characterNow:FindFirstChildOfClass("Humanoid")
+		if not rootPart or not humanoid or humanoid.Health <= 0 or self:_isCharacterDowned(characterNow) then
+			return
+		end
+
+		local count = player:GetAttribute("MissionBarriers") or 0
+		if count <= 0 then
+			return
+		end
+
+		if not self:_deployBarrier(player, rootPart) then
+			return
+		end
+
+		player:SetAttribute("MissionBarriers", count - 1)
+		self:_emitReloadEffect(handle, Color3.fromRGB(128, 176, 248))
+		self:_notifyParty(self._activeMission and self._activeMission.party or { player }, ("%s deployed a barrier."):format(player.DisplayName))
+		self:_fireMissionState({ player }, "Barrier holding lane")
+		refreshState()
+	end)
+
+	refreshState()
+	tool.Parent = backpack
+end
+
+function MissionService:_createReviveStimTool(player)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		return
+	end
+
+	local existing = backpack:FindFirstChild("MissionReviveStim")
+	if existing then
+		existing:Destroy()
+	end
+
+	local character = player.Character
+	if character then
+		local equipped = character:FindFirstChild("MissionReviveStim")
+		if equipped then
+			equipped:Destroy()
+		end
+	end
+
+	local tool = Instance.new("Tool")
+	tool.Name = "MissionReviveStim"
+	tool.ToolTip = "Revive Stim"
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.8, 1.1, 0.8)
+	handle.Material = Enum.Material.Neon
+	handle.Color = Color3.fromRGB(132, 236, 168)
+	handle.Parent = tool
+
+	local function refreshState()
+		local count = player:GetAttribute("MissionReviveStims") or 0
+		tool.ToolTip = ("Revive Stim x%d"):format(count)
+		tool.Enabled = count > 0
+	end
+
+	tool.Equipped:Connect(refreshState)
+	tool.Activated:Connect(function()
+		local characterNow = player.Character
+		local humanoid = characterNow and characterNow:FindFirstChildOfClass("Humanoid")
+		if not humanoid or humanoid.Health <= 0 or self:_isCharacterDowned(characterNow) then
+			return
+		end
+
+		local count = player:GetAttribute("MissionReviveStims") or 0
+		if count <= 0 then
+			return
+		end
+
+		if not self:_useReviveStim(player) then
+			self:_fireMissionState({ player }, "No downed ally nearby")
+			return
+		end
+
+		player:SetAttribute("MissionReviveStims", count - 1)
+		self:_emitReloadEffect(handle, Color3.fromRGB(146, 238, 174))
+		refreshState()
+	end)
+
+	refreshState()
+	tool.Parent = backpack
 end
 
 function MissionService:_createMedkitTool(player)
@@ -4378,6 +4999,10 @@ function MissionService:_equipPlayer(player)
 	self:_createWeaponTool(player)
 	self:_createMedkitTool(player)
 	self:_createDashTool(player)
+	self:_createAmmoCrateTool(player)
+	self:_createSensorBeaconTool(player)
+	self:_createBarrierTool(player)
+	self:_createReviveStimTool(player)
 	self:_applyCosmetic(player)
 	self:_fireMissionState({ player }, self:_getObjectiveStateText(self._activeMission))
 end
@@ -5288,12 +5913,15 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index, spawnCon
 					end
 
 					local bossCooldownScale = bossEnrageActive and self._missionConfig.Mission.BossEnrageCooldownScale or 1
-					if targetDistance <= (bossProfile and bossProfile.slamRadius or self._missionConfig.Mission.BossSlamRadius) and now >= bossSlamReadyAt then
-						bossSlamReadyAt = now + (self._missionConfig.Mission.BossSlamCooldown * bossCooldownScale)
-						self:_bossSlam(zombie, root, scaledStats)
-					elseif now >= bossSummonReadyAt then
-						bossSummonReadyAt = now + ((bossProfile and bossProfile.summonCooldown or self._missionConfig.Mission.BossSummonCooldown) * bossCooldownScale)
-						self:_bossSummonAdds(root, scaledStats)
+					local primaryCooldown = (bossProfile and bossProfile.primaryCooldown)
+						or self._missionConfig.Mission.BossSlamCooldown
+					local secondaryCooldown = (bossProfile and bossProfile.secondaryCooldown)
+						or (bossProfile and bossProfile.summonCooldown)
+						or self._missionConfig.Mission.BossSummonCooldown
+					if now >= bossSlamReadyAt and self:_performBossPrimaryAbility(bossProfile, zombie, root, scaledStats, targetDistance) then
+						bossSlamReadyAt = now + (primaryCooldown * bossCooldownScale)
+					elseif now >= bossSummonReadyAt and self:_performBossSecondaryAbility(bossProfile, zombie, root, scaledStats) then
+						bossSummonReadyAt = now + (secondaryCooldown * bossCooldownScale)
 					end
 				end
 
@@ -5398,7 +6026,13 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index, spawnCon
 					end
 				end
 				if bossRewardTokens > 0 then
-					self:_rewardParty(bossRewardTokens, bossType == "warden_hulk" and "warden_boss_kill" or "boss_kill")
+					local rewardReason = "boss_kill"
+					if bossType == "warden_hulk" then
+						rewardReason = "warden_boss_kill"
+					elseif bossType == "relay_overseer" then
+						rewardReason = "relay_boss_kill"
+					end
+					self:_rewardParty(bossRewardTokens, rewardReason)
 				end
 				local bossAmmoDropCount = math.max(0, math.floor(self._missionConfig.Mission.BossAmmoDropCount or 0))
 				for dropIndex = 1, bossAmmoDropCount do
@@ -5467,7 +6101,10 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index, spawnCon
 						end
 						if isBoss then
 							runStats.bossesDefeated += 1
-							runStats.lastBossName = bossDisplayName or (bossType == "warden_hulk" and "Warden Hulk" or "Siege Tyrant")
+							runStats.lastBossName = bossDisplayName
+								or (bossType == "warden_hulk" and "Warden Hulk")
+								or (bossType == "relay_overseer" and "Relay Overseer")
+								or "Siege Tyrant"
 							runStats.bossRewardTokens = math.max(runStats.bossRewardTokens or 0, bossRewardTokens)
 							runStats.bossExperienceBonus = math.max(runStats.bossExperienceBonus or 0, bossExperienceBonus)
 						end
@@ -5487,7 +6124,12 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index, spawnCon
 					end
 					local equippedWeaponId = self._inventoryService and self._inventoryService:GetEquippedWeaponId(player) or nil
 					if equippedWeaponId and weaponXp > 0 then
+						local previousWeaponExperience = self._persistenceService:GetWeaponExperience(player, equippedWeaponId)
+						local previousWeaponLevel = self._missionConfig.getWeaponLevelFromExperience(previousWeaponExperience)
 						self._persistenceService:AddWeaponExperience(player, equippedWeaponId, weaponXp)
+						local nextWeaponExperience = self._persistenceService:GetWeaponExperience(player, equippedWeaponId)
+						local nextWeaponLevel = self._missionConfig.getWeaponLevelFromExperience(nextWeaponExperience)
+						self:_grantWeaponMasteryRewards(player, equippedWeaponId, previousWeaponLevel, nextWeaponLevel)
 					end
 					self:_awardMissionExperience(player, "ZombieKill", 5)
 				end
@@ -5597,113 +6239,186 @@ function MissionService:_createExtractionPad(runtime)
 		return nil
 	end
 
-	local pad = Instance.new("Part")
-	pad.Name = "ExtractionPad"
-	pad.Size = Vector3.new(28, 1, 28)
-	pad.Anchored = true
-	pad.CanCollide = true
-	pad.Material = Enum.Material.Neon
-	pad.Color = Color3.fromRGB(76, 112, 104)
-	pad.Transparency = 0.34
-	pad.CFrame = anchor * CFrame.new(layout.ExtractionOffset or Vector3.new(0, -0.3, -26))
-	pad.Parent = runtime
+	local variant = self:_getExtractionVariant(self._activeMission)
+	local baseOffset = layout.ExtractionOffset or Vector3.new(0, -0.3, -26)
+	local padOffsets = { baseOffset }
+	if variant == "split" then
+		padOffsets = {
+			baseOffset + Vector3.new(-18, 0, 0),
+			baseOffset + Vector3.new(18, 0, 0),
+		}
+	end
 
-	local ring = Instance.new("Part")
-	ring.Name = "ExtractionRing"
-	ring.Anchored = true
-	ring.CanCollide = false
-	ring.CanQuery = false
-	ring.Material = Enum.Material.Neon
-	ring.Color = Color3.fromRGB(96, 138, 130)
-	ring.Transparency = 0.74
-	ring.Size = Vector3.new(36, 0.12, 36)
-	ring.CFrame = pad.CFrame * CFrame.new(0, 0.1, 0)
-	ring.Parent = runtime
+	local createdPads = {}
+	for index, offset in ipairs(padOffsets) do
+		local suffix = index == 1 and "" or string.char(64 + index)
+		local padName = index == 1 and "ExtractionPad" or ("ExtractionPad" .. suffix)
+		local ringName = index == 1 and "ExtractionRing" or ("ExtractionRing" .. suffix)
+		local beaconName = index == 1 and "ExtractionBeacon" or ("ExtractionBeacon" .. suffix)
+		local signName = index == 1 and "ExtractionSign" or ("ExtractionSign" .. suffix)
+		local signText = variant == "split" and ("PAD " .. index) or "LOCKED"
 
-	local beacon = Instance.new("Part")
-	beacon.Name = "ExtractionBeacon"
-	beacon.Anchored = true
-	beacon.CanCollide = false
-	beacon.CanQuery = false
-	beacon.Material = Enum.Material.Neon
-	beacon.Color = Color3.fromRGB(112, 208, 176)
-	beacon.Transparency = 0.72
-	beacon.Size = Vector3.new(2.2, 16, 2.2)
-	beacon.CFrame = pad.CFrame * CFrame.new(0, 8, 0)
-	beacon.Parent = runtime
+		local pad = Instance.new("Part")
+		pad.Name = padName
+		pad.Size = variant == "split" and Vector3.new(20, 1, 20) or Vector3.new(28, 1, 28)
+		pad.Anchored = true
+		pad.CanCollide = true
+		pad.Material = Enum.Material.Neon
+		pad.Color = Color3.fromRGB(76, 112, 104)
+		pad.Transparency = 0.34
+		pad.CFrame = anchor * CFrame.new(offset)
+		pad.Parent = runtime
 
-	local beaconLight = Instance.new("PointLight")
-	beaconLight.Name = "ExtractionBeaconLight"
-	beaconLight.Color = Color3.fromRGB(162, 255, 220)
-	beaconLight.Range = 18
-	beaconLight.Brightness = 0.8
-	beaconLight.Parent = beacon
+		local ring = Instance.new("Part")
+		ring.Name = ringName
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanQuery = false
+		ring.Material = Enum.Material.Neon
+		ring.Color = Color3.fromRGB(96, 138, 130)
+		ring.Transparency = 0.74
+		ring.Size = variant == "split" and Vector3.new(26, 0.12, 26) or Vector3.new(36, 0.12, 36)
+		ring.CFrame = pad.CFrame * CFrame.new(0, 0.1, 0)
+		ring.Parent = runtime
 
-	local labelPart, _ = self:_createWorldMarker(runtime, "ExtractionSign", "LOCKED", Color3.fromRGB(172, 196, 188), Vector2.new(160, 36), 16)
-	labelPart.CFrame = pad.CFrame * CFrame.new(0, 6, 0)
-	local labelGui = labelPart:FindFirstChildOfClass("BillboardGui")
-	if labelGui then
-		labelGui.MaxDistance = 84
+		local beacon = Instance.new("Part")
+		beacon.Name = beaconName
+		beacon.Anchored = true
+		beacon.CanCollide = false
+		beacon.CanQuery = false
+		beacon.Material = Enum.Material.Neon
+		beacon.Color = Color3.fromRGB(112, 208, 176)
+		beacon.Transparency = 0.72
+		beacon.Size = Vector3.new(2.2, 16, 2.2)
+		beacon.CFrame = pad.CFrame * CFrame.new(0, 8, 0)
+		beacon.Parent = runtime
+
+		local beaconLight = Instance.new("PointLight")
+		beaconLight.Name = "ExtractionBeaconLight"
+		beaconLight.Color = Color3.fromRGB(162, 255, 220)
+		beaconLight.Range = 18
+		beaconLight.Brightness = 0.8
+		beaconLight.Parent = beacon
+
+		local labelPart, _ = self:_createWorldMarker(runtime, signName, signText, Color3.fromRGB(172, 196, 188), Vector2.new(160, 36), 16)
+		labelPart.CFrame = pad.CFrame * CFrame.new(0, 6, 0)
+		local labelGui = labelPart:FindFirstChildOfClass("BillboardGui")
+		if labelGui then
+			labelGui.MaxDistance = 84
+		end
+
+		table.insert(createdPads, pad)
+	end
+
+	if self._activeMission then
+		self._activeMission.extractionPadBaseOffsets = padOffsets
+		self._activeMission.extractionVariant = variant
 	end
 
 	self:_setExtractionVisualState(0)
 
-	return pad
+	return createdPads[1]
 end
 
 function MissionService:_setExtractionVisualState(progress)
-	local pad = self:_getExtractionPad()
-	if not pad then
+	local pads = self:_getExtractionPads()
+	if #pads == 0 then
 		return
 	end
 
-	local runtime = pad.Parent
-	local ring = runtime and runtime:FindFirstChild("ExtractionRing")
-	local beacon = runtime and runtime:FindFirstChild("ExtractionBeacon")
-	local sign = runtime and runtime:FindFirstChild("ExtractionSign")
-	local label = sign and sign:FindFirstChildOfClass("BillboardGui")
-	local frame = label and label:FindFirstChildOfClass("Frame")
-	local text = frame and frame:FindFirstChild("Label")
-
 	local clamped = math.clamp(progress or 0, 0, 1)
 	local extractionOpen = self._activeMission and self._activeMission.phase == "Extraction"
-	pad.Color = (extractionOpen and Color3.fromRGB(110, 223, 185) or Color3.fromRGB(76, 112, 104)):Lerp(Color3.fromRGB(210, 255, 233), clamped)
-	pad.Transparency = (extractionOpen and 0.18 or 0.34) - (clamped * 0.08)
 
-	if ring and ring:IsA("BasePart") then
-		ring.Color = (extractionOpen and Color3.fromRGB(167, 248, 215) or Color3.fromRGB(96, 138, 130)):Lerp(Color3.fromRGB(228, 255, 240), clamped)
-		ring.Transparency = (extractionOpen and 0.58 or 0.74) - (clamped * 0.22)
-	end
-	if beacon and beacon:IsA("BasePart") then
-		beacon.Color = (extractionOpen and Color3.fromRGB(144, 255, 214) or Color3.fromRGB(112, 208, 176)):Lerp(Color3.fromRGB(232, 255, 246), clamped)
-		beacon.Transparency = (extractionOpen and 0.3 or 0.72) - (clamped * 0.12)
-		beacon.Size = Vector3.new(2.2 + (clamped * 0.9), extractionOpen and 22 or 16, 2.2 + (clamped * 0.9))
-		local beaconLight = beacon:FindFirstChild("ExtractionBeaconLight")
-		if beaconLight and beaconLight:IsA("PointLight") then
-			beaconLight.Brightness = extractionOpen and (1.8 + clamped * 1.4) or 0.8
-			beaconLight.Range = extractionOpen and 28 or 18
-			beaconLight.Color = beacon.Color
+	for index, pad in ipairs(pads) do
+		local suffix = index == 1 and "" or string.char(64 + index)
+		local runtime = pad.Parent
+		local ring = runtime and runtime:FindFirstChild(index == 1 and "ExtractionRing" or ("ExtractionRing" .. suffix))
+		local beacon = runtime and runtime:FindFirstChild(index == 1 and "ExtractionBeacon" or ("ExtractionBeacon" .. suffix))
+		local sign = runtime and runtime:FindFirstChild(index == 1 and "ExtractionSign" or ("ExtractionSign" .. suffix))
+		local label = sign and sign:FindFirstChildOfClass("BillboardGui")
+		local frame = label and label:FindFirstChildOfClass("Frame")
+		local text = frame and frame:FindFirstChild("Label")
+
+		pad.Color = (extractionOpen and Color3.fromRGB(110, 223, 185) or Color3.fromRGB(76, 112, 104)):Lerp(Color3.fromRGB(210, 255, 233), clamped)
+		pad.Transparency = (extractionOpen and 0.18 or 0.34) - (clamped * 0.08)
+
+		if ring and ring:IsA("BasePart") then
+			ring.Color = (extractionOpen and Color3.fromRGB(167, 248, 215) or Color3.fromRGB(96, 138, 130)):Lerp(Color3.fromRGB(228, 255, 240), clamped)
+			ring.Transparency = (extractionOpen and 0.58 or 0.74) - (clamped * 0.22)
+		end
+		if beacon and beacon:IsA("BasePart") then
+			beacon.Color = (extractionOpen and Color3.fromRGB(144, 255, 214) or Color3.fromRGB(112, 208, 176)):Lerp(Color3.fromRGB(232, 255, 246), clamped)
+			beacon.Transparency = (extractionOpen and 0.3 or 0.72) - (clamped * 0.12)
+			beacon.Size = Vector3.new(2.2 + (clamped * 0.9), extractionOpen and 22 or 16, 2.2 + (clamped * 0.9))
+			local beaconLight = beacon:FindFirstChild("ExtractionBeaconLight")
+			if beaconLight and beaconLight:IsA("PointLight") then
+				beaconLight.Brightness = extractionOpen and (1.8 + clamped * 1.4) or 0.8
+				beaconLight.Range = extractionOpen and 28 or 18
+				beaconLight.Color = beacon.Color
+			end
+		end
+		if text and text:IsA("TextLabel") then
+			local variant = self._activeMission and self._activeMission.extractionVariant or "standard"
+			if extractionOpen then
+				if variant == "split" then
+					text.Text = clamped > 0 and ("PAD %d %d%%"):format(index, math.floor(clamped * 100)) or ("PAD " .. index)
+				else
+					text.Text = clamped > 0 and ("EXTRACT %d%%"):format(math.floor(clamped * 100)) or "OPEN EXTRACT"
+				end
+			else
+				text.Text = variant == "split" and ("PAD " .. index) or "LOCKED"
+			end
 		end
 	end
-	if extractionOpen and clamped <= 0.01 then
+
+	local pad = pads[1]
+	if extractionOpen and clamped <= 0.01 and pad then
 		local openPulse = self:_emitPulse(pad.CFrame * CFrame.new(0, 1.2, 0), Vector3.new(18, 0.2, 18), Color3.fromRGB(172, 255, 218), 0.48, 0.22)
 		if openPulse then
 			openPulse.Material = Enum.Material.ForceField
-			openPulse.Parent = runtime or Workspace
+			openPulse.Parent = pad.Parent or Workspace
 		end
 		local beaconBurst = self:_emitPulse(pad.CFrame * CFrame.new(0, 7, 0), Vector3.new(6, 18, 6), Color3.fromRGB(164, 255, 224), 0.7, 0.18)
 		if beaconBurst then
 			beaconBurst.Material = Enum.Material.Neon
-			beaconBurst.Parent = runtime or Workspace
+			beaconBurst.Parent = pad.Parent or Workspace
 		end
 	end
+end
 
-	if text and text:IsA("TextLabel") then
-		if extractionOpen then
-			text.Text = clamped > 0 and ("EXTRACT %d%%"):format(math.floor(clamped * 100)) or "OPEN EXTRACT"
-		else
-			text.Text = "LOCKED"
-		end
+function MissionService:_updateExtractionVariantLayout(mission, progress)
+	if not mission or mission.phase ~= "Extraction" then
+		return
+	end
+
+	local variant = mission.extractionVariant or self:_getExtractionVariant(mission)
+	if variant ~= "moving" then
+		return
+	end
+
+	local pad = self:_getExtractionPad()
+	local runtime = mission.runtime
+	local ring = runtime and runtime:FindFirstChild("ExtractionRing")
+	local beacon = runtime and runtime:FindFirstChild("ExtractionBeacon")
+	local sign = runtime and runtime:FindFirstChild("ExtractionSign")
+	local anchor = self:_getMissionAnchorCFrame()
+	local offsets = mission.extractionPadBaseOffsets
+	local baseOffset = offsets and offsets[1]
+	if not pad or not anchor or typeof(baseOffset) ~= "Vector3" then
+		return
+	end
+
+	local travel = Vector3.new(0, 0, 18)
+	local movedCFrame = anchor * CFrame.new(baseOffset:Lerp(baseOffset + travel, math.clamp(progress or 0, 0, 1)))
+	pad.CFrame = movedCFrame
+	if ring and ring:IsA("BasePart") then
+		ring.CFrame = movedCFrame * CFrame.new(0, 0.1, 0)
+	end
+	if beacon and beacon:IsA("BasePart") then
+		beacon.CFrame = movedCFrame * CFrame.new(0, 8, 0)
+	end
+	if sign and sign:IsA("BasePart") then
+		sign.CFrame = movedCFrame * CFrame.new(0, 6, 0)
 	end
 end
 
@@ -5829,6 +6544,10 @@ function MissionService:_cleanupPlayerMissionTools(player)
 	self:_clearDownedState(player, false)
 	player:SetAttribute("MissionEliminated", false)
 	player:SetAttribute("MissionMedkits", 0)
+	player:SetAttribute("MissionAmmoCrates", 0)
+	player:SetAttribute("MissionSensorBeacons", 0)
+	player:SetAttribute("MissionBarriers", 0)
+	player:SetAttribute("MissionReviveStims", 0)
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	if backpack then
 		local tool = backpack:FindFirstChild("MissionWeapon")
@@ -5846,6 +6565,22 @@ function MissionService:_cleanupPlayerMissionTools(player)
 		local dashTool = backpack:FindFirstChild("MissionDash")
 		if dashTool then
 			dashTool:Destroy()
+		end
+		local ammoCrateTool = backpack:FindFirstChild("MissionAmmoCrate")
+		if ammoCrateTool then
+			ammoCrateTool:Destroy()
+		end
+		local sensorBeaconTool = backpack:FindFirstChild("MissionSensorBeacon")
+		if sensorBeaconTool then
+			sensorBeaconTool:Destroy()
+		end
+		local barrierTool = backpack:FindFirstChild("MissionBarrier")
+		if barrierTool then
+			barrierTool:Destroy()
+		end
+		local reviveStimTool = backpack:FindFirstChild("MissionReviveStim")
+		if reviveStimTool then
+			reviveStimTool:Destroy()
 		end
 	end
 
@@ -5866,6 +6601,22 @@ function MissionService:_cleanupPlayerMissionTools(player)
 		local dashEquipped = character:FindFirstChild("MissionDash")
 		if dashEquipped then
 			dashEquipped:Destroy()
+		end
+		local ammoCrateEquipped = character:FindFirstChild("MissionAmmoCrate")
+		if ammoCrateEquipped then
+			ammoCrateEquipped:Destroy()
+		end
+		local sensorBeaconEquipped = character:FindFirstChild("MissionSensorBeacon")
+		if sensorBeaconEquipped then
+			sensorBeaconEquipped:Destroy()
+		end
+		local barrierEquipped = character:FindFirstChild("MissionBarrier")
+		if barrierEquipped then
+			barrierEquipped:Destroy()
+		end
+		local reviveStimEquipped = character:FindFirstChild("MissionReviveStim")
+		if reviveStimEquipped then
+			reviveStimEquipped:Destroy()
 		end
 		character:SetAttribute("MissionDashing", false)
 		local highlight = character:FindFirstChild("EquippedCosmeticHighlight")
@@ -6189,6 +6940,10 @@ function MissionService:_spawnWave()
 	}, #mission.party)
 
 	mission.remainingZombies = scaledStats.spawnCount
+	mission.waveTargetHostiles = scaledStats.spawnCount
+	mission.phaseTimerLabel = nil
+	mission.phaseTimerDuration = nil
+	mission.phaseTimerEndsAt = nil
 	local runnerCount = 0
 	local shieldCarrierCount = 0
 	local screamerCount = 0
@@ -6353,6 +7108,7 @@ function MissionService:_scheduleWaveSurge(mission, scaledStats)
 		}
 
 		mission.remainingZombies += surgeCount
+		mission.waveTargetHostiles = (mission.waveTargetHostiles or 0) + surgeCount
 
 		self:_notifyParty(mission.party, ("%s: reinforcements inbound."):format(modifierTraits.WaveSurgeLabel))
 		self:_fireMissionState(mission.party, modifierTraits.WaveSurgeLabel)
@@ -6425,6 +7181,9 @@ function MissionService:_completeMission()
 
 	mission.phase = "Extraction"
 	mission.extractionStartedAt = nil
+	mission.phaseTimerLabel = nil
+	mission.phaseTimerDuration = nil
+	mission.phaseTimerEndsAt = nil
 	self:_setExtractionVisualState(0)
 	local finalePlan = self:_getExtractionFinalePlan(mission)
 	self:_notifyParty(mission.party, ("All waves cleared. %s"):format(finalePlan.notifyText or "Regroup on the extraction pad."))
@@ -6433,22 +7192,28 @@ function MissionService:_completeMission()
 
 	task.spawn(function()
 		while self._activeMission == mission and mission.phase == "Extraction" do
-			local pad = self:_getExtractionPad()
-			if not pad then
+			local pads = self:_getExtractionPads()
+			if #pads == 0 then
 				task.wait(0.5)
 				continue
 			end
+			self:_updateExtractionVariantLayout(mission, 0)
 
 			local livePlayers = 0
 			local insidePlayers = 0
+			local padsOccupied = {}
 			for _, player in ipairs(self:_getLivePartyMembers()) do
 				local character = player.Character
 				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 				local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 				if humanoid and humanoid.Health > 0 and rootPart and not self:_isCharacterDowned(character) then
 					livePlayers += 1
-					if self:_isCharacterInsideExtractionPad(rootPart, pad) then
-						insidePlayers += 1
+					for padIndex, pad in ipairs(pads) do
+						if self:_isCharacterInsideExtractionPad(rootPart, pad) then
+							insidePlayers += 1
+							padsOccupied[padIndex] = true
+							break
+						end
 					end
 				end
 			end
@@ -6462,13 +7227,21 @@ function MissionService:_completeMission()
 			if livePlayers >= 3 then
 				requiredInside = livePlayers - 1
 			end
+			local variant = mission.extractionVariant or self:_getExtractionVariant(mission)
 			local allInside = insidePlayers >= requiredInside
+			if variant == "split" and #pads >= 2 then
+				allInside = allInside and padsOccupied[1] == true and padsOccupied[2] == true
+			end
 
 			if allInside then
 				mission.extractionStartedAt = mission.extractionStartedAt or os.clock()
 				local extractionHold = self:_getExtractionHoldDuration(mission.party)
+				mission.phaseTimerLabel = "Extraction"
+				mission.phaseTimerDuration = extractionHold
+				mission.phaseTimerEndsAt = mission.extractionStartedAt + extractionHold
 				local remaining = math.max(0, extractionHold - (os.clock() - mission.extractionStartedAt))
 				local progress = 1 - (remaining / extractionHold)
+				self:_updateExtractionVariantLayout(mission, progress)
 				self:_setExtractionVisualState(progress)
 				self:_fireMissionState(mission.party, ("Extracting in %ds"):format(math.ceil(remaining)))
 				if remaining <= 0 then
@@ -6521,8 +7294,22 @@ function MissionService:_completeMission()
 				end
 			else
 				mission.extractionStartedAt = nil
+				mission.phaseTimerLabel = nil
+				mission.phaseTimerDuration = nil
+				mission.phaseTimerEndsAt = nil
+				self:_updateExtractionVariantLayout(mission, 0)
 				self:_setExtractionVisualState(0)
-				self:_fireMissionState(mission.party, ("Objective: regroup on extraction (%d/%d)"):format(insidePlayers, requiredInside))
+				if variant == "split" and #pads >= 2 then
+					local occupiedCount = 0
+					for _, occupied in pairs(padsOccupied) do
+						if occupied then
+							occupiedCount += 1
+						end
+					end
+					self:_fireMissionState(mission.party, ("Objective: hold both pads (%d/%d inside | %d/2 pads)"):format(insidePlayers, requiredInside, occupiedCount))
+				else
+					self:_fireMissionState(mission.party, ("Objective: regroup on extraction (%d/%d)"):format(insidePlayers, requiredInside))
+				end
 			end
 
 			task.wait(0.35)
@@ -6595,7 +7382,12 @@ function MissionService:_completeWave()
 		return
 	end
 
-	self:_notifyParty(mission.party, ("Wave %d cleared. Next wave in %ds."):format(mission.wave, self._missionConfig.Mission.InterWaveDelay))
+	local interWaveDelay = self._missionConfig.Mission.InterWaveDelay
+	mission.phaseTimerLabel = "Next Wave"
+	mission.phaseTimerDuration = interWaveDelay
+	mission.phaseTimerEndsAt = os.clock() + interWaveDelay
+	self:_notifyParty(mission.party, ("Wave %d cleared. Next wave in %ds."):format(mission.wave, interWaveDelay))
+	self:_fireMissionState(mission.party, ("Wave %d cleared. Next wave in %ds."):format(mission.wave, interWaveDelay))
 	task.delay(self._missionConfig.Mission.InterWaveDelay, function()
 		if self._activeMission == mission then
 			self:_spawnWave()
@@ -6626,7 +7418,11 @@ function MissionService:StartMission(request)
 		zombiesFolder = zombiesFolder,
 		wave = 0,
 		remainingZombies = 0,
+		waveTargetHostiles = 0,
 		phase = "Combat",
+		phaseTimerLabel = nil,
+		phaseTimerDuration = nil,
+		phaseTimerEndsAt = nil,
 		hazardCooldowns = {},
 		connections = {},
 		downedStates = {},

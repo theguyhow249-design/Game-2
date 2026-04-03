@@ -25,6 +25,8 @@ function AdminService.new(context)
 	self._subscriptionService = context.SubscriptionService
 	self._tokenEconomy = context.TokenEconomy
 	self._missionConfig = context.MissionConfig
+	self._leaderstatsService = context.LeaderstatsService
+	self._leaderboardService = context.LeaderboardService
 	self._remotes = context.Remotes
 	self._remoteNames = context.RemoteNames
 	self._banCache = {}
@@ -601,10 +603,39 @@ function AdminService:_getSeasonalEventState()
 	}
 end
 
+function AdminService:_getPanelState(player, target)
+	local panelState = self:_getSeasonalEventState()
+	local mission = self._missionService and self._missionService._activeMission or nil
+	local roleKey = self:GetRoleKey(player)
+	panelState.roleKey = roleKey
+	panelState.roleLabel = roleKey == "owner" and "Owner"
+		or (roleKey == "admin" and "Admin" or (roleKey == "moderator" and "Moderator" or "Operator"))
+	panelState.runState = "Lobby"
+	panelState.runSummary = "No active run"
+	if mission then
+		panelState.runState = tostring(mission.phase or "Combat")
+		panelState.runSummary = ("%s | Wave %d/%d | %d hostiles"):format(
+			tostring(mission.scenario and mission.scenario.DisplayName or "Mission"),
+			tonumber(mission.wave) or 0,
+			tonumber(self._missionConfig and self._missionConfig.Mission and self._missionConfig.Mission.WaveCount) or 0,
+			tonumber(mission.remainingZombies) or 0
+		)
+	end
+	if target and target.Parent == Players then
+		panelState.targetUserId = target.UserId
+		panelState.targetName = target.DisplayName or target.Name
+		panelState.targetRole = tostring(target:GetAttribute("PlayerTitle") or "Survivor")
+		panelState.targetLevel = math.max(1, tonumber(target:GetAttribute("SkillTreeLevel")) or 1)
+		panelState.targetTokens = math.max(0, tonumber(target:GetAttribute("DeployTokens")) or tonumber(target:GetAttribute("Tokens")) or 0)
+		panelState.targetRuns = math.max(0, tonumber(target:GetAttribute("AllTimeMissionsCompleted")) or tonumber(target:GetAttribute("MissionsCompleted")) or 0)
+		panelState.targetKills = math.max(0, tonumber(target:GetAttribute("AllTimeZombiesDefeated")) or tonumber(target:GetAttribute("ZombiesDefeated")) or 0)
+	end
+	return panelState
+end
+
 function AdminService:_makeResponse(status, extra)
 	local payload = extra or {}
 	payload.status = status
-	payload.panelState = self:_getSeasonalEventState()
 	return payload
 end
 
@@ -647,6 +678,65 @@ function AdminService:_teleportPartyToObjective(players)
 		end
 	end
 	return moved
+end
+
+function AdminService:_restorePlayers(players)
+	local revived = self:_revivePlayers(players)
+	local healed = self:_healPlayers(players)
+	local refilled = self:_refillPartyAmmo(players)
+	return healed, revived, refilled
+end
+
+function AdminService:_refreshProgressViews(target)
+	if self._leaderstatsService and self._leaderstatsService.RefreshPlayer then
+		self._leaderstatsService:RefreshPlayer(target)
+	end
+	if self._roleService and self._roleService.Apply then
+		self._roleService:Apply(target)
+	end
+	if self._leaderboardService and self._leaderboardService.RefreshWorldBoard then
+		self._leaderboardService:RefreshWorldBoard("allTime")
+	end
+end
+
+function AdminService:_setExactLevel(target, level)
+	local nextLevel = math.max(1, math.floor(level or 1))
+	local skillRanks = self._persistenceService:GetSkills(target)
+	local spentPoints = 0
+	for _, rank in pairs(skillRanks) do
+		spentPoints += math.max(0, math.floor(tonumber(rank) or 0))
+	end
+	local totalSkillPoints = math.max(0, (nextLevel - 1) * (self._skillTreeConfig.SkillPointsPerLevel or 1))
+	self._persistenceService:SetLevel(target, nextLevel)
+	self._persistenceService:SetExperience(target, 0)
+	self._persistenceService:SetSkillPoints(target, math.max(0, totalSkillPoints - spentPoints))
+	if self._skillTreeService and self._skillTreeService._emitProgression then
+		self._skillTreeService:_emitProgression(target)
+	end
+	target:SetAttribute("Level", nextLevel)
+	target:SetAttribute("SkillTreeLevel", nextLevel)
+	self:_refreshProgressViews(target)
+	return nextLevel
+end
+
+function AdminService:_setExactStat(target, statName, value)
+	local nextValue = math.max(0, math.floor(value or 0))
+	self._persistenceService:SetStat(target, statName, nextValue, true)
+	if statName == "zombiesDefeated" then
+		target:SetAttribute("ZombiesDefeated", nextValue)
+		target:SetAttribute("AllTimeZombiesDefeated", nextValue)
+		target:SetAttribute("MonthlyZombiesDefeated", nextValue)
+		target:SetAttribute("WeeklyZombiesDefeated", nextValue)
+		target:SetAttribute("DailyZombiesDefeated", nextValue)
+	elseif statName == "missionsCompleted" then
+		target:SetAttribute("MissionsCompleted", nextValue)
+		target:SetAttribute("AllTimeMissionsCompleted", nextValue)
+		target:SetAttribute("MonthlyMissionsCompleted", nextValue)
+		target:SetAttribute("WeeklyMissionsCompleted", nextValue)
+		target:SetAttribute("DailyMissionsCompleted", nextValue)
+	end
+	self:_refreshProgressViews(target)
+	return nextValue
 end
 
 function AdminService:_skipWave()
@@ -754,7 +844,10 @@ function AdminService:Execute(player, request)
 	end
 
 	if command == "get_panel_state" then
-		return true, self:_makeResponse("Owner console linked.")
+		local target = self:_resolveTarget(player, request)
+		local payload = self:_makeResponse("Owner console linked.")
+		payload.panelState = self:_getPanelState(player, target)
+		return true, payload
 	end
 
 	if command == "heal_self" then
@@ -790,6 +883,7 @@ function AdminService:Execute(player, request)
 		local progression = self:_refreshIdentity(player)
 		return true, self:_makeResponse("Refreshed identity, access, and entitlements.", {
 			progression = progression,
+			panelState = self:_getPanelState(player, player),
 		})
 	elseif command == "return_to_lobby" then
 		if self._missionService and self._missionService:AbortActiveMission("Owner command: returning squad to bunker.") then
@@ -799,6 +893,15 @@ function AdminService:Execute(player, request)
 			return true, self:_makeResponse("Active deployment canceled.")
 		end
 		return false, "no_active_run"
+	elseif command == "restore_squad" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local healed, revived, refilled = self:_restorePlayers(self:_getActiveParty(player))
+		return true, self:_makeResponse(("Squad restored. Healed %d, revived %d, refilled %d."):format(healed, revived, refilled), {
+			panelState = self:_getPanelState(player, player),
+		})
 	end
 
 	local target = self:_resolveTarget(player, request)
@@ -816,7 +919,9 @@ function AdminService:Execute(player, request)
 			return false, "missing_character"
 		end
 		self:_notifyTarget(target, "An admin restored your health.")
-		return true, self:_makeResponse(("Healed %s."):format(target.DisplayName))
+		return true, self:_makeResponse(("Healed %s."):format(target.DisplayName), {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "grant_tokens_target" then
 		local okay, code = self:_requireRole(player, "admin")
 		if not okay then
@@ -824,7 +929,9 @@ function AdminService:Execute(player, request)
 		end
 		self:_grantTokens(target, 1000, "owner_target")
 		self:_notifyTarget(target, "Owner granted you +1000 deploy tokens.")
-		return true, self:_makeResponse(("Granted +1000 deploy tokens to %s."):format(target.DisplayName))
+		return true, self:_makeResponse(("Granted +1000 deploy tokens to %s."):format(target.DisplayName), {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "grant_xp_target" then
 		local okay, code = self:_requireRole(player, "admin")
 		if not okay then
@@ -832,7 +939,72 @@ function AdminService:Execute(player, request)
 		end
 		self:_grantExperience(target, 1000)
 		self:_notifyTarget(target, "Owner granted you +1000 bunker XP.")
-		return true, self:_makeResponse(("Granted +1000 bunker XP to %s."):format(target.DisplayName))
+		return true, self:_makeResponse(("Granted +1000 bunker XP to %s."):format(target.DisplayName), {
+			panelState = self:_getPanelState(player, target),
+		})
+	elseif command == "set_target_level" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local value = tonumber(request.value)
+		if value == nil then
+			return false, "invalid_amount"
+		end
+		local nextLevel = self:_setExactLevel(target, value)
+		self:_notifyTarget(target, ("Admin set your level to %d."):format(nextLevel))
+		return true, self:_makeResponse(("Set %s to level %d."):format(target.DisplayName, nextLevel), {
+			panelState = self:_getPanelState(player, target),
+		})
+	elseif command == "max_target_level" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local nextLevel = self:_setExactLevel(target, 1000)
+		self:_notifyTarget(target, "Admin pushed your level to the cap preset.")
+		return true, self:_makeResponse(("Set %s to level %d."):format(target.DisplayName, nextLevel), {
+			panelState = self:_getPanelState(player, target),
+		})
+	elseif command == "set_target_kills" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local value = tonumber(request.value)
+		if value == nil then
+			return false, "invalid_amount"
+		end
+		local nextValue = self:_setExactStat(target, "zombiesDefeated", value)
+		return true, self:_makeResponse(("Set %s kills to %d."):format(target.DisplayName, nextValue), {
+			panelState = self:_getPanelState(player, target),
+		})
+	elseif command == "set_target_runs" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local value = tonumber(request.value)
+		if value == nil then
+			return false, "invalid_amount"
+		end
+		local nextValue = self:_setExactStat(target, "missionsCompleted", value)
+		return true, self:_makeResponse(("Set %s runs to %d."):format(target.DisplayName, nextValue), {
+			panelState = self:_getPanelState(player, target),
+		})
+	elseif command == "set_target_tokens" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local value = tonumber(request.value)
+		if value == nil then
+			return false, "invalid_amount"
+		end
+		local nextValue = self._tokenService:SetBalance(target, value, "AdminSet", "owner_panel_exact")
+		return true, self:_makeResponse(("Set %s tokens to %d."):format(target.DisplayName, nextValue), {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "unlock_all_weapons_target" then
 		local okay, code = self:_requireRole(player, "admin")
 		if not okay then
@@ -840,7 +1012,9 @@ function AdminService:Execute(player, request)
 		end
 		local count = self:_unlockCatalogCategory(target, self._tokenEconomy.ShopCategories.Weapons)
 		self:_notifyTarget(target, "Owner granted your full weapon catalog.")
-		return true, self:_makeResponse(("Granted %d weapon unlocks to %s."):format(count, target.DisplayName))
+		return true, self:_makeResponse(("Granted %d weapon unlocks to %s."):format(count, target.DisplayName), {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "unlock_all_cosmetics_target" then
 		local okay, code = self:_requireRole(player, "admin")
 		if not okay then
@@ -848,7 +1022,35 @@ function AdminService:Execute(player, request)
 		end
 		local count = self:_unlockCatalogCategory(target, self._tokenEconomy.ShopCategories.Cosmetics)
 		self:_notifyTarget(target, "Owner granted your cosmetic catalog.")
-		return true, self:_makeResponse(("Granted %d cosmetic unlocks to %s."):format(count, target.DisplayName))
+		return true, self:_makeResponse(("Granted %d cosmetic unlocks to %s."):format(count, target.DisplayName), {
+			panelState = self:_getPanelState(player, target),
+		})
+	elseif command == "grant_target_bundle" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		self:_grantTokens(target, 1000, "owner_target_bundle")
+		self:_grantExperience(target, 1000)
+		local weaponCount = self:_unlockCatalogCategory(target, self._tokenEconomy.ShopCategories.Weapons)
+		local cosmeticCount = self:_unlockCatalogCategory(target, self._tokenEconomy.ShopCategories.Cosmetics)
+		self:_notifyTarget(target, "Owner granted your recovery bundle, progression boost, and full catalog.")
+		return true, self:_makeResponse(("Granted bundle to %s: +1000T, +1000 XP, %d weapons, %d cosmetics."):format(target.DisplayName, weaponCount, cosmeticCount), {
+			panelState = self:_getPanelState(player, target),
+		})
+	elseif command == "restore_target" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local healed, revived, refilled = self:_restorePlayers({ target })
+		if healed <= 0 and revived <= 0 and refilled <= 0 then
+			return false, "missing_character"
+		end
+		self:_notifyTarget(target, "An admin restored your combat state.")
+		return true, self:_makeResponse(("Restored %s. Healed %d, revived %d, refilled %d."):format(target.DisplayName, healed, revived, refilled), {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "terminate_player" then
 		local okay, code = self:_requireRole(player, "admin")
 		if not okay then
@@ -868,7 +1070,9 @@ function AdminService:Execute(player, request)
 		end
 		self._roleService:SetGrant(target.UserId, "moderator", player.UserId)
 		self:_notifyTarget(target, "You were granted moderator access.")
-		return true, self:_makeResponse(("Granted moderator access to %s."):format(target.DisplayName))
+		return true, self:_makeResponse(("Granted moderator access to %s."):format(target.DisplayName), {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "promote_admin" then
 		local okay, code = self:_requireRole(player, "owner")
 		if not okay then
@@ -876,7 +1080,9 @@ function AdminService:Execute(player, request)
 		end
 		self._roleService:SetGrant(target.UserId, "admin", player.UserId)
 		self:_notifyTarget(target, "You were granted admin access.")
-		return true, self:_makeResponse(("Granted admin access to %s."):format(target.DisplayName))
+		return true, self:_makeResponse(("Granted admin access to %s."):format(target.DisplayName), {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "clear_access" then
 		local okay, code = self:_requireRole(player, "owner")
 		if not okay then
@@ -884,7 +1090,9 @@ function AdminService:Execute(player, request)
 		end
 		self._roleService:ClearGrant(target.UserId)
 		self:_notifyTarget(target, "Your elevated access was cleared.")
-		return true, self:_makeResponse(("Cleared elevated access for %s."):format(target.DisplayName))
+		return true, self:_makeResponse(("Cleared elevated access for %s."):format(target.DisplayName), {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "ban_player" then
 		local okay, code = self:_requireRole(player, "owner")
 		if not okay then
@@ -903,42 +1111,64 @@ function AdminService:Execute(player, request)
 				target:Kick(payload.reason)
 			end
 		end)
-		return true, self:_makeResponse(("Banned %s from the game."):format(displayName))
+		return true, self:_makeResponse(("Banned %s from the game."):format(displayName), {
+			panelState = self:_getPanelState(player, target),
+		})
+	elseif command == "unban_player" then
+		local okay, code = self:_requireRole(player, "owner")
+		if not okay then
+			return false, code
+		end
+		self:_saveBanRecord(target.UserId, nil)
+		self:_notifyTarget(target, "Your ban record was cleared by the owner.")
+		return true, self:_makeResponse(("Cleared ban record for %s."):format(target.DisplayName), {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "event_auto" then
 		local okay, code = self:_requireRole(player, "owner")
 		if not okay then
 			return false, code
 		end
 		self:_setSeasonalEvent("auto")
-		return true, self:_makeResponse("Seasonal events returned to automatic rotation.")
+		return true, self:_makeResponse("Seasonal events returned to automatic rotation.", {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "event_none" then
 		local okay, code = self:_requireRole(player, "owner")
 		if not okay then
 			return false, code
 		end
 		self:_setSeasonalEvent("none")
-		return true, self:_makeResponse("Seasonal event drops are stopped for this server.")
+		return true, self:_makeResponse("Seasonal event drops are stopped for this server.", {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "event_spring" then
 		local okay, code = self:_requireRole(player, "owner")
 		if not okay then
 			return false, code
 		end
 		self:_setSeasonalEvent("spring_surge")
-		return true, self:_makeResponse("Forced Spring Surge for this server.")
+		return true, self:_makeResponse("Forced Spring Surge for this server.", {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "event_harvest" then
 		local okay, code = self:_requireRole(player, "owner")
 		if not okay then
 			return false, code
 		end
 		self:_setSeasonalEvent("harvest_hunt")
-		return true, self:_makeResponse("Forced Harvest Hunt for this server.")
+		return true, self:_makeResponse("Forced Harvest Hunt for this server.", {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "event_winter" then
 		local okay, code = self:_requireRole(player, "owner")
 		if not okay then
 			return false, code
 		end
 		self:_setSeasonalEvent("winter_siege")
-		return true, self:_makeResponse("Forced Winter Siege for this server.")
+		return true, self:_makeResponse("Forced Winter Siege for this server.", {
+			panelState = self:_getPanelState(player, target),
+		})
 	elseif command == "skip_wave" then
 		local okay, code = self:_requireRole(player, "admin")
 		if not okay then

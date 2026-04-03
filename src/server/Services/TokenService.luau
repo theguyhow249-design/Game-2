@@ -87,4 +87,24 @@ function TokenService:SpendTokens(player, amount, source, reason)
 	return true, self:GetBalance(player)
 end
 
+function TokenService:TransferTokens(fromPlayer, toPlayer, amount, reason)
+	if not fromPlayer or not toPlayer or fromPlayer == toPlayer then
+		return false, "invalid_target"
+	end
+
+	local transferAmount = math.max(0, math.floor(amount or 0))
+	if transferAmount <= 0 then
+		return false, "invalid_amount"
+	end
+
+	local current = self:GetBalance(fromPlayer)
+	if current < transferAmount then
+		return false, "insufficient_tokens"
+	end
+
+	self:SetBalance(fromPlayer, current - transferAmount, nil, reason or "player_gift_sent")
+	self:SetBalance(toPlayer, self:GetBalance(toPlayer) + transferAmount, nil, reason or "player_gift_received")
+	return true, transferAmount
+end
+
 return TokenService

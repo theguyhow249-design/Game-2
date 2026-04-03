@@ -174,12 +174,33 @@ function ActivityService:_canUseLobbyActivity(player)
 	if not player or player.Parent ~= Players then
 		return false
 	end
+
+	local deploymentState = tostring(player:GetAttribute("DeploymentState") or "Lobby")
+	local inMission = player:GetAttribute("InMission") == true
+
+	if deploymentState == "Lobby" then
+		if inMission then
+			player:SetAttribute("InMission", false)
+		end
+	elseif deploymentState == "Mission"
+		or deploymentState == "Deployment"
+		or deploymentState == "Intermission"
+		or deploymentState == "Returning"
+		or deploymentState == "ReturnFailed"
+	then
+		return false
+	end
+
 	if self._flowService and self._flowService:GetPhase() ~= "Lobby" then
+		if deploymentState ~= "Lobby" or inMission then
+			return false
+		end
+	end
+
+	if inMission and deploymentState ~= "Lobby" then
 		return false
 	end
-	if player:GetAttribute("InMission") == true then
-		return false
-	end
+
 	if player:GetAttribute("InDuel") == true or player:GetAttribute("InDuelQueue") == true then
 		return false
 	end
@@ -206,9 +227,21 @@ function ActivityService:_getPlaza()
 	if not lobby then
 		return nil
 	end
+
 	if lobby:IsA("Model") then
 		return lobby
 	end
+
+	if lobby:IsA("Folder") then
+		if self:_resolveNamedDescendant(lobby, "TrainingYard")
+			or self:_resolveNamedDescendant(lobby, "ParkourCourse")
+			or self:_resolveNamedDescendant(lobby, "TargetRange")
+			or self:_resolveNamedDescendant(lobby, "SalvageRun")
+		then
+			return lobby
+		end
+	end
+
 	return lobby:FindFirstChild("OpenSkyLobby") or lobby:FindFirstChildWhichIsA("Model")
 end
 
@@ -244,11 +277,31 @@ function ActivityService:_resolveNamedDescendant(root, childName)
 end
 
 function ActivityService:_resolvePlayerFromHit(hit)
-	local character = hit and hit.Parent
-	if not character then
+	if not hit then
 		return nil
 	end
-	return Players:GetPlayerFromCharacter(character)
+
+	local candidate = hit.Parent
+	if candidate then
+		local directPlayer = Players:GetPlayerFromCharacter(candidate)
+		if directPlayer then
+			return directPlayer
+		end
+	end
+
+	local character = hit:FindFirstAncestorOfClass("Model")
+	while character do
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			local player = Players:GetPlayerFromCharacter(character)
+			if player then
+				return player
+			end
+		end
+		character = character.Parent and character.Parent:FindFirstAncestorOfClass("Model") or nil
+	end
+
+	return nil
 end
 
 function ActivityService:_teleportPlayerToPart(player, targetPart, offset)
@@ -942,6 +995,16 @@ function ActivityService:_bindOptionalPromptOnPart(root, partName, promptName, a
 	if prompt then
 		self:_bindPrompt(prompt, handler)
 	end
+
+	local detector = part:FindFirstChildOfClass("ClickDetector") or Instance.new("ClickDetector")
+	detector.MaxActivationDistance = math.max(24, (maxDistance or 10) * 3)
+	detector.Parent = part
+	detector.MouseClick:Connect(function(player)
+		if not player or not self:_isTouchReady(player, "click_" .. promptName, 0.2) then
+			return
+		end
+		handler(player)
+	end)
 end
 
 function ActivityService:_bindTargetInteraction(targetPart, key, promptName, objectText, handler)
@@ -1012,6 +1075,9 @@ function ActivityService:_bindTraining(plaza)
 		self:_startTraining(player)
 	end)
 	self:_bindOptionalPromptOnPart(yard, "EntryPad", "TrainingEnterPrompt", "TrainingYard", "Train", "Training Yard", 10, function(player)
+		self:_startTraining(player)
+	end)
+	self:_bindTargetInteraction(self:_resolveNamedDescendant(yard, "EntryPad"), "training_entry_click", "TrainingEntryFallbackPrompt", "Training Yard", function(player)
 		self:_startTraining(player)
 	end)
 	for hurdleIndex = 1, TRAINING_HURDLE_COUNT do

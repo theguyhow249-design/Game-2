@@ -315,6 +315,8 @@ function InventoryService.new(context)
 	self._skillTreeService = context.SkillTreeService
 	self._subscriptionService = context.SubscriptionService
 	self._roleService = context.RoleService
+	self._remoteNames = context.RemoteNames
+	self._remotes = context.Remotes
 	self._animatedShowcases = {}
 	self._showcaseHeartbeat = nil
 	return self
@@ -595,6 +597,137 @@ function InventoryService:UnlockItem(player, itemId)
 			end
 		end
 	end
+end
+
+function InventoryService:_setShopUnlockAttribute(player, itemId, isUnlocked)
+	for categoryName, items in pairs(self._tokenEconomy.ShopCatalog) do
+		for _, item in ipairs(items) do
+			if item.Id == itemId then
+				player:SetAttribute(("ShopUnlocked_%s_%s"):format(categoryName, item.Id), isUnlocked == true)
+				return
+			end
+		end
+	end
+end
+
+function InventoryService:_findCatalogItem(itemId)
+	for categoryName, items in pairs(self._tokenEconomy.ShopCatalog) do
+		for _, item in ipairs(items) do
+			if item.Id == itemId then
+				return item, categoryName
+			end
+		end
+	end
+	return nil, nil
+end
+
+function InventoryService:IsTransferableItemId(itemId)
+	if type(itemId) ~= "string" or itemId == "" then
+		return false
+	end
+
+	local item, categoryName = self:_findCatalogItem(itemId)
+	if not item or (categoryName ~= self._tokenEconomy.ShopCategories.Weapons and categoryName ~= self._tokenEconomy.ShopCategories.Cosmetics) then
+		return false
+	end
+
+	if item.GamePassId or item.SubscriptionId or item.GamePassKey then
+		return false
+	end
+
+	if categoryName == self._tokenEconomy.ShopCategories.Weapons and itemId == self._missionConfig.DefaultWeaponId then
+		return false
+	end
+
+	return true
+end
+
+function InventoryService:GetPreferredTransferItem(player)
+	local cosmeticId = self:GetEquippedCosmetic(player)
+	if cosmeticId and self:IsUnlocked(player, cosmeticId) and self:IsTransferableItemId(cosmeticId) then
+		return cosmeticId
+	end
+
+	local weaponId = self:GetEquippedWeaponId(player)
+	if weaponId and self:IsUnlocked(player, weaponId) and self:IsTransferableItemId(weaponId) then
+		return weaponId
+	end
+
+	return nil
+end
+
+function InventoryService:_emitProgression(player)
+	if not (self._remotes and self._remoteNames and player) then
+		return
+	end
+	self._remotes:FireEventFor(player, self._remoteNames.Events.ProgressionUpdated, self:BuildProgressionPayload(player))
+end
+
+function InventoryService:_notify(player, message)
+	if not (self._remotes and self._remoteNames and player and message) then
+		return
+	end
+	self._remotes:FireEventFor(player, self._remoteNames.Events.Notification, {
+		userId = player.UserId,
+		message = tostring(message),
+	})
+end
+
+function InventoryService:TransferItem(fromPlayer, toPlayer, itemId)
+	if not fromPlayer or not toPlayer or fromPlayer == toPlayer then
+		return false, "invalid_target"
+	end
+
+	local transferItemId = itemId
+	if transferItemId == nil or transferItemId == "" then
+		transferItemId = self:GetPreferredTransferItem(fromPlayer)
+	end
+	if type(transferItemId) ~= "string" or transferItemId == "" then
+		return false, "no_transfer_item"
+	end
+	if not self:IsTransferableItemId(transferItemId) then
+		return false, "item_locked"
+	end
+	if not self:IsUnlocked(fromPlayer, transferItemId) then
+		return false, "item_locked"
+	end
+	if self:IsUnlocked(toPlayer, transferItemId) then
+		return false, "target_has_item"
+	end
+
+	local item, categoryName = self:_findCatalogItem(transferItemId)
+	if not item or not categoryName then
+		return false, "item_missing"
+	end
+
+	if categoryName == self._tokenEconomy.ShopCategories.Weapons and self:GetEquippedWeaponId(fromPlayer) == transferItemId then
+		self._persistenceService:SetEquippedWeapon(fromPlayer, self._missionConfig.DefaultWeaponId)
+		fromPlayer:SetAttribute("EquippedWeaponId", self._missionConfig.DefaultWeaponId)
+		fromPlayer:SetAttribute("EquippedWeaponName", self:GetWeaponDefinition(self._missionConfig.DefaultWeaponId).DisplayName)
+	elseif categoryName == self._tokenEconomy.ShopCategories.Cosmetics and self:GetEquippedCosmetic(fromPlayer) == transferItemId then
+		self._persistenceService:SetEquippedCosmetic(fromPlayer, nil)
+		fromPlayer:SetAttribute("EquippedCosmeticId", nil)
+		if fromPlayer.Character then
+			self:_applyCosmeticToCharacter(fromPlayer, fromPlayer.Character)
+		end
+	end
+
+	if not self._persistenceService:RemoveUnlock(fromPlayer, transferItemId) then
+		return false, "item_locked"
+	end
+
+	self:UnlockItem(toPlayer, transferItemId)
+	self:_setShopUnlockAttribute(fromPlayer, transferItemId, false)
+
+	if toPlayer.Character and categoryName == self._tokenEconomy.ShopCategories.Cosmetics and self:GetEquippedCosmetic(toPlayer) == transferItemId then
+		self:_applyCosmeticToCharacter(toPlayer, toPlayer.Character)
+	end
+
+	self:_emitProgression(fromPlayer)
+	self:_emitProgression(toPlayer)
+	self:_notify(fromPlayer, ("Transferred %s to %s."):format(item.DisplayName or transferItemId, toPlayer.DisplayName))
+	self:_notify(toPlayer, ("%s sent you %s."):format(fromPlayer.DisplayName, item.DisplayName or transferItemId))
+	return true, item.DisplayName or transferItemId
 end
 
 function InventoryService:EquipWeapon(player, itemId)

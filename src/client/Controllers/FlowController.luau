@@ -75,6 +75,8 @@ local bindAdminAndShopButtons
 local safeInvoke
 local combatFloatsEnabledState = true
 local compactMissionToastsEnabledState = false
+local uiSoundGroup = nil
+local soundFailureCache = {}
 
 local function new(className, props)
 	local instance = Instance.new(className)
@@ -125,66 +127,77 @@ local SHOP_WEAPON_SKIN_PROFILES = {
 		accent = Color3.fromRGB(142, 156, 106),
 		grip = Color3.fromRGB(84, 90, 72),
 		material = Enum.Material.SmoothPlastic,
+		fxMode = "matte",
 	},
 	cosmetic_neon_outline = {
 		base = Color3.fromRGB(28, 34, 52),
 		accent = Color3.fromRGB(116, 92, 255),
 		grip = Color3.fromRGB(46, 54, 82),
 		material = Enum.Material.SmoothPlastic,
+		fxMode = "outline",
 	},
 	cosmetic_bunker_glow = {
 		base = Color3.fromRGB(76, 104, 152),
 		accent = Color3.fromRGB(114, 162, 232),
 		grip = Color3.fromRGB(58, 74, 108),
 		material = Enum.Material.Metal,
+		fxMode = "core",
 	},
 	cosmetic_ember_trace = {
 		base = Color3.fromRGB(126, 62, 44),
 		accent = Color3.fromRGB(224, 112, 74),
 		grip = Color3.fromRGB(82, 46, 32),
 		material = Enum.Material.Metal,
+		fxMode = "ember",
 	},
 	cosmetic_medic_aura = {
 		base = Color3.fromRGB(82, 126, 104),
 		accent = Color3.fromRGB(136, 218, 170),
 		grip = Color3.fromRGB(68, 104, 86),
 		material = Enum.Material.SmoothPlastic,
+		fxMode = "medic",
 	},
 	cosmetic_vernal_glow = {
 		base = Color3.fromRGB(86, 132, 88),
 		accent = Color3.fromRGB(168, 232, 156),
 		grip = Color3.fromRGB(74, 108, 70),
 		material = Enum.Material.SmoothPlastic,
+		fxMode = "pulse",
 	},
 	cosmetic_cadet_stripe = {
 		base = Color3.fromRGB(166, 144, 92),
 		accent = Color3.fromRGB(246, 220, 138),
 		grip = Color3.fromRGB(112, 94, 64),
 		material = Enum.Material.Metal,
+		fxMode = "stripe",
 	},
 	cosmetic_rooftop_glow = {
 		base = Color3.fromRGB(100, 132, 168),
 		accent = Color3.fromRGB(178, 214, 255),
 		grip = Color3.fromRGB(74, 96, 126),
 		material = Enum.Material.Metal,
+		fxMode = "core",
 	},
 	cosmetic_deadeye_trace = {
 		base = Color3.fromRGB(78, 118, 108),
 		accent = Color3.fromRGB(154, 238, 214),
 		grip = Color3.fromRGB(58, 84, 78),
 		material = Enum.Material.Metal,
+		fxMode = "pulse",
 	},
 	cosmetic_salvage_signal = {
 		base = Color3.fromRGB(146, 108, 76),
 		accent = Color3.fromRGB(244, 200, 132),
 		grip = Color3.fromRGB(92, 66, 48),
 		material = Enum.Material.Metal,
+		fxMode = "ember",
 	},
 	cosmetic_cipher_sigil = {
 		base = Color3.fromRGB(112, 86, 154),
 		accent = Color3.fromRGB(214, 162, 255),
 		grip = Color3.fromRGB(76, 58, 106),
 		material = Enum.Material.Metal,
+		fxMode = "outline",
 	},
 }
 
@@ -254,6 +267,11 @@ local function buildPreviewWeaponVisual(parent, handle, weapon, scale)
 		attachPreviewWeaponPart(parent, handle, "Frame", scaleVector3(Vector3.new(0.24, 0.32, 0.58), scale), CFrame.new(0, 0.02 * scale, 0.08 * scale), weapon.HandleColor, Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "Slide", scaleVector3(Vector3.new(0.34, 0.2, 1.24), scale), CFrame.new(0, 0.3 * scale, -0.2 * scale), accentColor, Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "SlideTop", scaleVector3(Vector3.new(0.24, 0.05, 0.96), scale), CFrame.new(0, 0.42 * scale, -0.16 * scale), Color3.fromRGB(34, 36, 42), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "RearFrame", scaleVector3(Vector3.new(0.28, 0.16, 0.36), scale), CFrame.new(0, 0.18 * scale, 0.34 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "DustCover", scaleVector3(Vector3.new(0.2, 0.08, 0.52), scale), CFrame.new(0, 0.12 * scale, -0.58 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "EjectionPort", scaleVector3(Vector3.new(0.06, 0.06, 0.24), scale), CFrame.new(0.11 * scale, 0.3 * scale, -0.32 * scale), Color3.fromRGB(22, 24, 28), Enum.Material.SmoothPlastic)
+		attachPreviewWeaponPart(parent, handle, "TriggerGuard", scaleVector3(Vector3.new(0.18, 0.16, 0.1), scale), CFrame.new(0, -0.1 * scale, -0.26 * scale), Color3.fromRGB(24, 26, 30), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "GripCap", scaleVector3(Vector3.new(0.22, 0.06, 0.26), scale), CFrame.new(0, -0.5 * scale, 0.28 * scale), Color3.fromRGB(38, 42, 48), Enum.Material.SmoothPlastic)
 		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.12, 0.12, 1.02), scale), CFrame.new(0, 0.22 * scale, -0.98 * scale), Color3.fromRGB(24, 26, 30), Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "Muzzle", scaleVector3(Vector3.new(0.16, 0.16, 0.12), scale), CFrame.new(0, 0.22 * scale, -1.58 * scale), Color3.fromRGB(26, 26, 30), Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "FrontSight", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0, 0.48 * scale, -1.16 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
@@ -265,6 +283,10 @@ local function buildPreviewWeaponVisual(parent, handle, weapon, scale)
 		handle.Size = scaleVector3(Vector3.new(0.22, 1.02, 0.34), scale)
 		attachPreviewWeaponPart(parent, handle, "UpperReceiver", scaleVector3(Vector3.new(0.34, 0.24, 1.38), scale), CFrame.new(0, 0.34 * scale, -0.24 * scale), accentColor, Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "LowerReceiver", scaleVector3(Vector3.new(0.28, 0.3, 0.78), scale), CFrame.new(0, 0.08 * scale, 0.04 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "RailTop", scaleVector3(Vector3.new(0.22, 0.05, 1.28), scale), CFrame.new(0, 0.5 * scale, -0.16 * scale), Color3.fromRGB(28, 30, 36), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Handguard", scaleVector3(Vector3.new(0.24, 0.18, 0.92), scale), CFrame.new(0, 0.18 * scale, -0.98 * scale), weapon.HandleColor:Lerp(accentColor, 0.25), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "StockPad", scaleVector3(Vector3.new(0.24, 0.22, 0.12), scale), CFrame.new(0, 0.04 * scale, 1.58 * scale), Color3.fromRGB(34, 36, 40), Enum.Material.SmoothPlastic)
+		attachPreviewWeaponPart(parent, handle, "GripShell", scaleVector3(Vector3.new(0.16, 0.22, 0.18), scale), CFrame.new(0, -0.02 * scale, 0.32 * scale), Color3.fromRGB(42, 44, 50), Enum.Material.SmoothPlastic)
 		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.09, 0.09, 2.12), scale), CFrame.new(0, 0.3 * scale, -1.96 * scale), Color3.fromRGB(24, 26, 30), Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.22, 0.4, 1.04), scale), CFrame.new(0, 0.02 * scale, 1.02 * scale), weapon.HandleColor, Enum.Material.SmoothPlastic)
 		attachPreviewWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.16, 0.58, 0.18), scale), CFrame.new(0, -0.42 * scale, -0.06 * scale) * CFrame.Angles(math.rad(-6), 0, 0), Color3.fromRGB(28, 30, 34), Enum.Material.Metal)
@@ -276,9 +298,13 @@ local function buildPreviewWeaponVisual(parent, handle, weapon, scale)
 	if style == "SMG" then
 		handle.Size = scaleVector3(Vector3.new(0.24, 0.9, 0.32), scale)
 		attachPreviewWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.32, 0.22, 1.18), scale), CFrame.new(0, 0.28 * scale, -0.16 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "TopRail", scaleVector3(Vector3.new(0.18, 0.04, 0.92), scale), CFrame.new(0, 0.42 * scale, -0.1 * scale), Color3.fromRGB(26, 28, 32), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "ChargingBlock", scaleVector3(Vector3.new(0.06, 0.06, 0.2), scale), CFrame.new(0.1 * scale, 0.28 * scale, 0.12 * scale), Color3.fromRGB(28, 30, 34), Enum.Material.SmoothPlastic)
 		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.09, 0.09, 1.24), scale), CFrame.new(0, 0.22 * scale, -1.22 * scale), Color3.fromRGB(22, 22, 24), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Handstop", scaleVector3(Vector3.new(0.1, 0.18, 0.08), scale), CFrame.new(0, 0.02 * scale, -0.92 * scale), Color3.fromRGB(40, 42, 48), Enum.Material.SmoothPlastic)
 		attachPreviewWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.14, 0.82, 0.18), scale), CFrame.new(0, -0.52 * scale, -0.04 * scale), Color3.fromRGB(28, 30, 34), Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "Stock", scaleVector3(Vector3.new(0.16, 0.16, 0.9), scale), CFrame.new(0, 0.18 * scale, 0.9 * scale), Color3.fromRGB(26, 28, 32), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "StockPad", scaleVector3(Vector3.new(0.22, 0.18, 0.08), scale), CFrame.new(0, 0.18 * scale, 1.42 * scale), Color3.fromRGB(34, 36, 40), Enum.Material.SmoothPlastic)
 		attachPreviewWeaponPart(parent, handle, "FrontSight", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0, 0.48 * scale, -1.28 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
 		attachPreviewWeaponPart(parent, handle, "RearSightLeft", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(-0.06 * scale, 0.48 * scale, 0.06 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
 		attachPreviewWeaponPart(parent, handle, "RearSightRight", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0.06 * scale, 0.48 * scale, 0.06 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
@@ -289,11 +315,40 @@ local function buildPreviewWeaponVisual(parent, handle, weapon, scale)
 		attachPreviewWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.36, 0.22, 1.22), scale), CFrame.new(0, 0.28 * scale, -0.16 * scale), accentColor, Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "ReceiverTop", scaleVector3(Vector3.new(0.24, 0.04, 0.86), scale), CFrame.new(0, 0.42 * scale, -0.12 * scale), Color3.fromRGB(34, 30, 28), Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.09, 0.09, 2.34), scale), CFrame.new(0, 0.22 * scale, -2.06 * scale), Color3.fromRGB(22, 22, 24), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Tube", scaleVector3(Vector3.new(0.07, 0.07, 1.94), scale), CFrame.new(0, 0.06 * scale, -1.84 * scale), Color3.fromRGB(34, 28, 22), Enum.Material.Metal)
 		attachPreviewWeaponPart(parent, handle, "Pump", scaleVector3(Vector3.new(0.2, 0.16, 0.74), scale), CFrame.new(0, 0.08 * scale, -1.18 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		attachPreviewWeaponPart(parent, handle, "PumpRibLeft", scaleVector3(Vector3.new(0.02, 0.12, 0.68), scale), CFrame.new(-0.1 * scale, 0.08 * scale, -1.18 * scale), Color3.fromRGB(90, 62, 42), Enum.Material.WoodPlanks)
+		attachPreviewWeaponPart(parent, handle, "PumpRibRight", scaleVector3(Vector3.new(0.02, 0.12, 0.68), scale), CFrame.new(0.1 * scale, 0.08 * scale, -1.18 * scale), Color3.fromRGB(90, 62, 42), Enum.Material.WoodPlanks)
 		attachPreviewWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.22, 0.38, 1.04), scale), CFrame.new(0, 0.02 * scale, 1.02 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		attachPreviewWeaponPart(parent, handle, "StockPad", scaleVector3(Vector3.new(0.24, 0.22, 0.08), scale), CFrame.new(0, 0.04 * scale, 1.58 * scale), Color3.fromRGB(36, 32, 28), Enum.Material.SmoothPlastic)
 		attachPreviewWeaponPart(parent, handle, "FrontBead", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0, 0.42 * scale, -3.18 * scale), Color3.fromRGB(220, 184, 96), Enum.Material.Neon)
 		return
 	end
+end
+
+local function getUiSoundGroup()
+	if uiSoundGroup and uiSoundGroup.Parent == SoundService then
+		return uiSoundGroup
+	end
+	local existing = SoundService:FindFirstChild("BunkerUiSoundGroup")
+	if existing and existing:IsA("SoundGroup") then
+		uiSoundGroup = existing
+		return existing
+	end
+	local group = Instance.new("SoundGroup")
+	group.Name = "BunkerUiSoundGroup"
+	group.Volume = 0.82
+	group.Parent = SoundService
+
+	local eq = Instance.new("EqualizerSoundEffect")
+	eq.Name = "Tone"
+	eq.HighGain = -7
+	eq.MidGain = -1.5
+	eq.LowGain = -2
+	eq.Parent = group
+
+	uiSoundGroup = group
+	return group
 end
 
 local function getShopPreviewScale(weapon)
@@ -1203,6 +1258,7 @@ local function createFlowCleanupState(deps)
 		refreshEntitlements = deps.refreshEntitlements,
 		updateLobbyText = deps.updateLobbyText,
 		pulsePremiumStatus = deps.pulsePremiumStatus,
+		pendingTipPurchases = deps.pendingTipPurchases,
 	}) }
 
 	cleanupState.promptConnections = { deps.connectFlowPromptHandlers(deps.createFlowPromptDeps(
@@ -1448,6 +1504,7 @@ local function finishFlowStartup(deps)
 		playUiSound = deps.playUiSound,
 		refreshEntitlements = deps.refreshEntitlements,
 		pulsePremiumStatus = deps.pulsePremiumStatus,
+		pendingTipPurchases = deps.pendingTipPurchases,
 		getPromptTween = deps.getPromptTween,
 		setLobbyValue = deps.setLobbyValue,
 		setTokenValue = deps.setTokenValue,
@@ -1504,6 +1561,34 @@ end
 connectPremiumPurchaseHandlers = function(player, deps)
 	local gamePassPromptConnection = MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(finishedPlayer, gamePassId, wasPurchased)
 		if finishedPlayer ~= player then
+			return
+		end
+
+		local pendingTipPurchases = deps.pendingTipPurchases
+		local pendingTip = pendingTipPurchases and pendingTipPurchases[tostring(gamePassId)]
+		if pendingTip then
+			pendingTipPurchases[tostring(gamePassId)] = nil
+			if wasPurchased then
+				local nextStatus = ("Tip sent to %s via their %s pass."):format(
+					tostring(pendingTip.targetDisplayName or "that survivor"),
+					tostring(pendingTip.amountLabel or "tip")
+				)
+				deps.setCurrentShopStatus(nextStatus)
+				deps.setCurrentSocialMessage(nextStatus)
+				deps.showPremiumUnlockBanner(
+					"TIP SENT",
+					nextStatus,
+					Color3.fromRGB(214, 194, 122),
+					"SUPPORTED"
+				)
+				deps.playUiSound(SOUND_IDS.Success, 0.34, 1.02)
+				deps.pulsePremiumStatus(Color3.fromRGB(214, 194, 122))
+			else
+				local nextStatus = ("Tip canceled for %s."):format(tostring(pendingTip.targetDisplayName or "that survivor"))
+				deps.setCurrentShopStatus(nextStatus)
+				deps.setCurrentSocialMessage(nextStatus)
+			end
+			deps.updateLobbyText()
 			return
 		end
 
@@ -1741,6 +1826,63 @@ local function applyPreviewSkin(model, cosmeticId)
 			else
 				descendant.Color = profile.accent
 				descendant.Material = Enum.Material.Metal
+			end
+		end
+	end
+	local handle = model:FindFirstChild("Handle")
+	if not handle then
+		return
+	end
+	local function attachFx(name, size, offset, transparency)
+		local part = attachPreviewWeaponPart(model, handle, name, size, offset, profile.accent, Enum.Material.Neon)
+		part.Transparency = transparency or 0.18
+		part.CastShadow = false
+		part:SetAttribute("SkinFxMode", profile.fxMode or "pulse")
+		part:SetAttribute("SkinFxBaseTransparency", part.Transparency)
+		part:SetAttribute("SkinFxRange", 0.22)
+		part:SetAttribute("SkinFxPhase", #name * 0.31)
+		return part
+	end
+	if profile.fxMode == "outline" then
+		attachFx("SkinFxTop", Vector3.new(0.04, 0.04, 1.3), CFrame.new(0, 0.46, -0.22), 0.1)
+		attachFx("SkinFxLeft", Vector3.new(0.02, 0.18, 1.02), CFrame.new(-0.16, 0.28, -0.22), 0.2)
+		attachFx("SkinFxRight", Vector3.new(0.02, 0.18, 1.02), CFrame.new(0.16, 0.28, -0.22), 0.24)
+	elseif profile.fxMode == "core" then
+		attachFx("SkinFxCore", Vector3.new(0.08, 0.08, 0.92), CFrame.new(0, 0.24, -0.4), 0.18)
+		attachFx("SkinFxSight", Vector3.new(0.04, 0.04, 0.18), CFrame.new(0, 0.44, -0.88), 0.08)
+	elseif profile.fxMode == "ember" then
+		local emberLeft = attachFx("SkinFxEmberLeft", Vector3.new(0.03, 0.03, 0.3), CFrame.new(-0.1, 0.18, -0.66), 0.12)
+		emberLeft:SetAttribute("SkinFxRange", 0.34)
+		local emberRight = attachFx("SkinFxEmberRight", Vector3.new(0.03, 0.03, 0.3), CFrame.new(0.1, 0.18, -0.26), 0.18)
+		emberRight:SetAttribute("SkinFxRange", 0.38)
+	elseif profile.fxMode == "medic" then
+		attachFx("SkinFxBand", Vector3.new(0.28, 0.02, 0.44), CFrame.new(0, 0.08, 0.14), 0.16)
+		attachFx("SkinFxCap", Vector3.new(0.06, 0.06, 0.12), CFrame.new(0, 0.36, -0.9), 0.1)
+	elseif profile.fxMode == "pulse" then
+		local band = attachFx("SkinFxPulseBand", Vector3.new(0.24, 0.03, 0.74), CFrame.new(0, 0.3, -0.24), 0.14)
+		band:SetAttribute("SkinFxRange", 0.28)
+	elseif profile.fxMode == "stripe" then
+		attachFx("SkinFxStripe", Vector3.new(0.06, 0.02, 1.04), CFrame.new(0, 0.38, -0.18), 0.18)
+	end
+end
+
+local function animatePreviewSkinEffects(model, now)
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			local mode = descendant:GetAttribute("SkinFxMode")
+			if mode then
+				local baseTransparency = descendant:GetAttribute("SkinFxBaseTransparency") or 0.18
+				local range = descendant:GetAttribute("SkinFxRange") or 0.22
+				local phase = descendant:GetAttribute("SkinFxPhase") or 0
+				local pulse = 0.5 + 0.5 * math.sin(now * 2.6 + phase)
+				if mode == "ember" then
+					pulse = 0.5 + 0.5 * math.sin(now * 4.4 + phase)
+				elseif mode == "core" then
+					pulse = 0.5 + 0.5 * math.sin(now * 1.8 + phase)
+				elseif mode == "stripe" then
+					pulse = 0.5 + 0.5 * math.sin(now * 3.1 + phase)
+				end
+				descendant.Transparency = math.clamp(baseTransparency + ((1 - pulse) * range), 0.02, 0.78)
 			end
 		end
 	end
@@ -2099,11 +2241,22 @@ local function normalizeInviteablePlayers(payload)
 	local entries = {}
 	for _, entry in ipairs(payload) do
 		if type(entry) == "table" then
+			local tipPassIds = {}
+			local rawTipPassIds = entry.tipPassIds or entry.TipPassIds
+			if type(rawTipPassIds) == "table" then
+				for amountKey, passId in pairs(rawTipPassIds) do
+					local numericPassId = tonumber(passId)
+					if numericPassId and numericPassId > 0 then
+						tipPassIds[tostring(amountKey)] = math.floor(numericPassId)
+					end
+				end
+			end
 			table.insert(entries, {
 				userId = tonumber(entry.userId or entry.UserId) or 0,
 				displayName = tostring(entry.displayName or entry.DisplayName or "Survivor"),
 				canInvite = entry.canInvite == true or entry.CanInvite == true,
 				isSameSquad = entry.isSameSquad == true or entry.IsSameSquad == true,
+				tipPassIds = tipPassIds,
 			})
 		end
 	end
@@ -2116,6 +2269,248 @@ local function normalizeInviteablePlayers(payload)
 	end)
 
 	return entries
+end
+
+local function createSocialRequestHandlers(deps)
+	local function setSocialStatus(message)
+		deps.setCurrentSocialMessage(message)
+		deps.updateLobbyText()
+	end
+
+	local function requestGiftTokens(targetUserId, amount)
+		local giftAmount = math.max(1, math.floor(amount or 25))
+		local callOk, success, resultOrCode, progressionPayload = safeInvoke(RemoteNames.Functions.GiftTokensToPlayer, targetUserId, giftAmount)
+		if not callOk then
+			setSocialStatus("Token gift request failed.")
+			return
+		end
+
+		if type(progressionPayload) == "table" then
+			deps.setProgressionValue(progressionPayload)
+		end
+
+		if success then
+			setSocialStatus(("Sent %d tokens."):format(math.max(0, math.floor(tonumber(resultOrCode) or giftAmount))))
+		elseif resultOrCode == "insufficient_tokens" then
+			setSocialStatus("Not enough tokens to gift.")
+		elseif resultOrCode == "invalid_target" then
+			setSocialStatus("That survivor is offline.")
+		else
+			setSocialStatus("Token gift unavailable.")
+		end
+	end
+
+	local function requestGiftLoadoutItem(targetUserId, itemId)
+		local callOk, success, resultOrCode, progressionPayload = safeInvoke(RemoteNames.Functions.GiftLoadoutItemToPlayer, targetUserId, itemId)
+		if not callOk then
+			setSocialStatus("Item gift request failed.")
+			return
+		end
+
+		if type(progressionPayload) == "table" then
+			deps.setProgressionValue(progressionPayload)
+		end
+
+		if success then
+			setSocialStatus(("Transferred %s."):format(tostring(resultOrCode or "item")))
+		elseif resultOrCode == "no_transfer_item" then
+			setSocialStatus("Equip a transferable weapon or cosmetic first.")
+		elseif resultOrCode == "target_has_item" then
+			setSocialStatus("That survivor already owns it.")
+		elseif resultOrCode == "invalid_target" then
+			setSocialStatus("That survivor is offline.")
+		else
+			setSocialStatus("Item transfer unavailable.")
+		end
+	end
+
+	local function requestGiftEquippedWeapon(targetUserId)
+		local progression = deps.getProgression()
+		local weaponId = progression and progression.equippedWeapon
+		if not weaponId or weaponId == "" then
+			setSocialStatus("No equipped weapon to gift.")
+			return
+		end
+		requestGiftLoadoutItem(targetUserId, weaponId)
+	end
+
+	local function requestGiftEquippedCosmetic(targetUserId)
+		local progression = deps.getProgression()
+		local cosmeticId = progression and progression.equippedCosmetic
+		if not cosmeticId or cosmeticId == "" then
+			setSocialStatus("No equipped cosmetic to gift.")
+			return
+		end
+		requestGiftLoadoutItem(targetUserId, cosmeticId)
+	end
+
+	local function requestTipPassPurchase(targetUserId, targetDisplayName, gamePassId, amountLabel)
+		local numericPassId = math.floor(tonumber(gamePassId) or 0)
+		if numericPassId <= 0 then
+			setSocialStatus("This survivor has no tip pass configured.")
+			return
+		end
+		if targetUserId == deps.player.UserId then
+			setSocialStatus("You cannot tip yourself.")
+			return
+		end
+
+		local pendingKey = tostring(numericPassId)
+		deps.pendingTipPurchases[pendingKey] = {
+			targetUserId = targetUserId,
+			targetDisplayName = tostring(targetDisplayName or "that survivor"),
+			amountLabel = tostring(amountLabel or "tip"),
+		}
+
+		local opened, err = pcall(function()
+			MarketplaceService:PromptGamePassPurchase(deps.player, numericPassId)
+		end)
+		if not opened then
+			deps.pendingTipPurchases[pendingKey] = nil
+			setSocialStatus(("Tip prompt failed: %s"):format(tostring(err)))
+			return
+		end
+
+		setSocialStatus(("Opening %s tip for %s."):format(tostring(amountLabel or "tip"), tostring(targetDisplayName or "that survivor")))
+	end
+
+	local function requestActivityTransit(activityKey)
+		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.RequestActivityTransit, activityKey)
+		if not callOk then
+			setSocialStatus("Activity transit request failed.")
+		elseif success then
+			deps.setCurrentSocialMessage(("Transit routed to %s."):format(tostring(resultOrCode or activityKey)))
+			deps.setActivePopup(nil)
+			deps.updateLobbyText()
+			return
+		elseif resultOrCode == "activity_missing" or resultOrCode == "entry_missing" then
+			setSocialStatus("That activity lane is still offline.")
+		elseif resultOrCode == "unavailable" then
+			setSocialStatus("Activities are only available from the bunker lobby.")
+		else
+			setSocialStatus("Unable to route to that activity right now.")
+		end
+	end
+
+	return {
+		requestGiftTokens = requestGiftTokens,
+		requestGiftLoadoutItem = requestGiftLoadoutItem,
+		requestGiftEquippedWeapon = requestGiftEquippedWeapon,
+		requestGiftEquippedCosmetic = requestGiftEquippedCosmetic,
+		requestTipPassPurchase = requestTipPassPurchase,
+		requestActivityTransit = requestActivityTransit,
+	}
+end
+
+local function createProgressionRequestHandlers(deps)
+	local function requestEquipItem(category, item)
+		if deps.getEquippingItemId() then
+			return
+		end
+
+		deps.setEquippingItemId(item.Id)
+		deps.updateLobbyText()
+
+		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.EquipLoadoutItem, {
+			category = category,
+			itemId = item.Id,
+		})
+
+		deps.setEquippingItemId(nil)
+		if not callOk then
+			deps.setCurrentShopStatus("Equip request failed.")
+			deps.updateLobbyText()
+			return
+		end
+
+		if success then
+			local progression = deps.getProgression()
+			if category == Theme.ShopTabToCategory.Weapons then
+				progression.equippedWeapon = item.Id
+				deps.setCurrentShopStatus(("Equipped %s."):format(item.DisplayName or item.Id))
+				deps.setCurrentInventoryStatus(deps.getCurrentShopStatus())
+			elseif category == Theme.ShopTabToCategory.Cosmetics then
+				progression.equippedCosmetic = item.Id
+				deps.setCurrentShopStatus(("Equipped %s."):format(item.DisplayName or item.Id))
+				deps.setCurrentInventoryStatus(deps.getCurrentShopStatus())
+			end
+		else
+			deps.setCurrentShopStatus(tostring(payloadOrCode or "Unable to equip item."))
+			deps.setCurrentInventoryStatus(deps.getCurrentShopStatus())
+		end
+
+		deps.updateLobbyText()
+	end
+
+	local function requestSpendSkillPoint(skillId)
+		if not skillId or deps.getSpendingSkillId() then
+			return
+		end
+
+		deps.setSpendingSkillId(skillId)
+		deps.setCurrentShopStatus("Allocating skill point...")
+		deps.updateLobbyText()
+
+		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.SpendSkillPoint, skillId)
+		deps.setSpendingSkillId(nil)
+		if not callOk then
+			deps.setCurrentShopStatus("Skill tree request failed.")
+			deps.updateLobbyText()
+			return
+		end
+
+		if success then
+			deps.setProgressionValue(payloadOrCode)
+			local definition = SkillTreeConfig.getSkillDefinition(skillId)
+			deps.setCurrentShopStatus(definition and (definition.DisplayName .. " advanced.") or "Skill upgraded.")
+		else
+			local reason = tostring(payloadOrCode or "Unable to spend point.")
+			if reason == "no_points" then
+				deps.setCurrentShopStatus("No skill points ready yet.")
+			elseif reason == "max_rank" then
+				deps.setCurrentShopStatus("That node is already maxed.")
+			elseif reason == "missing_prerequisite" then
+				deps.setCurrentShopStatus("Unlock the previous node first.")
+			else
+				deps.setCurrentShopStatus(reason)
+			end
+		end
+
+		deps.updateLobbyText()
+	end
+
+	local function requestRespecSkillTree()
+		deps.setPendingRespecConfirmation(false)
+		deps.setCurrentSkillTreeStatus("Resetting specialization...")
+		deps.updateLobbyText()
+
+		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.RespecSkillTree)
+		if not callOk then
+			deps.setCurrentSkillTreeStatus("Respec request failed.")
+			deps.updateLobbyText()
+			return
+		end
+
+		if success then
+			deps.setProgressionValue(payloadOrCode)
+			deps.setCurrentSkillTreeStatus("Skill tree reset. Points refunded.")
+		else
+			local reason = tostring(payloadOrCode or "Unable to respec.")
+			if reason == "nothing_to_respec" then
+				deps.setCurrentSkillTreeStatus("No spent points to refund.")
+			else
+				deps.setCurrentSkillTreeStatus(reason)
+			end
+		end
+
+		deps.updateLobbyText()
+	end
+
+	return {
+		requestEquipItem = requestEquipItem,
+		requestSpendSkillPoint = requestSpendSkillPoint,
+		requestRespecSkillTree = requestRespecSkillTree,
+	}
 end
 
 local function formatDailyRewardStatus(state)
@@ -2237,6 +2632,8 @@ end
 
 local function animatePopupFrame(popup, isActive)
 	local scaleDriver = popup:FindFirstChild("ScaleDriver")
+	local gradient = popup:FindFirstChildOfClass("UIGradient")
+	local headerBand = popup:FindFirstChild("HeaderBand")
 	local openY = popup:GetAttribute("OpenY")
 	local closedY = popup:GetAttribute("ClosedY")
 	if isActive then
@@ -2244,21 +2641,54 @@ local function animatePopupFrame(popup, isActive)
 		if typeof(closedY) == "number" then
 			popup.Position = UDim2.new(popup.Position.X.Scale, popup.Position.X.Offset, popup.Position.Y.Scale, closedY)
 		end
+		popup.BackgroundTransparency = 0.14
+		if headerBand and headerBand:IsA("Frame") then
+			headerBand.BackgroundTransparency = 0.18
+		end
+		if gradient then
+			gradient.Offset = Vector2.new(0, -0.08)
+		end
 		if scaleDriver then
-			scaleDriver.Scale = 0.97
-			TweenService:Create(scaleDriver, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			scaleDriver.Scale = 0.958
+			TweenService:Create(scaleDriver, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 				Scale = 1,
 			}):Play()
 		end
+		TweenService:Create(popup, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			BackgroundTransparency = 0.04,
+		}):Play()
+		if headerBand and headerBand:IsA("Frame") then
+			TweenService:Create(headerBand, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				BackgroundTransparency = 0.08,
+			}):Play()
+		end
+		if gradient then
+			TweenService:Create(gradient, TweenInfo.new(0.26, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+				Offset = Vector2.new(0, 0),
+			}):Play()
+		end
 		if typeof(openY) == "number" then
-			TweenService:Create(popup, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			TweenService:Create(popup, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 				Position = UDim2.new(popup.Position.X.Scale, popup.Position.X.Offset, popup.Position.Y.Scale, openY),
 			}):Play()
 		end
 	else
 		if scaleDriver then
 			TweenService:Create(scaleDriver, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-				Scale = 0.98,
+				Scale = 0.972,
+			}):Play()
+		end
+		TweenService:Create(popup, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			BackgroundTransparency = 0.16,
+		}):Play()
+		if headerBand and headerBand:IsA("Frame") then
+			TweenService:Create(headerBand, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				BackgroundTransparency = 0.2,
+			}):Play()
+		end
+		if gradient then
+			TweenService:Create(gradient, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				Offset = Vector2.new(0, -0.04),
 			}):Play()
 		end
 		if typeof(closedY) == "number" then
@@ -2320,6 +2750,16 @@ end
 local function styleButton(button, accent)
 	local baseColor = accent or button.BackgroundColor3
 	local hoverColor = baseColor:Lerp(Color3.new(1, 1, 1), 0.12)
+	local stroke = button:FindFirstChildOfClass("UIStroke")
+	local gradient = button:FindFirstChildOfClass("UIGradient")
+	local scaleDriver = button:FindFirstChild("HoverScale")
+	if not scaleDriver or not scaleDriver:IsA("UIScale") then
+		scaleDriver = new("UIScale", {
+			Name = "HoverScale",
+			Scale = 1,
+			Parent = button,
+		})
+	end
 	button.MouseEnter:Connect(function()
 		if button.Active == false then
 			return
@@ -2327,12 +2767,40 @@ local function styleButton(button, accent)
 		TweenService:Create(button, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
 			BackgroundColor3 = hoverColor,
 		}):Play()
+		TweenService:Create(scaleDriver, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Scale = 1.018,
+		}):Play()
+		if stroke then
+			TweenService:Create(stroke, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Transparency = 0.08,
+				Thickness = 1.35,
+			}):Play()
+		end
+		if gradient then
+			TweenService:Create(gradient, TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+				Offset = Vector2.new(0.05, 0),
+			}):Play()
+		end
 	end)
 	button.MouseLeave:Connect(function()
 		local target = button:GetAttribute("BaseButtonColor")
 		TweenService:Create(button, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
 			BackgroundColor3 = typeof(target) == "Color3" and target or baseColor,
 		}):Play()
+		TweenService:Create(scaleDriver, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Scale = 1,
+		}):Play()
+		if stroke then
+			TweenService:Create(stroke, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Transparency = 0.25,
+				Thickness = 1,
+			}):Play()
+		end
+		if gradient then
+			TweenService:Create(gradient, TweenInfo.new(0.14, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+				Offset = Vector2.new(0, 0),
+			}):Play()
+		end
 	end)
 end
 
@@ -2623,6 +3091,20 @@ bindPrimaryLobbyButtons = function(deps)
 			deps.requestDeploy()
 		end
 	end)
+	if ui.Lobby.CombatLeaveButton then
+		ui.Lobby.CombatLeaveButton.MouseButton1Click:Connect(function()
+			if player:GetAttribute("MissionEliminated") == true then
+				requestLeaveMissionFlow({
+					safeInvoke = safeInvoke,
+					setCurrentDeployStatus = function(value)
+						currentDeployStatus = value
+					end,
+					hideResultsPopup = hideResultsPopup,
+					updateLobbyText = updateLobbyText,
+				})
+			end
+		end)
+	end
 	if ui.Lobby.MissionVoteButtons then
 		for _, button in ipairs(ui.Lobby.MissionVoteButtons) do
 			button.MouseButton1Click:Connect(function()
@@ -2760,6 +3242,13 @@ end
 bindAdminAndShopButtons = function(deps)
 	local ui = deps.ui
 	local stateGetter = deps.getState
+	local function getAdminInputNumber(textBox)
+		if not textBox or not textBox:IsA("TextBox") then
+			return nil
+		end
+		local numericValue = tonumber(string.match(textBox.Text or "", "%-?%d+"))
+		return numericValue and math.floor(numericValue) or nil
+	end
 
 	ui.Lobby.ToggleUiAudioButton.MouseButton1Click:Connect(function()
 		deps.toggleUiAudio()
@@ -2795,16 +3284,46 @@ bindAdminAndShopButtons = function(deps)
 		{ ui.Lobby.AdminReviveSquadButton, function() deps.requestAdminCommand("revive_squad") end },
 		{ ui.Lobby.AdminReturnButton, function() deps.requestAdminCommand("return_to_lobby") end },
 		{ ui.Lobby.AdminRefreshButton, function() deps.requestAdminCommand("refresh_access") end },
+		{ ui.Lobby.AdminRestoreSquadButton, function() deps.requestAdminCommand("restore_squad") end },
+		{ ui.Lobby.AdminOpenLiveOpsButton, function() deps.setAdminTab("LiveOps") end },
 		{ ui.Lobby.AdminGrantTokensTargetButton, function() deps.requestAdminTargetCommand("grant_tokens_target") end },
 		{ ui.Lobby.AdminGrantXpTargetButton, function() deps.requestAdminTargetCommand("grant_xp_target") end },
 		{ ui.Lobby.AdminHealTargetButton, function() deps.requestAdminTargetCommand("heal_target") end },
 		{ ui.Lobby.AdminGrantWeaponsButton, function() deps.requestAdminTargetCommand("unlock_all_weapons_target") end },
 		{ ui.Lobby.AdminGrantCosmeticsButton, function() deps.requestAdminTargetCommand("unlock_all_cosmetics_target") end },
+		{ ui.Lobby.AdminGrantBundleButton, function() deps.requestAdminTargetCommand("grant_target_bundle") end },
+		{ ui.Lobby.AdminRestoreTargetButton, function() deps.requestAdminTargetCommand("restore_target") end },
+		{ ui.Lobby.AdminApplyLevelButton, function()
+			local value = getAdminInputNumber(ui.Lobby.AdminLevelInput)
+			if value ~= nil then
+				deps.requestAdminTargetCommand("set_target_level", { value = value })
+			end
+		end },
+		{ ui.Lobby.AdminApplyKillsButton, function()
+			local value = getAdminInputNumber(ui.Lobby.AdminKillsInput)
+			if value ~= nil then
+				deps.requestAdminTargetCommand("set_target_kills", { value = value })
+			end
+		end },
+		{ ui.Lobby.AdminApplyRunsButton, function()
+			local value = getAdminInputNumber(ui.Lobby.AdminRunsInput)
+			if value ~= nil then
+				deps.requestAdminTargetCommand("set_target_runs", { value = value })
+			end
+		end },
+		{ ui.Lobby.AdminApplyTokensButton, function()
+			local value = getAdminInputNumber(ui.Lobby.AdminTokensInput)
+			if value ~= nil then
+				deps.requestAdminTargetCommand("set_target_tokens", { value = value })
+			end
+		end },
+		{ ui.Lobby.AdminMaxLevelButton, function() deps.requestAdminTargetCommand("max_target_level") end },
 		{ ui.Lobby.AdminTerminateButton, function() deps.requestAdminTargetCommand("terminate_player") end },
 		{ ui.Lobby.AdminRoleModButton, function() deps.requestAdminTargetCommand("promote_moderator") end },
 		{ ui.Lobby.AdminRoleAdminButton, function() deps.requestAdminTargetCommand("promote_admin") end },
 		{ ui.Lobby.AdminRoleClearButton, function() deps.requestAdminTargetCommand("clear_access") end },
 		{ ui.Lobby.AdminBanButton, function() deps.requestAdminTargetCommand("ban_player") end },
+		{ ui.Lobby.AdminUnbanButton, function() deps.requestAdminTargetCommand("unban_player") end },
 		{ ui.Lobby.AdminEventAutoButton, function() deps.requestAdminCommand("event_auto") end },
 		{ ui.Lobby.AdminEventOffButton, function() deps.requestAdminCommand("event_none") end },
 		{ ui.Lobby.AdminEventSpringButton, function() deps.requestAdminCommand("event_spring") end },
@@ -2926,27 +3445,41 @@ bindAdminAndShopButtons = function(deps)
 end
 
 local function playUiSound(soundId, volume, pitch)
-	if RunService:IsStudio() then
-		return
-	end
 	if SoundService:GetAttribute("UiAudioEnabled") == false then
 		return
 	end
 	if type(soundId) ~= "string" or soundId == "" then
 		return
 	end
+	if soundFailureCache[soundId] then
+		return
+	end
+	if RunService:IsStudio() and string.match(soundId, "^rbxasset://sounds/") then
+		soundFailureCache[soundId] = "studio_builtin_disabled"
+		return
+	end
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
-	sound.Volume = volume or 0.45
-	sound.PlaybackSpeed = pitch or 1
-	sound.RollOffMaxDistance = 60
+	sound.Volume = (volume or 0.45) * 0.78
+	sound.PlaybackSpeed = (pitch or 1) + ((math.random() - 0.5) * 0.03)
+	sound.RollOffMaxDistance = 36
+	sound.SoundGroup = getUiSoundGroup()
 	sound.Parent = SoundService
 	sound.Ended:Connect(function()
+		soundFailureCache[soundId] = nil
 		sound:Destroy()
 	end)
-	sound:Play()
+	local ok = pcall(function()
+		sound:Play()
+	end)
+	if not ok then
+		soundFailureCache[soundId] = "play_failed"
+		sound:Destroy()
+		return
+	end
 	task.delay(4, function()
 		if sound.Parent then
+			soundFailureCache[soundId] = nil
 			sound:Destroy()
 		end
 	end)
@@ -3005,6 +3538,190 @@ local function pulseGuiObject(target, accentColor)
 			flash:Destroy()
 		end
 	end)
+end
+
+local function renderPremiumUnlockBanner(ui, currentNonce, titleText, bodyText, accentColor, chipText, playUiSoundFn, pulseGuiObjectFn)
+	if not ui or not ui.Lobby or not ui.Lobby.PremiumUnlockBanner then
+		return currentNonce
+	end
+
+	local banner = ui.Lobby.PremiumUnlockBanner
+	local rail = ui.Lobby.PremiumUnlockBannerRail
+	local title = ui.Lobby.PremiumUnlockBannerTitle
+	local body = ui.Lobby.PremiumUnlockBannerBody
+	local chip = ui.Lobby.PremiumUnlockBannerChip
+	local color = accentColor or Color3.fromRGB(132, 182, 244)
+
+	currentNonce += 1
+	local bannerId = currentNonce
+	banner:SetAttribute("BannerNonce", bannerId)
+
+	if rail then
+		rail.BackgroundColor3 = color
+	end
+	if title then
+		title.Text = tostring(titleText or "ACCESS UNLOCKED")
+	end
+	if body then
+		body.Text = tostring(bodyText or "")
+	end
+	if chip then
+		chip.Text = tostring(chipText or "ACTIVE")
+		chip.BackgroundColor3 = color
+	end
+
+	local stroke = banner:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = color
+	end
+
+	banner.Visible = true
+	banner.BackgroundTransparency = 1
+	banner.Position = UDim2.new(0.5, 0, 0.09, -14)
+	local scaleDriver = banner:FindFirstChild("PremiumBannerScale")
+	if not scaleDriver or not scaleDriver:IsA("UIScale") then
+		scaleDriver = new("UIScale", {
+			Name = "PremiumBannerScale",
+			Scale = 0.96,
+			Parent = banner,
+		})
+	end
+	scaleDriver.Scale = 0.96
+
+	TweenService:Create(banner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 0.06,
+		Position = UDim2.new(0.5, 0, 0.11, 0),
+	}):Play()
+	TweenService:Create(scaleDriver, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Scale = 1,
+	}):Play()
+	if playUiSoundFn then
+		playUiSoundFn(SOUND_IDS.Success, 0.42, 1.05)
+	end
+	if pulseGuiObjectFn then
+		pulseGuiObjectFn(banner, color)
+	end
+
+	task.delay(3.25, function()
+		if not banner.Parent or banner:GetAttribute("BannerNonce") ~= bannerId then
+			return
+		end
+		TweenService:Create(banner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.5, 0, 0.09, -14),
+		}):Play()
+		TweenService:Create(scaleDriver, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Scale = 0.97,
+		}):Play()
+		task.delay(0.2, function()
+			if banner.Parent and banner:GetAttribute("BannerNonce") == bannerId then
+				banner.Visible = false
+			end
+		end)
+	end)
+
+	return currentNonce
+end
+
+local function promptRobuxPurchaseFlow(player, item, setCurrentShopStatus, updateLobbyText)
+	if type(item) ~= "table" or type(item.ProductId) ~= "number" or item.ProductId <= 0 then
+		setCurrentShopStatus("This token pack needs a linked dev product ID before Robux purchases work.")
+		updateLobbyText()
+		return
+	end
+
+	setCurrentShopStatus(("Opening Robux purchase for %s."):format(item.DisplayName or item.Id))
+	updateLobbyText()
+	MarketplaceService:PromptProductPurchase(player, item.ProductId)
+end
+
+local function refreshEntitlementsFlow(safeInvoke, setProgressionValue)
+	local callOk, payload = safeInvoke(RemoteNames.Functions.RefreshEntitlements)
+	if callOk and type(payload) == "table" then
+		setProgressionValue(payload)
+	end
+end
+
+local function promptGamePassPurchaseFlow(player, item, setCurrentShopStatus, updateLobbyText)
+	if type(item) ~= "table" or type(item.GamePassId) ~= "number" or item.GamePassId <= 0 then
+		setCurrentShopStatus("This game pass needs a linked pass ID before purchase works.")
+		updateLobbyText()
+		return
+	end
+
+	setCurrentShopStatus(("Opening game pass purchase for %s."):format(item.DisplayName or item.Id))
+	updateLobbyText()
+	MarketplaceService:PromptGamePassPurchase(player, item.GamePassId)
+end
+
+local function promptSubscriptionPurchaseFlow(player, item, setCurrentShopStatus, updateLobbyText, refreshSubscriptionState)
+	if type(item) ~= "table" or type(item.SubscriptionId) ~= "string" or item.SubscriptionId == "" then
+		setCurrentShopStatus("This subscription needs a linked subscription ID before purchase works.")
+		updateLobbyText()
+		return
+	end
+
+	setCurrentShopStatus(("Opening subscription purchase for %s."):format(item.DisplayName or item.Id))
+	updateLobbyText()
+	local callOk = pcall(function()
+		MarketplaceService:PromptSubscriptionPurchase(player, item.SubscriptionId)
+	end)
+	if not callOk then
+		setCurrentShopStatus("Subscription purchase could not be opened right now.")
+		updateLobbyText()
+		return
+	end
+	task.delay(6, function()
+		if player.Parent then
+			refreshSubscriptionState()
+			updateLobbyText()
+		end
+	end)
+end
+
+local function requestShopPurchaseFlow(category, item, deps)
+	if deps.getPurchasingItemId() then
+		return
+	end
+
+	if type(item) == "table" and item.SubscriptionId then
+		promptSubscriptionPurchaseFlow(deps.player, item, deps.setCurrentShopStatus, deps.updateLobbyText, deps.refreshSubscriptionState)
+		return
+	end
+	if type(item) == "table" and type(item.GamePassId) == "number" then
+		promptGamePassPurchaseFlow(deps.player, item, deps.setCurrentShopStatus, deps.updateLobbyText)
+		return
+	end
+	if category == Theme.ShopTabToCategory["Deploy Tokens"] or item.CostType == "Robux" then
+		promptRobuxPurchaseFlow(deps.player, item, deps.setCurrentShopStatus, deps.updateLobbyText)
+		return
+	end
+
+	deps.setPurchasingItemId(item.Id)
+	deps.updateLobbyText()
+
+	local request = {
+		category = category,
+		itemId = item.Id,
+		quantity = 1,
+		currency = "Tokens",
+	}
+	local callOk, success, payloadOrCode = deps.safeInvoke(RemoteNames.Functions.PurchaseShopItem, request)
+
+	deps.setPurchasingItemId(nil)
+	if not callOk then
+		deps.setCurrentShopStatus("Shop request failed.")
+		deps.updateLobbyText()
+		return
+	end
+
+	if success then
+		deps.setCurrentShopStatus(("Unlocked %s."):format(item.DisplayName or item.Id))
+	else
+		deps.setCurrentShopStatus(deps.describeShopError(payloadOrCode))
+	end
+	deps.setCurrentInventoryStatus(deps.getCurrentShopStatus())
+	deps.updateLobbyText()
 end
 
 local function getSkillTreeTotalExperience(skillTree)
@@ -3443,6 +4160,323 @@ local function setCardFocusState(card, isFocused, accentColor)
 	end
 end
 
+local function requestMapVoteFlow(optionId, deps)
+	local callOk, success, payloadOrCode = deps.safeInvoke(RemoteNames.Functions.RequestMapVote, optionId)
+	if not callOk then
+		deps.setCurrentDeployStatus("Map vote request failed.")
+		deps.updateLobbyText()
+		return
+	end
+	if success then
+		if type(payloadOrCode) == "table" then
+			deps.setCurrentVoteOptionId(tostring(payloadOrCode.selectedOptionId or optionId))
+			if type(payloadOrCode.lobbyState) == "table" then
+				deps.setLobbyValue(payloadOrCode.lobbyState)
+			end
+			deps.setCurrentDeployStatus(("Vote locked for %s."):format(tostring(payloadOrCode.layoutName or "next run")))
+		else
+			deps.setCurrentVoteOptionId(tostring(optionId))
+			deps.setCurrentDeployStatus("Map vote locked.")
+		end
+	else
+		deps.setCurrentDeployStatus(describeMapVoteError(payloadOrCode))
+	end
+	deps.updateLobbyText()
+end
+
+local function requestDuelFlow(action, deps)
+	local callOk, success, resultOrCode = deps.safeInvoke(RemoteNames.Functions.RequestDuel, action)
+	if not callOk then
+		deps.setCurrentSocialMessage("Duel request failed.")
+	elseif success then
+		if resultOrCode == "started" then
+			deps.setCurrentSocialMessage("Duel started. Hold the ring.")
+		elseif resultOrCode == "left" then
+			deps.setCurrentSocialMessage("You left the duel ring.")
+		else
+			deps.setCurrentSocialMessage("Duel corner locked in. Waiting for an opponent.")
+		end
+	else
+		deps.setCurrentSocialMessage(describeDuelError(resultOrCode))
+	end
+	deps.updateLobbyText()
+end
+
+local function requestAdminCommandFlow(commandRequest, deps)
+	local requestPayload = commandRequest
+	if type(requestPayload) ~= "table" then
+		requestPayload = {
+			commandId = tostring(commandRequest or ""),
+		}
+	end
+	local callOk, success, payloadOrCode = deps.safeInvoke(RemoteNames.Functions.AdminCommand, requestPayload)
+	if not callOk then
+		deps.setCurrentAdminStatus("Owner command failed.")
+		deps.updateLobbyText()
+		return
+	end
+
+	if success and type(payloadOrCode) == "table" then
+		deps.setCurrentAdminStatus(tostring(payloadOrCode.status or "Owner command completed."))
+		if type(payloadOrCode.progression) == "table" then
+			deps.setProgressionValue(payloadOrCode.progression)
+		end
+		if type(payloadOrCode.panelState) == "table" then
+			deps.applyAdminPanelState(payloadOrCode.panelState)
+		end
+	elseif success then
+		deps.setCurrentAdminStatus("Owner command completed.")
+	elseif payloadOrCode == "unauthorized" then
+		deps.setCurrentAdminStatus("Owner access denied.")
+	elseif payloadOrCode == "no_active_run" or payloadOrCode == "no_active_mission" then
+		deps.setCurrentAdminStatus("No active run to return.")
+	elseif payloadOrCode == "missing_character" then
+		deps.setCurrentAdminStatus("Character unavailable for heal.")
+	elseif payloadOrCode == "no_downed_targets" then
+		deps.setCurrentAdminStatus("No downed squad members to revive.")
+	elseif payloadOrCode == "missing_target" then
+		deps.setCurrentAdminStatus("Select a valid server target first.")
+	elseif payloadOrCode == "invalid_amount" then
+		deps.setCurrentAdminStatus("Enter a valid number first.")
+	else
+		deps.setCurrentAdminStatus("Owner command unavailable.")
+	end
+	deps.updateLobbyText()
+end
+
+local function requestAdminTargetCommandFlow(commandId, extraPayload, deps)
+	local targetPlayer = deps.getAdminTargetPlayer()
+	local payload = {
+		commandId = commandId,
+		targetUserId = targetPlayer and targetPlayer.UserId or deps.player.UserId,
+	}
+	if type(extraPayload) == "table" then
+		for key, value in pairs(extraPayload) do
+			payload[key] = value
+		end
+	end
+	requestAdminCommandFlow(payload, deps)
+end
+
+local function respondToInviteFlow(acceptInvite, deps)
+	local pendingInvite = deps.getPendingInvite()
+	if not pendingInvite then
+		return
+	end
+
+	local fromSquadId = pendingInvite.fromSquadId
+	local callOk, success, resultOrCode, snapshot = deps.safeInvoke(RemoteNames.Functions.RespondToSquadInvite, fromSquadId, acceptInvite)
+	deps.setPendingInvite(nil)
+	if not callOk then
+		deps.setCurrentSocialMessage("Invite response failed.")
+		deps.updateLobbyText()
+		return
+	end
+
+	if acceptInvite and success then
+		if type(snapshot) == "table" then
+			deps.setSquadValue(snapshot)
+		end
+		deps.setCurrentSocialMessage("Joined fireteam from invite.")
+		deps.refreshSquadDirectory()
+		deps.refreshInviteablePlayers()
+	elseif not acceptInvite and success then
+		deps.setCurrentSocialMessage("Invite declined.")
+	else
+		deps.setCurrentSocialMessage(describeSquadError(resultOrCode))
+	end
+	deps.updateLobbyText()
+end
+
+local function requestDailyRewardFlow(deps)
+	if deps.getIsClaimingDailyReward() then
+		return
+	end
+
+	deps.setIsClaimingDailyReward(true)
+	deps.updateLobbyText()
+	local callOk, success, amountOrCode, rewardState = deps.safeInvoke(RemoteNames.Functions.ClaimDailyReward)
+	deps.setIsClaimingDailyReward(false)
+
+	if not callOk then
+		deps.setCurrentSocialMessage("Daily reward request failed.")
+		deps.updateLobbyText()
+		return
+	end
+
+	if success then
+		deps.setCurrentSocialMessage(("Daily reward claimed: +%d deploy tokens."):format(tonumber(amountOrCode) or 0))
+		deps.setDailyRewardValue(rewardState)
+		deps.pulseTokenValue()
+	else
+		deps.setCurrentSocialMessage(describeDailyRewardError(amountOrCode))
+		deps.setDailyRewardValue(rewardState)
+	end
+	deps.updateLobbyText()
+end
+
+local function requestWeeklyRewardFlow(deps)
+	local callOk, success, payloadOrCode, rewardState = deps.safeInvoke(RemoteNames.Functions.ClaimWeeklyRewardCrate)
+	if not callOk then
+		deps.setCurrentSocialMessage("Weekly crate request failed.")
+		deps.updateLobbyText()
+		return
+	end
+
+	if success then
+		local rewardPayload = type(payloadOrCode) == "table" and payloadOrCode or {}
+		deps.setCurrentSocialMessage(("Weekly crate claimed: +%d tokens%s"):format(
+			tonumber(rewardPayload.tokens) or 0,
+			(tonumber(rewardPayload.experience) or 0) > 0 and (" +%d XP"):format(tonumber(rewardPayload.experience) or 0) or ""
+		))
+		deps.setWeeklyRewardValue(rewardState)
+		deps.refreshSubscriptionState()
+		deps.pulseWeeklyReward(rewardPayload)
+	else
+		deps.setCurrentSocialMessage(describeWeeklyRewardError(payloadOrCode))
+		deps.setWeeklyRewardValue(rewardState)
+	end
+	deps.updateLobbyText()
+end
+
+local function requestClaimDailyOpFlow(taskId, deps)
+	local callOk, success, payloadOrCode, stateValue = deps.safeInvoke(RemoteNames.Functions.ClaimDailyOpsReward, taskId)
+	if not callOk then
+		deps.setCurrentSocialMessage("Daily op claim failed.")
+		deps.updateLobbyText()
+		return
+	end
+
+	if success then
+		local rewardPayload = type(payloadOrCode) == "table" and payloadOrCode or {}
+		deps.setCurrentSocialMessage(("Daily op reward claimed: +%d tokens%s"):format(
+			tonumber(rewardPayload.tokens) or 0,
+			(tonumber(rewardPayload.experience) or 0) > 0 and (" +%d XP"):format(tonumber(rewardPayload.experience) or 0) or ""
+		))
+		deps.setDailyOpsValue(stateValue)
+		deps.pulseDailyOpReward()
+	else
+		deps.setCurrentSocialMessage(describeDailyOpsError(payloadOrCode))
+		deps.setDailyOpsValue(stateValue)
+	end
+	deps.updateLobbyText()
+end
+
+local function requestLeaveSquadFlow(deps)
+	local callOk, success, resultOrCode, snapshot = deps.safeInvoke(RemoteNames.Functions.LeaveSquad)
+	if not callOk then
+		deps.setCurrentSocialMessage("Leave squad request failed.")
+		deps.updateLobbyText()
+		return
+	end
+
+	if success and type(snapshot) == "table" then
+		deps.setSquadValue(snapshot)
+		deps.setCurrentSocialMessage("Returned to a solo squad.")
+	elseif success then
+		deps.setCurrentSocialMessage("Squad state updated.")
+		deps.refreshSquadDirectory()
+	else
+		deps.setCurrentSocialMessage(describeSquadError(resultOrCode))
+	end
+	deps.updateLobbyText()
+end
+
+local function requestJoinSquadFlow(squadId, deps)
+	local callOk, success, resultOrCode, snapshot = deps.safeInvoke(RemoteNames.Functions.CreateOrJoinSquad, squadId)
+	if not callOk then
+		deps.setCurrentSocialMessage("Squad join request failed.")
+		deps.updateLobbyText()
+		return
+	end
+
+	if success then
+		if type(snapshot) == "table" then
+			deps.setSquadValue(snapshot)
+		end
+		deps.setCurrentSocialMessage("Joined squad from the bunker board.")
+		deps.refreshSquadDirectory()
+		return
+	end
+
+	deps.setCurrentSocialMessage(describeSquadError(resultOrCode))
+	deps.updateLobbyText()
+end
+
+local function requestSendInviteFlow(targetUserId, deps)
+	local callOk, success, payloadOrCode = deps.safeInvoke(RemoteNames.Functions.SendSquadInvite, targetUserId)
+	if not callOk then
+		deps.setCurrentSocialMessage("Invite request failed.")
+	elseif success then
+		deps.setCurrentSocialMessage("Fireteam invite sent.")
+	else
+		deps.setCurrentSocialMessage(describeSquadError(payloadOrCode))
+	end
+	deps.updateLobbyText()
+end
+
+local function requestSetSquadPrivacyFlow(isPrivate, deps)
+	local callOk, success, resultOrCode = deps.safeInvoke(RemoteNames.Functions.SetSquadPrivacy, isPrivate)
+	if not callOk then
+		deps.setCurrentSocialMessage("Unable to update squad privacy.")
+	elseif success then
+		deps.setCurrentSocialMessage(isPrivate and "Squad switched to private." or "Squad reopened to public joins.")
+	else
+		deps.setCurrentSocialMessage(describeSquadError(resultOrCode))
+	end
+	deps.updateLobbyText()
+end
+
+local function requestDeployFlow(deps)
+	local fired, fireCode = Remotes.fire(RemoteNames.Events.DeployRequested)
+	if fired then
+		deps.setCurrentDeployStatus("Deploy request sent...")
+		deps.updateLobbyText()
+		return
+	end
+
+	local callOk, success, resultOrCode = deps.safeInvoke(RemoteNames.Functions.RequestDeploy)
+	if not callOk then
+		deps.setCurrentDeployStatus("Deploy request failed.")
+		warn("[FlowController] RequestDeploy call failed before server response.")
+		deps.updateLobbyText()
+		return
+	end
+	if success then
+		deps.setCurrentDeployStatus("Intermission starting...")
+	elseif resultOrCode == "insufficient_tokens" then
+		deps.setCurrentDeployStatus("Need more deploy tokens to start.")
+	elseif resultOrCode == "busy" then
+		deps.setCurrentDeployStatus("Squad launch already in progress.")
+	elseif resultOrCode == "missing_squad" then
+		deps.setCurrentDeployStatus("No active squad found. Reopen the bunker panel and try again.")
+	elseif resultOrCode == "mission_unavailable" then
+		deps.setCurrentDeployStatus("Mission staging is offline right now.")
+	else
+		deps.setCurrentDeployStatus(("Unable to deploy right now. [%s|%s]"):format(tostring(resultOrCode), tostring(fireCode)))
+	end
+	if not success then
+		warn(("[FlowController] RequestDeploy rejected with code: %s"):format(tostring(resultOrCode)))
+	end
+	deps.updateLobbyText()
+end
+
+local function requestLeaveMissionFlow(deps)
+	local callOk, success, resultOrCode = deps.safeInvoke(RemoteNames.Functions.LeaveMission)
+	if not callOk then
+		deps.setCurrentDeployStatus("Lobby return request failed.")
+	elseif success then
+		deps.setCurrentDeployStatus("Returning to bunker...")
+		deps.hideResultsPopup()
+	elseif resultOrCode == "not_in_mission" then
+		deps.setCurrentDeployStatus("Already in the bunker.")
+		deps.hideResultsPopup()
+	else
+		deps.setCurrentDeployStatus("Unable to return to bunker right now.")
+	end
+	deps.updateLobbyText()
+end
+
 local function getSkillState(skillId, skill, currentRank, maxRank, prereqMet, prereqName, availablePoints, spendingSkillId)
 	if spendingSkillId == skillId then
 		return "APPLYING", Theme.Colors.AccentWarm, false
@@ -3582,6 +4616,9 @@ function FlowController.start()
 	local premiumUnlockBannerNonce = 0
 	local currentAdminStatus = "Commands ready."
 	local currentAdminEventLabel = "Event Mode: Auto Rotation"
+	local currentAdminRoleLabel = "MOD"
+	local currentAdminRunState = "LOBBY"
+	local currentAdminRunSummary = "No active run"
 	local selectedAdminTargetUserId = nil
 	local activeAdminTab = "Session"
 	local nearArchiveLane = false
@@ -3592,6 +4629,7 @@ function FlowController.start()
 	local squadSnapshot = nil
 	local squadDirectory = {}
 	local inviteablePlayers = {}
+	local pendingTipPurchases = {}
 	local dailyRewardState = nil
 	local dailyOpsState = nil
 	local weeklyRewardState = nil
@@ -3632,6 +4670,15 @@ function FlowController.start()
 		wave = 0,
 		totalWaves = 0,
 		objectiveHealthPercent = 100,
+		objectiveLabel = "Defend Core",
+		objectiveCurrent = 100,
+		objectiveTarget = 100,
+		remainingZombies = 0,
+		waveTargetHostiles = 0,
+		phaseTimerLabel = "",
+		phaseTimerDuration = 0,
+		phaseTimerRemaining = 0,
+		phaseTimerUpdatedAt = 0,
 		weaponName = "Training Blade",
 		weaponType = "Melee",
 		ammo = nil,
@@ -3734,47 +4781,47 @@ function FlowController.start()
 		if ui.Lobby.HudBar then
 			local sizeConstraint = ui.Lobby.HudBar:FindFirstChildOfClass("UISizeConstraint")
 			if sizeConstraint then
-				sizeConstraint.MaxSize = layoutState.mobileLayout and Vector2.new(2048, 82) or Vector2.new(860, 76)
+				sizeConstraint.MaxSize = layoutState.mobileLayout and Vector2.new(2048, 92) or Vector2.new(860, 76)
 			end
-			ui.Lobby.HudBar.Position = layoutState.mobileLayout and UDim2.new(0, 12, 0, 16) or UDim2.new(0, 18, 0, 24)
+			ui.Lobby.HudBar.Position = layoutState.mobileLayout and UDim2.new(0, 10, 0, 12) or UDim2.new(0, 18, 0, 24)
 			layoutState.hudShownPosition = ui.Lobby.HudBar.Position
 			layoutState.hudHiddenPosition = layoutState.hudShownPosition - UDim2.fromOffset(0, layoutState.mobileLayout and 12 or 18)
-			layoutState.hudCompactVisibleSize = layoutState.mobileLayout and UDim2.new(1, -24, 0, 66) or UDim2.new(0, 190, 0, 56)
-			layoutState.hudDeployVisibleSize = layoutState.mobileLayout and UDim2.new(1, -24, 0, 78) or UDim2.new(0, 720, 0, 76)
+			layoutState.hudCompactVisibleSize = layoutState.mobileLayout and UDim2.new(1, -20, 0, 72) or UDim2.new(0, 190, 0, 56)
+			layoutState.hudDeployVisibleSize = layoutState.mobileLayout and UDim2.new(1, -20, 0, 88) or UDim2.new(0, 720, 0, 76)
 
 			local hudModule = ui.Lobby.HudBar:FindFirstChild("HudModule")
 			if hudModule and hudModule:IsA("Frame") then
-					hudModule.Size = layoutState.mobileLayout and UDim2.new(0, 118, 0, 42) or UDim2.new(0, 148, 0, 46)
-					hudModule.Position = layoutState.mobileLayout and UDim2.new(0, 8, 0, 10) or UDim2.new(0, 14, 0, 14)
+					hudModule.Size = layoutState.mobileLayout and UDim2.new(0, 104, 0, 46) or UDim2.new(0, 148, 0, 46)
+					hudModule.Position = layoutState.mobileLayout and UDim2.new(0, 6, 0, 12) or UDim2.new(0, 14, 0, 14)
 				end
 				if ui.Lobby.TokenPill then
-					ui.Lobby.TokenPill.Position = layoutState.mobileLayout and UDim2.new(0, 132, 0, 12) or UDim2.new(0, 176, 0, 16)
-					ui.Lobby.TokenPill.Size = layoutState.mobileLayout and UDim2.new(0, 118, 0, 26) or UDim2.new(0, 170, 0, 24)
+					ui.Lobby.TokenPill.Position = layoutState.mobileLayout and UDim2.new(0, 118, 0, 14) or UDim2.new(0, 176, 0, 16)
+					ui.Lobby.TokenPill.Size = layoutState.mobileLayout and UDim2.new(0, 112, 0, 26) or UDim2.new(0, 170, 0, 24)
 				end
 				if ui.Lobby.DeployStatusPill then
-					ui.Lobby.DeployStatusPill.Position = layoutState.mobileLayout and UDim2.new(0, 256, 0, 12) or UDim2.new(0, 356, 0, 16)
-					ui.Lobby.DeployStatusPill.Size = layoutState.mobileLayout and UDim2.new(0, 120, 0, 26) or UDim2.new(0, 230, 0, 24)
+					ui.Lobby.DeployStatusPill.Position = layoutState.mobileLayout and UDim2.new(0, 236, 0, 14) or UDim2.new(0, 356, 0, 16)
+					ui.Lobby.DeployStatusPill.Size = layoutState.mobileLayout and UDim2.new(0, 108, 0, 26) or UDim2.new(0, 230, 0, 24)
 				end
 				if ui.Lobby.PersistencePill then
-					ui.Lobby.PersistencePill.Position = layoutState.mobileLayout and UDim2.new(0, 132, 0, 44) or UDim2.new(0, 176, 0, 46)
-					ui.Lobby.PersistencePill.Size = layoutState.mobileLayout and UDim2.new(0, 104, 0, 20) or UDim2.new(0, 126, 0, 18)
+					ui.Lobby.PersistencePill.Position = layoutState.mobileLayout and UDim2.new(0, 118, 0, 48) or UDim2.new(0, 176, 0, 46)
+					ui.Lobby.PersistencePill.Size = layoutState.mobileLayout and UDim2.new(0, 94, 0, 20) or UDim2.new(0, 126, 0, 18)
 				end
 				if ui.Lobby.DeployButton then
-					ui.Lobby.DeployButton.Size = layoutState.mobileLayout and UDim2.new(0, 104, 0, 42) or UDim2.new(0, 126, 0, 38)
-					ui.Lobby.DeployButton.Position = layoutState.mobileLayout and UDim2.new(1, -10, 0.5, 0) or UDim2.new(1, -14, 0.5, 0)
+					ui.Lobby.DeployButton.Size = layoutState.mobileLayout and UDim2.new(0, 96, 0, 44) or UDim2.new(0, 126, 0, 38)
+					ui.Lobby.DeployButton.Position = layoutState.mobileLayout and UDim2.new(1, -8, 0.5, 2) or UDim2.new(1, -14, 0.5, 0)
 				end
 			end
 
 		if ui.Lobby.MissionPanel then
-			ui.Lobby.MissionPanel.Position = layoutState.mobileLayout and UDim2.new(0.5, 0, 0, 92) or UDim2.new(0.55, 0, 0, 118)
-			ui.Lobby.MissionPanel.Size = layoutState.mobileLayout and UDim2.new(0, math.min(viewportX - 16, 404), 0, 360) or UDim2.new(0, 544, 0, 296)
+			ui.Lobby.MissionPanel.Position = layoutState.mobileLayout and UDim2.new(0.5, 0, 0, 84) or UDim2.new(0.55, 0, 0, 118)
+			ui.Lobby.MissionPanel.Size = layoutState.mobileLayout and UDim2.new(0, math.min(viewportX - 12, 388), 0, 344) or UDim2.new(0, 544, 0, 296)
 			if ui.Lobby.MissionInfoCard then
-				ui.Lobby.MissionInfoCard.Position = layoutState.mobileLayout and UDim2.new(0, 18, 0, 74) or UDim2.new(0, 16, 0, 68)
-				ui.Lobby.MissionInfoCard.Size = layoutState.mobileLayout and UDim2.new(1, -36, 0, 116) or UDim2.new(0, 210, 0, 154)
+				ui.Lobby.MissionInfoCard.Position = layoutState.mobileLayout and UDim2.new(0, 14, 0, 70) or UDim2.new(0, 16, 0, 68)
+				ui.Lobby.MissionInfoCard.Size = layoutState.mobileLayout and UDim2.new(1, -28, 0, 110) or UDim2.new(0, 210, 0, 154)
 			end
 			if ui.Lobby.MissionVoteDeck then
-				ui.Lobby.MissionVoteDeck.Position = layoutState.mobileLayout and UDim2.new(0, 18, 0, 204) or UDim2.new(0, 242, 0, 68)
-				ui.Lobby.MissionVoteDeck.Size = layoutState.mobileLayout and UDim2.new(1, -36, 0, 118) or UDim2.new(1, -258, 0, 154)
+				ui.Lobby.MissionVoteDeck.Position = layoutState.mobileLayout and UDim2.new(0, 14, 0, 194) or UDim2.new(0, 242, 0, 68)
+				ui.Lobby.MissionVoteDeck.Size = layoutState.mobileLayout and UDim2.new(1, -28, 0, 112) or UDim2.new(1, -258, 0, 154)
 			end
 		if ui.Lobby.MissionStatus then
 			ui.Lobby.MissionStatus.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 108) or UDim2.new(0, 18, 0, 40)
@@ -3836,18 +4883,22 @@ function FlowController.start()
 			end
 		end
 		if ui.Lobby.MissionCloseButton then
-				ui.Lobby.MissionCloseButton.Position = layoutState.mobileLayout and UDim2.new(1, -144, 1, -14) or UDim2.new(1, -160, 1, -14)
+				ui.Lobby.MissionCloseButton.Position = layoutState.mobileLayout and UDim2.new(1, -136, 1, -12) or UDim2.new(1, -160, 1, -14)
 				ui.Lobby.MissionCloseButton.Size = layoutState.mobileLayout and UDim2.new(0, 100, 0, 40) or UDim2.new(0, 104, 0, 32)
 			end
 			if ui.Lobby.MissionLaunchButton then
-				ui.Lobby.MissionLaunchButton.Position = layoutState.mobileLayout and UDim2.new(1, -18, 1, -14) or UDim2.new(1, -16, 1, -14)
-				ui.Lobby.MissionLaunchButton.Size = layoutState.mobileLayout and UDim2.new(0, 122, 0, 40) or UDim2.new(0, 138, 0, 32)
+				ui.Lobby.MissionLaunchButton.Position = layoutState.mobileLayout and UDim2.new(1, -12, 1, -12) or UDim2.new(1, -16, 1, -14)
+				ui.Lobby.MissionLaunchButton.Size = layoutState.mobileLayout and UDim2.new(0, 116, 0, 40) or UDim2.new(0, 138, 0, 32)
 			end
 		end
 
 		if ui.Lobby.CombatHud then
-			ui.Lobby.CombatHud.Size = layoutState.mobileLayout and UDim2.new(0, math.min(viewportX - 24, 216), 0, 68) or UDim2.new(0, 236, 0, 74)
+			ui.Lobby.CombatHud.Size = layoutState.mobileLayout and UDim2.new(0, math.min(viewportX - 24, 216), 0, 108) or UDim2.new(0, 236, 0, 114)
 			ui.Lobby.CombatHud.Position = layoutState.mobileLayout and UDim2.new(1, -12, 1, -12) or UDim2.new(1, -18, 1, -18)
+			if ui.Lobby.CombatLeaveButton then
+				ui.Lobby.CombatLeaveButton.Size = layoutState.mobileLayout and UDim2.new(0, 126, 0, 30) or UDim2.new(0, 118, 0, 28)
+				ui.Lobby.CombatLeaveButton.Position = layoutState.mobileLayout and UDim2.new(1, -10, 1, -8) or UDim2.new(1, -12, 1, -10)
+			end
 		end
 
 		if ui.Lobby.LeaderboardBoard then
@@ -3858,27 +4909,28 @@ function FlowController.start()
 		end
 
 			if ui.Lobby.QuickAccessBar then
-				layoutState.quickAccessCollapsedWidth = layoutState.mobileLayout and 168 or 178
-				layoutState.quickAccessExpandedWidth = layoutState.mobileLayout and 208 or 178
-				ui.Lobby.QuickAccessBar.Size = UDim2.new(0, layoutState.quickAccessCollapsedWidth, 0, layoutState.mobileLayout and 386 or 454)
-				ui.Lobby.QuickAccessBar.Position = layoutState.mobileLayout and UDim2.new(1, -12, 0, 118) or UDim2.new(1, -20, 0, 146)
+				layoutState.quickAccessCollapsedWidth = layoutState.mobileLayout and 156 or 178
+				layoutState.quickAccessExpandedWidth = layoutState.mobileLayout and 176 or 178
+				ui.Lobby.QuickAccessBar.Size = UDim2.new(0, layoutState.quickAccessCollapsedWidth, 0, layoutState.mobileLayout and 334 or 454)
+				ui.Lobby.QuickAccessBar.Position = layoutState.mobileLayout and UDim2.new(1, -10, 0, 104) or UDim2.new(1, -20, 0, 146)
 			layoutState.quickAccessShownPosition = ui.Lobby.QuickAccessBar.Position
 			layoutState.quickAccessHiddenPosition = layoutState.quickAccessShownPosition + UDim2.fromOffset(layoutState.quickAccessCollapsedWidth + 24, 0)
 			for _, quickButton in ipairs(getQuickAccessButtons()) do
 				if quickButton then
-						quickButton.Size = UDim2.new(1, 0, 0, layoutState.mobileLayout and 42 or 42)
+						quickButton.Size = UDim2.new(1, 0, 0, layoutState.mobileLayout and 38 or 42)
 						local badge = quickButton:FindFirstChild("Badge")
 						if badge and badge:IsA("Frame") then
 							badge.Size = layoutState.mobileLayout and UDim2.new(0, 24, 0, 24) or UDim2.new(0, 18, 0, 18)
 						end
 						local title = quickButton:FindFirstChild("Title")
 						if title and title:IsA("TextLabel") then
-							title.Position = layoutState.mobileLayout and UDim2.new(0, 42, 0, 8) or UDim2.new(0, 32, 0, 7)
-							title.Size = layoutState.mobileLayout and UDim2.new(1, -52, 0, 16) or UDim2.new(1, -40, 0, 12)
-							title.TextSize = layoutState.mobileLayout and 13 or 11
+							title.Position = layoutState.mobileLayout and UDim2.new(0, 42, 0, 11) or UDim2.new(0, 32, 0, 7)
+							title.Size = layoutState.mobileLayout and UDim2.new(1, -50, 0, 14) or UDim2.new(1, -40, 0, 12)
+							title.TextSize = layoutState.mobileLayout and 12 or 11
 						end
 						local subtitle = quickButton:FindFirstChild("Subtitle")
 						if subtitle and subtitle:IsA("TextLabel") then
+							subtitle.Visible = not layoutState.mobileLayout
 							subtitle.Position = layoutState.mobileLayout and UDim2.new(0, 42, 0, 22) or UDim2.new(0, 38, 0, 16)
 							subtitle.Size = layoutState.mobileLayout and UDim2.new(1, -58, 0, 12) or UDim2.new(1, -52, 0, 10)
 							subtitle.TextSize = layoutState.mobileLayout and 10 or 8
@@ -4338,9 +5390,30 @@ end
 			table.insert(lobbyAmbientTweens, tween)
 		end
 
+		local function attachGradientSheen(target, offsetX, duration)
+			if not target or not target:IsA("GuiObject") then
+				return
+			end
+			local gradient = target:FindFirstChildOfClass("UIGradient")
+			if not gradient then
+				return
+			end
+			gradient.Offset = Vector2.new(-offsetX, 0)
+			local tween = TweenService:Create(gradient, TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				Offset = Vector2.new(offsetX, 0),
+			})
+			tween:Play()
+			table.insert(lobbyAmbientTweens, tween)
+		end
+
 		attachScalePulse(ui.Lobby.HudBar, 1.008, 1.7)
 		attachScalePulse(ui.Lobby.QuickAccessBar, 1.01, 1.95)
 		attachScalePulse(ui.Lobby.MissionPanel, 1.006, 1.6)
+		attachGradientSheen(ui.Lobby.HudBar, 0.06, 3.8)
+		attachGradientSheen(ui.Lobby.QuickAccessBar, 0.08, 4.6)
+		attachGradientSheen(ui.Lobby.MissionPanel, 0.06, 4.1)
+		attachGradientSheen(ui.Lobby.PremiumUnlockBanner, 0.08, 3.2)
+		attachGradientSheen(ui.Lobby.CombatHud, 0.05, 3.6)
 	end
 
 	local viewportCameraConnection
@@ -4387,9 +5460,18 @@ end
 		local targetIsSelf = not targetPlayer or targetPlayer == player
 		local levelValue = targetPlayer and math.max(1, tonumber(targetPlayer:GetAttribute("SkillTreeLevel")) or 1) or (progression.skillTree and progression.skillTree.level or 1)
 		local titleValue = targetPlayer and tostring(targetPlayer:GetAttribute("PlayerTitle") or "Survivor") or tostring(progression.identity and progression.identity.title or "Survivor")
+		local tokenValue = targetPlayer and math.max(0, tonumber(targetPlayer:GetAttribute("DeployTokens")) or tonumber(targetPlayer:GetAttribute("Tokens")) or 0) or math.max(0, tonumber(progression.tokens) or 0)
+		local missionsValue = targetPlayer and math.max(0, tonumber(targetPlayer:GetAttribute("AllTimeMissionsCompleted")) or tonumber(targetPlayer:GetAttribute("MissionsCompleted")) or 0) or math.max(0, tonumber(progression.missionsCompleted) or 0)
+		local killsValue = targetPlayer and math.max(0, tonumber(targetPlayer:GetAttribute("AllTimeZombiesDefeated")) or tonumber(targetPlayer:GetAttribute("ZombiesDefeated")) or 0) or math.max(0, tonumber(progression.zombiesDefeated) or 0)
 		ui.Lobby.AdminTargetName.Text = ("Target: %s"):format(targetIsSelf and "Self" or tostring(targetPlayer.DisplayName or targetPlayer.Name))
 		ui.Lobby.AdminTargetRole.Text = ("%s | Lv.%d"):format(titleValue, levelValue)
 		ui.Lobby.AdminTargetMeta.Text = targetIsSelf and "Self-targeted commands affect your own operator profile." or ("Selected server target: %s"):format(tostring(targetPlayer.Name or targetPlayer.DisplayName))
+		if ui.Lobby.AdminTargetStats then
+			ui.Lobby.AdminTargetStats.Text = ("Lv.%d | Tokens %d | Runs %d | Kills %d"):format(levelValue, tokenValue, missionsValue, killsValue)
+		end
+		if ui.Lobby.AdminTargetValue then
+			ui.Lobby.AdminTargetValue.Text = string.upper(trimLabel(targetIsSelf and "Self" or tostring(targetPlayer.DisplayName or targetPlayer.Name), 12))
+		end
 	end
 
 	local function updateAdminTabVisibility()
@@ -4456,6 +5538,40 @@ end
 		end
 		local ownedAttribute = ("ShopUnlocked_%s_%s"):format(category, item.Id)
 		return player:GetAttribute(ownedAttribute) == true
+	end
+
+	local function applyAdminPanelState(panelState)
+		if type(panelState) ~= "table" then
+			return
+		end
+		if panelState.overrideId == "none" then
+			currentAdminEventLabel = "Event Mode: Disabled"
+		elseif type(panelState.activeEventName) == "string" and panelState.activeEventName ~= "" then
+			if panelState.overrideId and panelState.overrideId ~= "" then
+				currentAdminEventLabel = ("Event Mode: %s"):format(panelState.activeEventName)
+			else
+				currentAdminEventLabel = ("Event Mode: Auto Rotation (%s)"):format(panelState.activeEventName)
+			end
+		else
+			currentAdminEventLabel = "Event Mode: Auto Rotation"
+		end
+		currentAdminRoleLabel = string.upper(tostring(panelState.roleLabel or currentAdminRoleLabel or "MOD"))
+		currentAdminRunState = string.upper(tostring(panelState.runState or currentAdminRunState or "LOBBY"))
+		currentAdminRunSummary = tostring(panelState.runSummary or currentAdminRunSummary or "No active run")
+		if ui and ui.Lobby then
+			if ui.Lobby.AdminRoleValue then
+				ui.Lobby.AdminRoleValue.Text = trimLabel(currentAdminRoleLabel, 14)
+			end
+			if ui.Lobby.AdminEventValue then
+				ui.Lobby.AdminEventValue.Text = trimLabel(string.upper(tostring(panelState.activeEventName or "Auto")), 16)
+			end
+			if ui.Lobby.AdminMissionValue then
+				ui.Lobby.AdminMissionValue.Text = trimLabel(currentAdminRunState, 16)
+			end
+		end
+		if panelState.targetUserId ~= nil then
+			selectedAdminTargetUserId = tonumber(panelState.targetUserId) == player.UserId and nil or tonumber(panelState.targetUserId)
+		end
 	end
 
 	local function getShopItemState(category, item)
@@ -4704,9 +5820,18 @@ end
 		if ui.Lobby.AdminSummary then
 			ui.Lobby.AdminSummary.Text = isModerator and currentAdminStatus or "Owner access unavailable."
 		end
+		if ui.Lobby.AdminRoleValue then
+			ui.Lobby.AdminRoleValue.Text = isOwner and "OWNER" or (isAdmin and "ADMIN" or (isModerator and "MODERATOR" or "LOCKED"))
+		end
 		updateAdminTabVisibility()
 		if ui.Lobby.AdminEventLabel then
 			ui.Lobby.AdminEventLabel.Text = currentAdminEventLabel
+		end
+		if ui.Lobby.AdminEventValue then
+			ui.Lobby.AdminEventValue.Text = trimLabel(string.upper(currentAdminEventLabel:gsub("^Event Mode:%s*", "")), 16)
+		end
+		if ui.Lobby.AdminMissionValue then
+			ui.Lobby.AdminMissionValue.Text = trimLabel(currentAdminRunState, 16)
 		end
 		if ui.Lobby.AdminHealButton then
 			setButtonEnabled(ui.Lobby.AdminHealButton, isModerator, Color3.fromRGB(94, 156, 108))
@@ -4718,16 +5843,26 @@ end
 			setButtonEnabled(ui.Lobby.AdminReviveSquadButton, isAdmin, Color3.fromRGB(92, 168, 132))
 			setButtonEnabled(ui.Lobby.AdminReturnButton, isAdmin, Color3.fromRGB(168, 92, 92))
 			setButtonEnabled(ui.Lobby.AdminRefreshButton, isModerator, Theme.Colors.Backdrop)
+			setButtonEnabled(ui.Lobby.AdminRestoreSquadButton, isAdmin, Color3.fromRGB(92, 164, 138))
+			setButtonEnabled(ui.Lobby.AdminOpenLiveOpsButton, isModerator, Color3.fromRGB(98, 124, 184))
 			setButtonEnabled(ui.Lobby.AdminGrantTokensTargetButton, isAdmin and hasOtherTarget, Color3.fromRGB(182, 138, 74))
 			setButtonEnabled(ui.Lobby.AdminGrantXpTargetButton, isAdmin and hasOtherTarget, Color3.fromRGB(82, 124, 186))
 			setButtonEnabled(ui.Lobby.AdminHealTargetButton, isAdmin and hasTarget, Color3.fromRGB(82, 154, 118))
 			setButtonEnabled(ui.Lobby.AdminGrantWeaponsButton, isAdmin and hasOtherTarget, Color3.fromRGB(166, 112, 78))
 			setButtonEnabled(ui.Lobby.AdminGrantCosmeticsButton, isAdmin and hasOtherTarget, Color3.fromRGB(122, 94, 172))
+			setButtonEnabled(ui.Lobby.AdminGrantBundleButton, isAdmin and hasOtherTarget, Color3.fromRGB(176, 134, 88))
+			setButtonEnabled(ui.Lobby.AdminRestoreTargetButton, isAdmin and hasTarget, Color3.fromRGB(88, 152, 122))
+			setButtonEnabled(ui.Lobby.AdminApplyLevelButton, isAdmin and hasTarget, Color3.fromRGB(92, 138, 198))
+			setButtonEnabled(ui.Lobby.AdminApplyKillsButton, isAdmin and hasTarget, Color3.fromRGB(188, 124, 84))
+			setButtonEnabled(ui.Lobby.AdminApplyRunsButton, isAdmin and hasTarget, Color3.fromRGB(104, 156, 118))
+			setButtonEnabled(ui.Lobby.AdminApplyTokensButton, isAdmin and hasTarget, Color3.fromRGB(188, 152, 82))
+			setButtonEnabled(ui.Lobby.AdminMaxLevelButton, isAdmin and hasTarget, Color3.fromRGB(122, 104, 196))
 			setButtonEnabled(ui.Lobby.AdminTerminateButton, isAdmin and hasOtherTarget, Color3.fromRGB(158, 86, 86))
 			setButtonEnabled(ui.Lobby.AdminRoleModButton, isOwner and hasOtherTarget, Color3.fromRGB(86, 118, 188))
 			setButtonEnabled(ui.Lobby.AdminRoleAdminButton, isOwner and hasOtherTarget, Color3.fromRGB(122, 96, 188))
 			setButtonEnabled(ui.Lobby.AdminRoleClearButton, isOwner and hasOtherTarget, Color3.fromRGB(82, 82, 92))
 			setButtonEnabled(ui.Lobby.AdminBanButton, isOwner and hasOtherTarget, Color3.fromRGB(156, 76, 76))
+			setButtonEnabled(ui.Lobby.AdminUnbanButton, isOwner and hasOtherTarget, Color3.fromRGB(102, 116, 140))
 			setButtonEnabled(ui.Lobby.AdminEventAutoButton, isOwner, Theme.Colors.Backdrop)
 			setButtonEnabled(ui.Lobby.AdminEventOffButton, isOwner, Color3.fromRGB(126, 78, 78))
 			setButtonEnabled(ui.Lobby.AdminEventSpringButton, isOwner, Color3.fromRGB(86, 146, 102))
@@ -4974,6 +6109,61 @@ end
 	end
 
 	local updateLobbyZoneVisibility
+	local function updateCombatProgressHud(now)
+		if not ui or not ui.Lobby then
+			return
+		end
+		local progressFill = ui.Lobby.CombatProgressFill
+		local progressLabel = ui.Lobby.CombatProgressLabel
+		local progressText = ui.Lobby.CombatProgressText
+		if not progressFill or not progressLabel or not progressText then
+			return
+		end
+
+		local progress = 0
+		local fillColor = Color3.fromRGB(132, 182, 244)
+		local labelText = "WAVE PRESSURE"
+		local detailText = "Awaiting telemetry"
+		local timerRemaining = math.max(0, (missionTelemetry.phaseTimerRemaining or 0) - math.max(0, now - (missionTelemetry.phaseTimerUpdatedAt or 0)))
+		local timerDuration = math.max(0, missionTelemetry.phaseTimerDuration or 0)
+		local hasTimer = timerDuration > 0.05 and timerRemaining > 0 and missionTelemetry.phaseTimerLabel ~= ""
+
+		if state ~= "Mission" then
+			detailText = "Combat telemetry offline"
+		elseif hasTimer and missionTelemetry.phaseTimerLabel == "Extraction" then
+			progress = math.clamp(1 - (timerRemaining / timerDuration), 0, 1)
+			fillColor = Color3.fromRGB(108, 220, 156)
+			labelText = "EXTRACTION HOLD"
+			detailText = ("%ds until evac lock"):format(math.max(0, math.ceil(timerRemaining)))
+		elseif hasTimer and missionTelemetry.phaseTimerLabel == "Next Wave" then
+			progress = math.clamp(1 - (timerRemaining / timerDuration), 0, 1)
+			fillColor = Color3.fromRGB(244, 184, 112)
+			labelText = "NEXT BREACH"
+			detailText = ("%ds until next wave"):format(math.max(0, math.ceil(timerRemaining)))
+		elseif missionTelemetry.phase == "Extraction" then
+			fillColor = Color3.fromRGB(120, 218, 170)
+			labelText = "EXTRACTION PRESSURE"
+			detailText = missionTelemetry.remainingZombies > 0
+				and ("%d hostiles still contesting extraction"):format(math.max(0, missionTelemetry.remainingZombies or 0))
+				or "Regroup on the pad to lock extraction"
+		else
+			local totalHostiles = math.max(missionTelemetry.waveTargetHostiles or 0, missionTelemetry.remainingZombies or 0)
+			local remainingHostiles = math.max(0, missionTelemetry.remainingZombies or 0)
+			if totalHostiles > 0 then
+				local clearedHostiles = math.clamp(totalHostiles - remainingHostiles, 0, totalHostiles)
+				progress = math.clamp(clearedHostiles / totalHostiles, 0, 1)
+				detailText = ("%d/%d hostiles cleared"):format(clearedHostiles, totalHostiles)
+			else
+				detailText = string.lower(trimLabel(missionTelemetry.status ~= "" and missionTelemetry.status or "Hold the objective", 40))
+			end
+		end
+
+		progressFill.Size = UDim2.new(math.max(0.02, progress), 0, 1, 0)
+		progressFill.BackgroundColor3 = fillColor
+		progressLabel.Text = labelText
+		progressText.Text = detailText
+		progressText.TextColor3 = fillColor:Lerp(Color3.fromRGB(232, 238, 246), 0.35)
+	end
 
 	RunService.RenderStepped:Connect(function(dt)
 		if state == "Mission" and player:GetAttribute("MissionEliminated") == true then
@@ -5003,7 +6193,10 @@ end
 		if activePopup == "Shop" and currentShopPreviewModel and currentShopPreviewBaseCFrame then
 			currentShopPreviewAngle += dt * 0.85
 			currentShopPreviewModel:PivotTo(currentShopPreviewBaseCFrame * CFrame.Angles(0, currentShopPreviewAngle, 0))
+			animatePreviewSkinEffects(currentShopPreviewModel, tick())
 		end
+
+		updateCombatProgressHud(os.clock())
 
 		if math.abs(cameraKick.X) < 0.001 and math.abs(cameraKick.Y) < 0.001 then
 			return
@@ -5228,7 +6421,7 @@ end
 		end
 		local body = bar:FindFirstChild("Body")
 		if body and body:IsA("TextLabel") then
-			body.Visible = expanded
+			body.Visible = expanded and (not layoutState.mobileLayout)
 			body.TextTransparency = expanded and 0 or 0.2
 		end
 	end
@@ -5242,7 +6435,7 @@ end
 		end
 		local subtitle = button:FindFirstChild("Subtitle")
 		if subtitle and subtitle:IsA("TextLabel") then
-			subtitle.Visible = expanded
+			subtitle.Visible = expanded and (not layoutState.mobileLayout)
 			subtitle.TextTransparency = expanded and 0.08 or 1
 		end
 		local arrow = button:FindFirstChild("Arrow")
@@ -5449,17 +6642,17 @@ end
 					or (previewState and previewState.isSubscriptionItem and "Supporter Access"
 					or (previewState and previewState.isDropOnly and "Mission Drop"
 					or (previewState and previewState.isSeasonLocked and "Season Locked" or "Robux Purchase"))))
-				ui.Lobby.ShopPreviewBody.Text = ("%s  |  %s"):format(
-					tostring(previewItem.Description or "Quartermaster stock preview."),
-					priceText
-				)
+				ui.Lobby.ShopPreviewBody.Text = tostring(previewItem.Description or "Quartermaster stock preview.")
+				ui.Lobby.ShopPreviewHint.Text = priceText
 			elseif category == Theme.ShopTabToCategory.Cosmetics and previewItem then
-				ui.Lobby.ShopPreviewBody.Text = ("Previewing %s on %s."):format(
+				ui.Lobby.ShopPreviewBody.Text = ("%s on %s."):format(
 					tostring(previewItem.DisplayName or previewItem.Id),
 					tostring(previewWeapon and previewWeapon.DisplayName or "current weapon")
 				)
+				ui.Lobby.ShopPreviewHint.Text = "Animated skin preview on your equipped weapon."
 			else
-				ui.Lobby.ShopPreviewBody.Text = "Selected stock appears here with live bunker weapon stats and cosmetic preview."
+				ui.Lobby.ShopPreviewBody.Text = "Selected stock appears here with live bunker weapon stats and skin preview."
+				ui.Lobby.ShopPreviewHint.Text = "Hover or open a stock card to inspect the weapon build."
 			end
 
 			if previewWeapon then
@@ -5470,7 +6663,7 @@ end
 				local fireRateText = previewWeapon.Cooldown and previewWeapon.Cooldown > 0
 					and ("%.2fs cycle"):format(previewWeapon.Cooldown)
 					or "instant cycle"
-				ui.Lobby.ShopPreviewStats.Text = ("%s WEAPON  |  AMMO %s\nDMG %d  |  RNG %d  |  %s"):format(
+				ui.Lobby.ShopPreviewStats.Text = ("%s WEAPON\nAMMO %s   DMG %d   RNG %d   %s"):format(
 					string.upper(laneText),
 					ammoText,
 					previewWeapon.Damage or 0,
@@ -5478,16 +6671,11 @@ end
 					fireRateText
 				)
 			else
-				ui.Lobby.ShopPreviewStats.Text = "WEAPON TYPE -- | AMMO --\nDMG -- | RNG -- | RATE --"
+				ui.Lobby.ShopPreviewStats.Text = "WEAPON TYPE --\nAMMO --   DMG --   RNG --   RATE --"
 			end
 			ui.Lobby.ShopPreviewCosmetic.Text = previewState
-				and ("State: %s | %s"):format(previewState.stateLabel, previewState.detailText)
-				or ("Preview Cosmetic: %s"):format(previewCosmetic and previewCosmetic.DisplayName or "None")
-			ui.Lobby.ShopPreviewHint.Text = previewState
-				and previewState.detailText
-				or (category == Theme.ShopTabToCategory.Cosmetics
-				and "Cosmetics preview on your equipped weapon."
-				or "Hover or open a stock card to inspect the weapon build.")
+				and ("%s  •  %s"):format(previewState.stateLabel, previewState.detailText)
+				or ("Skin  •  %s"):format(previewCosmetic and previewCosmetic.DisplayName or "None")
 			local compareRows = ui.Lobby.ShopPreviewCompareRows or {}
 			local function updateCompareRow(rowKey, previewValue, equippedValue, maxValue)
 				local row = compareRows[rowKey]
@@ -5581,11 +6769,28 @@ end
 		end
 		if state == "Mission" then
 			ui.Lobby.MissionStatus.Text = ("%s\n%s"):format(missionTelemetry.scenarioName or "Hold The Core", currentDeployStatus)
-			ui.Lobby.MissionMeta.Text = ("Wave %d/%d | Core %d%%"):format(
+			local waveLabel = ("Wave %d/%d"):format(
 				missionTelemetry.wave or 0,
-				missionTelemetry.totalWaves or 0,
-				missionTelemetry.objectiveHealthPercent or 100
+				missionTelemetry.totalWaves or 0
 			)
+			local pressureLabel = missionTelemetry.phase == "Extraction"
+				and ("Pressure %d"):format(math.max(0, missionTelemetry.remainingZombies or 0))
+				or ("%d hostiles"):format(math.max(0, missionTelemetry.remainingZombies or 0))
+			local objectiveLabel = ""
+			if missionTelemetry.objectiveLabel == "Defend Core" then
+				objectiveLabel = ("Core %d%%"):format(missionTelemetry.objectiveHealthPercent or 100)
+			elseif missionTelemetry.objectiveLabel == "Commander" then
+				objectiveLabel = (missionTelemetry.objectiveCurrent or 0) >= (missionTelemetry.objectiveTarget or 1)
+					and "Commander Down"
+					or "Commander Live"
+			else
+				objectiveLabel = ("%s %d/%d"):format(
+					tostring(missionTelemetry.objectiveLabel or "Objective"),
+					math.max(0, math.floor(tonumber(missionTelemetry.objectiveCurrent) or 0)),
+					math.max(1, math.floor(tonumber(missionTelemetry.objectiveTarget) or 1))
+				)
+			end
+			ui.Lobby.MissionMeta.Text = ("%s | %s | %s"):format(waveLabel, pressureLabel, objectiveLabel)
 		else
 			local previewModifier = tostring(nextMissionPreview.modifierName or "Standard Ops")
 			local rewardBonus = tonumber(nextMissionPreview.rewardBonus) or 0
@@ -5712,7 +6917,7 @@ end
 				ui.Lobby.CombatAmmo.Text = "DOWNED  |  AWAIT REVIVE"
 				ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(255, 208, 164)
 			elseif player:GetAttribute("MissionEliminated") == true then
-				ui.Lobby.CombatAmmo.Text = "SPECTATING  |  B TO BUNKER"
+				ui.Lobby.CombatAmmo.Text = UserInputService.TouchEnabled and "SPECTATING  |  TAP TO LEAVE" or "SPECTATING  |  B TO BUNKER"
 				ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(196, 214, 244)
 			elseif player.Character and player.Character:GetAttribute("MissionDashing") == true then
 				ui.Lobby.CombatAmmo.Text = "DASH ACTIVE"
@@ -5738,7 +6943,7 @@ end
 				ui.Lobby.CombatStatus.Text = "TEAMMATE HOLD TO REVIVE"
 				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(255, 188, 148)
 			elseif player:GetAttribute("MissionEliminated") == true then
-				ui.Lobby.CombatStatus.Text = "AWAIT REVIVE OR LEAVE"
+				ui.Lobby.CombatStatus.Text = UserInputService.TouchEnabled and "SPECTATE OR TAP LEAVE" or "AWAIT REVIVE OR LEAVE"
 				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(244, 198, 164)
 			elseif player.Character and player.Character:GetAttribute("MissionDashing") == true then
 				ui.Lobby.CombatStatus.Text = "BURST MOVING"
@@ -6090,6 +7295,9 @@ end
 		if ui.Lobby.CombatHud then
 			ui.Lobby.CombatHud.Visible = inMission
 		end
+		if ui.Lobby.CombatLeaveButton then
+			ui.Lobby.CombatLeaveButton.Visible = inMission and player:GetAttribute("MissionEliminated") == true
+		end
 		if ui.Lobby.RewardFloatLayer then
 			ui.Lobby.RewardFloatLayer.Visible = inMission
 		end
@@ -6330,7 +7538,9 @@ end
 			shouldFloat = true
 		elseif string.find(statusText, "Eliminated.", 1, true) then
 			title = "SPECTATING"
-			body = "You are out. Spectate the squad or press B to return."
+			body = UserInputService.TouchEnabled
+				and "You are out. Spectate the squad or tap Leave Mission to return."
+				or "You are out. Spectate the squad or press B to return."
 			accent = Color3.fromRGB(180, 206, 248)
 		end
 
@@ -7014,13 +8224,17 @@ end
 				currentSocialMessage = normalized.weeklyRewardAvailable
 					and "Supporter active. VIP access granted and your weekly crate is ready."
 					or "Supporter active. VIP access and supporter rewards are now enabled."
-				showPremiumUnlockBanner(
+				premiumUnlockBannerNonce = renderPremiumUnlockBanner(
+					ui,
+					premiumUnlockBannerNonce,
 					"SUPPORTER STATUS ACTIVE",
 					normalized.weeklyRewardAvailable
 						and "Supporter rewards are live, VIP access is enabled, and your weekly crate is ready."
 						or "Supporter rewards are live and VIP access is now enabled.",
 					Color3.fromRGB(214, 194, 122),
-					normalized.weeklyRewardAvailable and "CRATE READY" or "SUPPORTER"
+					normalized.weeklyRewardAvailable and "CRATE READY" or "SUPPORTER",
+					playUiSound,
+					pulseGuiObject
 				)
 				playUiSound(SOUND_IDS.Success, 0.36, 1.02)
 				if ui and ui.Lobby then
@@ -7048,6 +8262,31 @@ end
 		missionTelemetry.wave = tonumber(payload.wave or missionTelemetry.wave) or 0
 		missionTelemetry.totalWaves = tonumber(payload.totalWaves or missionTelemetry.totalWaves) or 0
 		missionTelemetry.objectiveHealthPercent = tonumber(payload.objectiveHealthPercent or missionTelemetry.objectiveHealthPercent) or 100
+		if payload.objectiveLabel ~= nil then
+			missionTelemetry.objectiveLabel = tostring(payload.objectiveLabel)
+		end
+		if payload.objectiveCurrent ~= nil then
+			missionTelemetry.objectiveCurrent = tonumber(payload.objectiveCurrent) or missionTelemetry.objectiveCurrent
+		end
+		if payload.objectiveTarget ~= nil then
+			missionTelemetry.objectiveTarget = tonumber(payload.objectiveTarget) or missionTelemetry.objectiveTarget
+		end
+		if payload.remainingZombies ~= nil then
+			missionTelemetry.remainingZombies = tonumber(payload.remainingZombies) or missionTelemetry.remainingZombies
+		end
+		if payload.waveTargetHostiles ~= nil then
+			missionTelemetry.waveTargetHostiles = tonumber(payload.waveTargetHostiles) or 0
+		end
+		if payload.phaseTimerLabel ~= nil then
+			missionTelemetry.phaseTimerLabel = tostring(payload.phaseTimerLabel)
+		end
+		if payload.phaseTimerDuration ~= nil then
+			missionTelemetry.phaseTimerDuration = tonumber(payload.phaseTimerDuration) or 0
+		end
+		if payload.phaseTimerRemaining ~= nil then
+			missionTelemetry.phaseTimerRemaining = tonumber(payload.phaseTimerRemaining) or 0
+			missionTelemetry.phaseTimerUpdatedAt = os.clock()
+		end
 		if payload.weaponName ~= nil then
 			missionTelemetry.weaponName = tostring(payload.weaponName)
 		end
@@ -7167,647 +8406,54 @@ end
 		updateLobbyText()
 	end
 
-	local function requestDailyReward()
-		if isClaimingDailyReward then
-			return
-		end
+	local socialRequestHandlers = createSocialRequestHandlers({
+		player = player,
+		pendingTipPurchases = pendingTipPurchases,
+		getProgression = function()
+			return progression
+		end,
+		setProgressionValue = setProgressionValue,
+		setCurrentSocialMessage = function(value)
+			currentSocialMessage = value
+		end,
+		updateLobbyText = updateLobbyText,
+		setActivePopup = setActivePopup,
+	})
 
-		isClaimingDailyReward = true
-		updateLobbyText()
-		local callOk, success, amountOrCode, rewardState = safeInvoke(RemoteNames.Functions.ClaimDailyReward)
-		isClaimingDailyReward = false
-
-		if not callOk then
-			currentSocialMessage = "Daily reward request failed."
-			updateLobbyText()
-			return
-		end
-
-		if success then
-			currentSocialMessage = ("Daily reward claimed: +%d deploy tokens."):format(tonumber(amountOrCode) or 0)
-			setDailyRewardValue(rewardState)
-			if ui.Lobby.TokenValue and ui.Lobby.TokenValue.Parent then
-				pulseGuiObject(ui.Lobby.TokenValue.Parent, Theme.Colors.AccentWarm)
-			end
-		else
-			currentSocialMessage = describeDailyRewardError(amountOrCode)
-			setDailyRewardValue(rewardState)
-		end
-		updateLobbyText()
-	end
-
-	local function requestWeeklyReward()
-		local callOk, success, payloadOrCode, rewardState = safeInvoke(RemoteNames.Functions.ClaimWeeklyRewardCrate)
-		if not callOk then
-			currentSocialMessage = "Weekly crate request failed."
-			updateLobbyText()
-			return
-		end
-
-		if success then
-			local rewardPayload = type(payloadOrCode) == "table" and payloadOrCode or {}
-			currentSocialMessage = ("Weekly crate claimed: +%d tokens%s"):format(
-				tonumber(rewardPayload.tokens) or 0,
-				(tonumber(rewardPayload.experience) or 0) > 0 and (" +%d XP"):format(tonumber(rewardPayload.experience) or 0) or ""
-			)
-			setWeeklyRewardValue(rewardState)
-			refreshSubscriptionState()
-			if ui.Lobby.TokenValue and ui.Lobby.TokenValue.Parent then
-				pulseGuiObject(ui.Lobby.TokenValue.Parent, Color3.fromRGB(180, 154, 86))
-			end
-			if (tonumber(rewardPayload.experience) or 0) > 0 then
-				if ui.Lobby.SkillSummary then
-					pulseGuiObject(ui.Lobby.SkillSummary, Color3.fromRGB(188, 214, 128))
-				end
-				if ui.Lobby.InventorySkillSummary then
-					pulseGuiObject(ui.Lobby.InventorySkillSummary, Color3.fromRGB(188, 214, 128))
-				end
-				if ui.Lobby.SkillTreeSummary then
-					pulseGuiObject(ui.Lobby.SkillTreeSummary, Color3.fromRGB(188, 214, 128))
-				end
-			end
-		else
-			currentSocialMessage = describeWeeklyRewardError(payloadOrCode)
-			setWeeklyRewardValue(rewardState)
-		end
-		updateLobbyText()
-	end
-
-	local function requestClaimDailyOp(taskId)
-		local callOk, success, payloadOrCode, stateValue = safeInvoke(RemoteNames.Functions.ClaimDailyOpsReward, taskId)
-		if not callOk then
-			currentSocialMessage = "Daily op claim failed."
-			updateLobbyText()
-			return
-		end
-
-		if success then
-			local rewardPayload = type(payloadOrCode) == "table" and payloadOrCode or {}
-			currentSocialMessage = ("Daily op reward claimed: +%d tokens%s"):format(
-				tonumber(rewardPayload.tokens) or 0,
-				(tonumber(rewardPayload.experience) or 0) > 0 and (" +%d XP"):format(tonumber(rewardPayload.experience) or 0) or ""
-			)
-			setDailyOpsValue(stateValue)
-			if ui.Lobby.TokenValue and ui.Lobby.TokenValue.Parent then
-				pulseGuiObject(ui.Lobby.TokenValue.Parent, Theme.Colors.AccentWarm)
-			end
-			if ui.Lobby.SkillSummary then
-				pulseGuiObject(ui.Lobby.SkillSummary, Color3.fromRGB(188, 214, 128))
-			end
-			if ui.Lobby.InventorySkillSummary then
-				pulseGuiObject(ui.Lobby.InventorySkillSummary, Color3.fromRGB(188, 214, 128))
-			end
-			if ui.Lobby.SkillTreeSummary then
-				pulseGuiObject(ui.Lobby.SkillTreeSummary, Color3.fromRGB(188, 214, 128))
-			end
-		else
-			currentSocialMessage = describeDailyOpsError(payloadOrCode)
-			setDailyOpsValue(stateValue)
-		end
-		updateLobbyText()
-	end
-
-	local function requestLeaveSquad()
-		local callOk, success, resultOrCode, snapshot = safeInvoke(RemoteNames.Functions.LeaveSquad)
-		if not callOk then
-			currentSocialMessage = "Leave squad request failed."
-			updateLobbyText()
-			return
-		end
-
-		if success and type(snapshot) == "table" then
-			setSquadValue(snapshot)
-			currentSocialMessage = "Returned to a solo squad."
-		elseif success then
-			currentSocialMessage = "Squad state updated."
-			refreshSquadDirectory()
-		else
-			currentSocialMessage = describeSquadError(resultOrCode)
-		end
-		updateLobbyText()
-	end
-
-	local function requestJoinSquad(squadId)
-		local callOk, success, resultOrCode, snapshot = safeInvoke(RemoteNames.Functions.CreateOrJoinSquad, squadId)
-		if not callOk then
-			currentSocialMessage = "Squad join request failed."
-			updateLobbyText()
-			return
-		end
-
-		if success then
-			if type(snapshot) == "table" then
-				setSquadValue(snapshot)
-			end
-			currentSocialMessage = "Joined squad from the bunker board."
-			refreshSquadDirectory()
-			return
-		end
-
-		currentSocialMessage = describeSquadError(resultOrCode)
-		updateLobbyText()
-	end
-
-	local function requestSendInvite(targetUserId)
-		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.SendSquadInvite, targetUserId)
-		if not callOk then
-			currentSocialMessage = "Invite request failed."
-		elseif success then
-			currentSocialMessage = "Fireteam invite sent."
-		else
-			currentSocialMessage = describeSquadError(payloadOrCode)
-		end
-		updateLobbyText()
-	end
-
-	local function requestSetSquadPrivacy(isPrivate)
-		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.SetSquadPrivacy, isPrivate)
-		if not callOk then
-			currentSocialMessage = "Unable to update squad privacy."
-		elseif success then
-			currentSocialMessage = isPrivate and "Squad switched to private." or "Squad reopened to public joins."
-		else
-			currentSocialMessage = describeSquadError(resultOrCode)
-		end
-		updateLobbyText()
-	end
-
-	local function requestDeploy()
-		local fired, fireCode = Remotes.fire(RemoteNames.Events.DeployRequested)
-		if fired then
-			currentDeployStatus = "Deploy request sent..."
-			updateLobbyText()
-			return
-		end
-
-		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.RequestDeploy)
-		if not callOk then
-			currentDeployStatus = "Deploy request failed."
-			warn("[FlowController] RequestDeploy call failed before server response.")
-			updateLobbyText()
-			return
-		end
-		if success then
-			currentDeployStatus = "Intermission starting..."
-		elseif resultOrCode == "insufficient_tokens" then
-			currentDeployStatus = "Need more deploy tokens to start."
-		elseif resultOrCode == "busy" then
-			currentDeployStatus = "Squad launch already in progress."
-		elseif resultOrCode == "missing_squad" then
-			currentDeployStatus = "No active squad found. Reopen the bunker panel and try again."
-		elseif resultOrCode == "mission_unavailable" then
-			currentDeployStatus = "Mission staging is offline right now."
-		else
-			currentDeployStatus = ("Unable to deploy right now. [%s|%s]"):format(tostring(resultOrCode), tostring(fireCode))
-		end
-		if not success then
-			warn(("[FlowController] RequestDeploy rejected with code: %s"):format(tostring(resultOrCode)))
-		end
-		updateLobbyText()
-	end
-
-	local function requestLeaveMission()
-		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.LeaveMission)
-		if not callOk then
-			currentDeployStatus = "Lobby return request failed."
-		elseif success then
-			currentDeployStatus = "Returning to bunker..."
-			hideResultsPopup()
-		elseif resultOrCode == "not_in_mission" then
-			currentDeployStatus = "Already in the bunker."
-			hideResultsPopup()
-		else
-			currentDeployStatus = "Unable to return to bunker right now."
-		end
-		updateLobbyText()
-	end
-
-	local function requestMapVote(optionId)
-		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.RequestMapVote, optionId)
-		if not callOk then
-			currentDeployStatus = "Map vote request failed."
-			updateLobbyText()
-			return
-		end
-		if success then
-			if type(payloadOrCode) == "table" then
-				currentVoteOptionId = tostring(payloadOrCode.selectedOptionId or optionId)
-				if type(payloadOrCode.lobbyState) == "table" then
-					setLobbyValue(payloadOrCode.lobbyState)
-				end
-				currentDeployStatus = ("Vote locked for %s."):format(tostring(payloadOrCode.layoutName or "next run"))
-			else
-				currentVoteOptionId = tostring(optionId)
-				currentDeployStatus = "Map vote locked."
-			end
-		else
-			currentDeployStatus = describeMapVoteError(payloadOrCode)
-		end
-		updateLobbyText()
-	end
-
-	local function requestDuel(action)
-		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.RequestDuel, action)
-		if not callOk then
-			currentSocialMessage = "Duel request failed."
-		elseif success then
-			if resultOrCode == "started" then
-				currentSocialMessage = "Duel started. Hold the ring."
-			elseif resultOrCode == "left" then
-				currentSocialMessage = "You left the duel ring."
-			else
-				currentSocialMessage = "Duel corner locked in. Waiting for an opponent."
-			end
-		else
-			currentSocialMessage = describeDuelError(resultOrCode)
-		end
-		updateLobbyText()
-	end
-
-	local function requestAdminCommand(commandRequest)
-		local requestPayload = commandRequest
-		if type(requestPayload) ~= "table" then
-			requestPayload = {
-				commandId = tostring(commandRequest or ""),
-			}
-		end
-		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.AdminCommand, requestPayload)
-		if not callOk then
-			currentAdminStatus = "Owner command failed."
-			updateLobbyText()
-			return
-		end
-
-		if success and type(payloadOrCode) == "table" then
-			currentAdminStatus = tostring(payloadOrCode.status or "Owner command completed.")
-			if type(payloadOrCode.progression) == "table" then
-				setProgressionValue(payloadOrCode.progression)
-			end
-			if type(payloadOrCode.panelState) == "table" then
-				local panelState = payloadOrCode.panelState
-				if panelState.overrideId == "none" then
-					currentAdminEventLabel = "Event Mode: Disabled"
-				elseif type(panelState.activeEventName) == "string" and panelState.activeEventName ~= "" then
-					if panelState.overrideId and panelState.overrideId ~= "" then
-						currentAdminEventLabel = ("Event Mode: %s"):format(panelState.activeEventName)
-					else
-						currentAdminEventLabel = ("Event Mode: Auto Rotation (%s)"):format(panelState.activeEventName)
-					end
-				else
-					currentAdminEventLabel = "Event Mode: Auto Rotation"
-				end
-			end
-		elseif success then
-			currentAdminStatus = "Owner command completed."
-		elseif payloadOrCode == "unauthorized" then
-			currentAdminStatus = "Owner access denied."
-		elseif payloadOrCode == "no_active_run" or payloadOrCode == "no_active_mission" then
-			currentAdminStatus = "No active run to return."
-		elseif payloadOrCode == "missing_character" then
-			currentAdminStatus = "Character unavailable for heal."
-		elseif payloadOrCode == "no_downed_targets" then
-			currentAdminStatus = "No downed squad members to revive."
-		elseif payloadOrCode == "missing_target" then
-			currentAdminStatus = "Select a valid server target first."
-		else
-			currentAdminStatus = "Owner command unavailable."
-		end
-		updateLobbyText()
-	end
-
-	local function requestAdminTargetCommand(commandId)
-		local targetPlayer = getAdminTargetPlayer()
-		requestAdminCommand({
-			commandId = commandId,
-			targetUserId = targetPlayer and targetPlayer.UserId or player.UserId,
-		})
-	end
-
-	local function respondToInvite(acceptInvite)
-		if not pendingInvite then
-			return
-		end
-
-		local fromSquadId = pendingInvite.fromSquadId
-		local callOk, success, resultOrCode, snapshot = safeInvoke(RemoteNames.Functions.RespondToSquadInvite, fromSquadId, acceptInvite)
-		pendingInvite = nil
-		if not callOk then
-			currentSocialMessage = "Invite response failed."
-			updateLobbyText()
-			return
-		end
-
-		if acceptInvite and success then
-			if type(snapshot) == "table" then
-				setSquadValue(snapshot)
-			end
-			currentSocialMessage = "Joined fireteam from invite."
-			refreshSquadDirectory()
-			refreshInviteablePlayers()
-		elseif not acceptInvite and success then
-			currentSocialMessage = "Invite declined."
-		else
-			currentSocialMessage = describeSquadError(resultOrCode)
-		end
-		updateLobbyText()
-	end
-
-	local function promptRobuxPurchase(item)
-		if type(item) ~= "table" or type(item.ProductId) ~= "number" or item.ProductId <= 0 then
-			currentShopStatus = "This token pack needs a linked dev product ID before Robux purchases work."
-			updateLobbyText()
-			return
-		end
-
-		currentShopStatus = ("Opening Robux purchase for %s."):format(item.DisplayName or item.Id)
-		updateLobbyText()
-		MarketplaceService:PromptProductPurchase(player, item.ProductId)
-	end
-
-	local function refreshEntitlements()
-		local callOk, payload = safeInvoke(RemoteNames.Functions.RefreshEntitlements)
-		if callOk and type(payload) == "table" then
-			setProgressionValue(payload)
-		end
-	end
-
-	local function promptGamePassPurchase(item)
-		if type(item) ~= "table" or type(item.GamePassId) ~= "number" or item.GamePassId <= 0 then
-			currentShopStatus = "This game pass needs a linked pass ID before purchase works."
-			updateLobbyText()
-			return
-		end
-
-		currentShopStatus = ("Opening game pass purchase for %s."):format(item.DisplayName or item.Id)
-		updateLobbyText()
-		MarketplaceService:PromptGamePassPurchase(player, item.GamePassId)
-	end
-
-	local function promptSubscriptionPurchase(item)
-		if type(item) ~= "table" or type(item.SubscriptionId) ~= "string" or item.SubscriptionId == "" then
-			currentShopStatus = "This subscription needs a linked subscription ID before purchase works."
-			updateLobbyText()
-			return
-		end
-
-		currentShopStatus = ("Opening subscription purchase for %s."):format(item.DisplayName or item.Id)
-		updateLobbyText()
-		local callOk = pcall(function()
-			MarketplaceService:PromptSubscriptionPurchase(player, item.SubscriptionId)
-		end)
-		if not callOk then
-			currentShopStatus = "Subscription purchase could not be opened right now."
-			updateLobbyText()
-			return
-		end
-		task.delay(6, function()
-			if player.Parent then
-				refreshSubscriptionState()
-				updateLobbyText()
-			end
-		end)
-	end
-
-	local function showPremiumUnlockBanner(titleText, bodyText, accentColor, chipText)
-		if not ui or not ui.Lobby or not ui.Lobby.PremiumUnlockBanner then
-			return
-		end
-
-		local banner = ui.Lobby.PremiumUnlockBanner
-		local rail = ui.Lobby.PremiumUnlockBannerRail
-		local title = ui.Lobby.PremiumUnlockBannerTitle
-		local body = ui.Lobby.PremiumUnlockBannerBody
-		local chip = ui.Lobby.PremiumUnlockBannerChip
-		local color = accentColor or Color3.fromRGB(132, 182, 244)
-
-		premiumUnlockBannerNonce += 1
-		local bannerId = premiumUnlockBannerNonce
-
-		if rail then
-			rail.BackgroundColor3 = color
-		end
-		if title then
-			title.Text = tostring(titleText or "ACCESS UNLOCKED")
-		end
-		if body then
-			body.Text = tostring(bodyText or "")
-		end
-		if chip then
-			chip.Text = tostring(chipText or "ACTIVE")
-			chip.BackgroundColor3 = color
-		end
-
-		local stroke = banner:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			stroke.Color = color
-		end
-
-		banner.Visible = true
-		banner.BackgroundTransparency = 1
-		banner.Position = UDim2.new(0.5, 0, 0.09, -14)
-		local scaleDriver = banner:FindFirstChild("PremiumBannerScale")
-		if not scaleDriver or not scaleDriver:IsA("UIScale") then
-			scaleDriver = new("UIScale", {
-				Name = "PremiumBannerScale",
-				Scale = 0.96,
-				Parent = banner,
-			})
-		end
-		scaleDriver.Scale = 0.96
-
-		TweenService:Create(banner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			BackgroundTransparency = 0.06,
-			Position = UDim2.new(0.5, 0, 0.11, 0),
-		}):Play()
-		TweenService:Create(scaleDriver, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-			Scale = 1,
-		}):Play()
-		playUiSound(SOUND_IDS.Success, 0.42, 1.05)
-		pulseGuiObject(banner, color)
-
-		task.delay(3.25, function()
-			if premiumUnlockBannerNonce ~= bannerId or not banner.Parent then
-				return
-			end
-			TweenService:Create(banner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-				BackgroundTransparency = 1,
-				Position = UDim2.new(0.5, 0, 0.09, -14),
-			}):Play()
-			TweenService:Create(scaleDriver, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-				Scale = 0.97,
-			}):Play()
-			task.delay(0.2, function()
-				if premiumUnlockBannerNonce == bannerId and banner.Parent then
-					banner.Visible = false
-				end
-			end)
-		end)
-	end
-
-	local function requestShopPurchase(category, item)
-		if purchasingItemId then
-			return
-		end
-
-		if type(item) == "table" and item.SubscriptionId then
-			promptSubscriptionPurchase(item)
-			return
-		end
-		if type(item) == "table" and type(item.GamePassId) == "number" then
-			promptGamePassPurchase(item)
-			return
-		end
-
-		if category == Theme.ShopTabToCategory["Deploy Tokens"] or item.CostType == "Robux" then
-			promptRobuxPurchase(item)
-			return
-		end
-
-		purchasingItemId = item.Id
-		updateLobbyText()
-
-		local request = {
-			category = category,
-			itemId = item.Id,
-			quantity = 1,
-			currency = "Tokens",
-		}
-		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.PurchaseShopItem, request)
-
-		purchasingItemId = nil
-		if not callOk then
-			currentShopStatus = "Shop request failed."
-			updateLobbyText()
-			return
-		end
-
-		if success then
-			currentShopStatus = ("Unlocked %s."):format(item.DisplayName or item.Id)
-		else
-			currentShopStatus = describeShopError(payloadOrCode)
-		end
-		currentInventoryStatus = currentShopStatus
-		updateLobbyText()
-	end
-
-	local function requestActivityTransit(activityKey)
-		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.RequestActivityTransit, activityKey)
-		if not callOk then
-			currentSocialMessage = "Activity transit request failed."
-		elseif success then
-			currentSocialMessage = ("Transit routed to %s."):format(tostring(resultOrCode or activityKey))
-			setActivePopup(nil)
-		elseif resultOrCode == "activity_missing" or resultOrCode == "entry_missing" then
-			currentSocialMessage = "That activity lane is still offline."
-		elseif resultOrCode == "unavailable" then
-			currentSocialMessage = "Activities are only available from the bunker lobby."
-		else
-			currentSocialMessage = "Unable to route to that activity right now."
-		end
-		updateLobbyText()
-	end
-
-	local function requestEquipItem(category, item)
-		if equippingItemId then
-			return
-		end
-
-		equippingItemId = item.Id
-		updateLobbyText()
-
-		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.EquipLoadoutItem, {
-			category = category,
-			itemId = item.Id,
-		})
-
-		equippingItemId = nil
-		if not callOk then
-			currentShopStatus = "Equip request failed."
-			updateLobbyText()
-			return
-		end
-
-		if success then
-			if category == Theme.ShopTabToCategory.Weapons then
-				progression.equippedWeapon = item.Id
-				currentShopStatus = ("Equipped %s."):format(item.DisplayName or item.Id)
-				currentInventoryStatus = currentShopStatus
-			elseif category == Theme.ShopTabToCategory.Cosmetics then
-				progression.equippedCosmetic = item.Id
-				currentShopStatus = ("Equipped %s."):format(item.DisplayName or item.Id)
-				currentInventoryStatus = currentShopStatus
-			end
-		else
-			currentShopStatus = tostring(payloadOrCode or "Unable to equip item.")
-			currentInventoryStatus = currentShopStatus
-		end
-
-		updateLobbyText()
-	end
-
-	local function requestSpendSkillPoint(skillId)
-		if not skillId or spendingSkillId then
-			return
-		end
-
-		spendingSkillId = skillId
-		currentShopStatus = "Allocating skill point..."
-		updateLobbyText()
-
-		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.SpendSkillPoint, skillId)
-		spendingSkillId = nil
-		if not callOk then
-			currentShopStatus = "Skill tree request failed."
-			updateLobbyText()
-			return
-		end
-
-		if success then
-			setProgressionValue(payloadOrCode)
-			local definition = SkillTreeConfig.getSkillDefinition(skillId)
-			currentShopStatus = definition and (definition.DisplayName .. " advanced.") or "Skill upgraded."
-		else
-			local reason = tostring(payloadOrCode or "Unable to spend point.")
-			if reason == "no_points" then
-				currentShopStatus = "No skill points ready yet."
-			elseif reason == "max_rank" then
-				currentShopStatus = "That node is already maxed."
-			elseif reason == "missing_prerequisite" then
-				currentShopStatus = "Unlock the previous node first."
-			else
-				currentShopStatus = reason
-			end
-		end
-
-		updateLobbyText()
-	end
-
-	local function requestRespecSkillTree()
-		pendingRespecConfirmation = false
-		currentSkillTreeStatus = "Resetting specialization..."
-		updateLobbyText()
-
-		local callOk, success, payloadOrCode = safeInvoke(RemoteNames.Functions.RespecSkillTree)
-		if not callOk then
-			currentSkillTreeStatus = "Respec request failed."
-			updateLobbyText()
-			return
-		end
-
-		if success then
-			setProgressionValue(payloadOrCode)
-			currentSkillTreeStatus = "Skill tree reset. Points refunded."
-		else
-			local reason = tostring(payloadOrCode or "Unable to respec.")
-			if reason == "nothing_to_respec" then
-				currentSkillTreeStatus = "No spent points to refund."
-			else
-				currentSkillTreeStatus = reason
-			end
-		end
-
-		updateLobbyText()
-	end
+	local progressionRequestHandlers = createProgressionRequestHandlers({
+		getEquippingItemId = function()
+			return equippingItemId
+		end,
+		setEquippingItemId = function(value)
+			equippingItemId = value
+		end,
+		getSpendingSkillId = function()
+			return spendingSkillId
+		end,
+		setSpendingSkillId = function(value)
+			spendingSkillId = value
+		end,
+		getProgression = function()
+			return progression
+		end,
+		setProgressionValue = setProgressionValue,
+		setCurrentShopStatus = function(value)
+			currentShopStatus = value
+		end,
+		getCurrentShopStatus = function()
+			return currentShopStatus
+		end,
+		setCurrentInventoryStatus = function(value)
+			currentInventoryStatus = value
+		end,
+		setCurrentSkillTreeStatus = function(value)
+			currentSkillTreeStatus = value
+		end,
+		setPendingRespecConfirmation = function(value)
+			pendingRespecConfirmation = value
+		end,
+		updateLobbyText = updateLobbyText,
+	})
 
 	renderShopItems = function()
 		clearGeneratedChildren(ui.Lobby.ShopItemsFrame)
@@ -8084,7 +8730,28 @@ end
 				premiumButton.MouseButton1Click:Connect(function()
 					currentShopPreviewItemId = item.Id
 					updateShopPreview()
-					requestShopPurchase(category, item)
+					requestShopPurchaseFlow(category, item, {
+						player = player,
+						getPurchasingItemId = function()
+							return purchasingItemId
+						end,
+						setPurchasingItemId = function(value)
+							purchasingItemId = value
+						end,
+						setCurrentShopStatus = function(value)
+							currentShopStatus = value
+						end,
+						getCurrentShopStatus = function()
+							return currentShopStatus
+						end,
+						setCurrentInventoryStatus = function(value)
+							currentInventoryStatus = value
+						end,
+						updateLobbyText = updateLobbyText,
+						refreshSubscriptionState = refreshSubscriptionState,
+						safeInvoke = safeInvoke,
+						describeShopError = describeShopError,
+					})
 				end)
 				continue
 			end
@@ -8326,9 +8993,30 @@ end
 				currentShopPreviewItemId = item.Id
 				updateShopPreview()
 				if itemState.isOwned and (category == Theme.ShopTabToCategory.Weapons or category == Theme.ShopTabToCategory.Cosmetics) then
-					requestEquipItem(category, item)
+					progressionRequestHandlers.requestEquipItem(category, item)
 				else
-					requestShopPurchase(category, item)
+					requestShopPurchaseFlow(category, item, {
+						player = player,
+						getPurchasingItemId = function()
+							return purchasingItemId
+						end,
+						setPurchasingItemId = function(value)
+							purchasingItemId = value
+						end,
+						setCurrentShopStatus = function(value)
+							currentShopStatus = value
+						end,
+						getCurrentShopStatus = function()
+							return currentShopStatus
+						end,
+						setCurrentInventoryStatus = function(value)
+							currentInventoryStatus = value
+						end,
+						updateLobbyText = updateLobbyText,
+						refreshSubscriptionState = refreshSubscriptionState,
+						safeInvoke = safeInvoke,
+						describeShopError = describeShopError,
+					})
 				end
 			end)
 		end
@@ -8645,7 +9333,7 @@ end
 				setCardFocusState(card, true, rarityColor)
 			end)
 			button.MouseButton1Click:Connect(function()
-				requestEquipItem(category, item)
+				progressionRequestHandlers.requestEquipItem(category, item)
 				currentInventoryStatus = ("Equipping %s..."):format(item.DisplayName or item.Id)
 				updateLobbyText()
 			end)
@@ -9078,7 +9766,7 @@ end
 					button.TextSize = 13
 					setButtonEnabled(button, canUnlock, buttonColor)
 					button.MouseButton1Click:Connect(function()
-						requestSpendSkillPoint(skill.Id)
+						progressionRequestHandlers.requestSpendSkillPoint(skill.Id)
 					end)
 				end
 			end
@@ -9267,7 +9955,15 @@ end
 			button.TextSize = 15
 			setButtonEnabled(button, canJoin, buttonColor)
 			button.MouseButton1Click:Connect(function()
-				requestJoinSquad(entry.squadId)
+				requestJoinSquadFlow(entry.squadId, {
+					safeInvoke = safeInvoke,
+					setCurrentSocialMessage = function(value)
+						currentSocialMessage = value
+					end,
+					setSquadValue = setSquadValue,
+					refreshSquadDirectory = refreshSquadDirectory,
+					updateLobbyText = updateLobbyText,
+				})
 			end)
 		end
 	end
@@ -9391,9 +10087,10 @@ end
 		ui.Lobby.InvitePlayerEmpty.Visible = #inviteablePlayers == 0
 
 		for index, entry in ipairs(inviteablePlayers) do
-			local card = makeListCard(ui.Lobby.InvitePlayerList, "InvitePlayer_" .. index, 86)
+			local card = makeListCard(ui.Lobby.InvitePlayerList, "InvitePlayer_" .. index, 156)
 			card.LayoutOrder = index
 			card.BackgroundColor3 = Color3.fromRGB(42, 56, 52)
+			local tipPassIds = entry.tipPassIds or {}
 
 			local accentBar = new("Frame", {
 				Name = "AccentBar",
@@ -9434,23 +10131,82 @@ end
 				Name = "Subtitle",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 18, 0, 38),
-				Size = UDim2.new(1, -178, 0, 18),
-				Text = entry.isSameSquad and "Already in your fireteam" or "Available for invite",
+				Size = UDim2.new(1, -178, 0, 30),
+				Text = entry.isSameSquad and "Already in your fireteam. Gift, tip, or transfer equipped gear." or "Invite, gift tokens, tip via passes, or transfer equipped gear.",
 				TextColor3 = entry.isSameSquad and Theme.Colors.Muted or Theme.Colors.AccentSoft,
 				TextScaled = false,
 				TextSize = 12,
+				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
 				Font = Theme.Fonts.Body,
 				Parent = card,
 			})
 
 			local buttonText = entry.canInvite and "Invite" or "In Squad"
 			local buttonColor = entry.canInvite and Theme.Colors.AccentWarm or Theme.Colors.Backdrop
-			local button = makeListButton(actionPane, "InviteButton", buttonText, UDim2.new(1, -12, 1, -12), UDim2.new(0, 122, 0, 28), buttonColor)
+			local button = makeListButton(actionPane, "InviteButton", buttonText, UDim2.new(0, 12, 0, 8), UDim2.new(1, -24, 0, 24), buttonColor)
 			button.TextSize = 14
 			setButtonEnabled(button, entry.canInvite and not isRefreshingInvitePlayers, buttonColor)
 			button.MouseButton1Click:Connect(function()
-				requestSendInvite(entry.userId)
+				requestSendInviteFlow(entry.userId, {
+					safeInvoke = safeInvoke,
+					setCurrentSocialMessage = function(value)
+						currentSocialMessage = value
+					end,
+					updateLobbyText = updateLobbyText,
+				})
+			end)
+
+			local tokenGiftButton = makeListButton(actionPane, "TokenGiftButton", "Gift 25T", UDim2.new(0, 12, 0, 38), UDim2.new(0, 58, 0, 22), Theme.Colors.CommandTeal)
+			tokenGiftButton.TextSize = 12
+			setButtonEnabled(tokenGiftButton, not isRefreshingInvitePlayers, Theme.Colors.CommandTeal)
+			tokenGiftButton.MouseButton1Click:Connect(function()
+				socialRequestHandlers.requestGiftTokens(entry.userId, 25)
+			end)
+
+			local tokenGiftLargeButton = makeListButton(actionPane, "TokenGiftLargeButton", "Gift 100T", UDim2.new(1, -70, 0, 38), UDim2.new(0, 58, 0, 22), Theme.Colors.CommandOlive)
+			tokenGiftLargeButton.AnchorPoint = Vector2.new(1, 0)
+			tokenGiftLargeButton.TextSize = 12
+			setButtonEnabled(tokenGiftLargeButton, not isRefreshingInvitePlayers, Theme.Colors.CommandOlive)
+			tokenGiftLargeButton.MouseButton1Click:Connect(function()
+				socialRequestHandlers.requestGiftTokens(entry.userId, 100)
+			end)
+
+			local weaponGiftButton = makeListButton(actionPane, "WeaponGiftButton", "Gift Weapon", UDim2.new(0, 12, 0, 66), UDim2.new(0, 58, 0, 22), Theme.Colors.CommandBlue)
+			weaponGiftButton.TextSize = 12
+			setButtonEnabled(weaponGiftButton, not isRefreshingInvitePlayers, Theme.Colors.CommandBlue)
+			weaponGiftButton.MouseButton1Click:Connect(function()
+				socialRequestHandlers.requestGiftEquippedWeapon(entry.userId)
+			end)
+
+			local skinGiftButton = makeListButton(actionPane, "SkinGiftButton", "Gift Skin", UDim2.new(1, -70, 0, 66), UDim2.new(0, 58, 0, 22), Theme.Colors.AccentWarm)
+			skinGiftButton.AnchorPoint = Vector2.new(1, 0)
+			skinGiftButton.TextSize = 12
+			setButtonEnabled(skinGiftButton, not isRefreshingInvitePlayers, Theme.Colors.AccentWarm)
+			skinGiftButton.MouseButton1Click:Connect(function()
+				socialRequestHandlers.requestGiftEquippedCosmetic(entry.userId)
+			end)
+
+			local tip10Button = makeListButton(actionPane, "Tip10Button", "Tip 10", UDim2.new(0, 12, 0, 94), UDim2.new(0, 38, 0, 22), Color3.fromRGB(114, 172, 116))
+			tip10Button.TextSize = 11
+			setButtonEnabled(tip10Button, not isRefreshingInvitePlayers and type(tipPassIds["10"]) == "number", Color3.fromRGB(114, 172, 116))
+			tip10Button.MouseButton1Click:Connect(function()
+				socialRequestHandlers.requestTipPassPurchase(entry.userId, entry.displayName, tipPassIds["10"], "10 Robux")
+			end)
+
+			local tip50Button = makeListButton(actionPane, "Tip50Button", "Tip 50", UDim2.new(0, 54, 0, 94), UDim2.new(0, 38, 0, 22), Color3.fromRGB(154, 182, 96))
+			tip50Button.TextSize = 11
+			setButtonEnabled(tip50Button, not isRefreshingInvitePlayers and type(tipPassIds["50"]) == "number", Color3.fromRGB(154, 182, 96))
+			tip50Button.MouseButton1Click:Connect(function()
+				socialRequestHandlers.requestTipPassPurchase(entry.userId, entry.displayName, tipPassIds["50"], "50 Robux")
+			end)
+
+			local tip100Button = makeListButton(actionPane, "Tip100Button", "Tip100", UDim2.new(0, 96, 0, 94), UDim2.new(0, 38, 0, 22), Color3.fromRGB(214, 194, 122))
+			tip100Button.TextSize = 11
+			setButtonEnabled(tip100Button, not isRefreshingInvitePlayers and type(tipPassIds["100"]) == "number", Color3.fromRGB(214, 194, 122))
+			tip100Button.MouseButton1Click:Connect(function()
+				socialRequestHandlers.requestTipPassPurchase(entry.userId, entry.displayName, tipPassIds["100"], "100 Robux")
 			end)
 		end
 	end
@@ -9557,7 +10313,28 @@ end
 			button.TextSize = 13
 			setButtonEnabled(button, entry.canClaim and not entry.claimed, buttonColor)
 			button.MouseButton1Click:Connect(function()
-				requestClaimDailyOp(entry.id)
+				requestClaimDailyOpFlow(entry.id, {
+					safeInvoke = safeInvoke,
+					setCurrentSocialMessage = function(value)
+						currentSocialMessage = value
+					end,
+					setDailyOpsValue = setDailyOpsValue,
+					pulseDailyOpReward = function()
+						if ui.Lobby.TokenValue and ui.Lobby.TokenValue.Parent then
+							pulseGuiObject(ui.Lobby.TokenValue.Parent, Theme.Colors.AccentWarm)
+						end
+						if ui.Lobby.SkillSummary then
+							pulseGuiObject(ui.Lobby.SkillSummary, Color3.fromRGB(188, 214, 128))
+						end
+						if ui.Lobby.InventorySkillSummary then
+							pulseGuiObject(ui.Lobby.InventorySkillSummary, Color3.fromRGB(188, 214, 128))
+						end
+						if ui.Lobby.SkillTreeSummary then
+							pulseGuiObject(ui.Lobby.SkillTreeSummary, Color3.fromRGB(188, 214, 128))
+						end
+					end,
+					updateLobbyText = updateLobbyText,
+				})
 			end)
 		end
 	end
@@ -9635,7 +10412,28 @@ end
 		end,
 		enterLoading = enterLoading,
 		enterLobby = enterLobby,
-		requestDailyReward = requestDailyReward,
+		requestDailyReward = function()
+			requestDailyRewardFlow({
+				getIsClaimingDailyReward = function()
+					return isClaimingDailyReward
+				end,
+				setIsClaimingDailyReward = function(value)
+					isClaimingDailyReward = value
+				end,
+				safeInvoke = safeInvoke,
+				setCurrentSocialMessage = function(value)
+					currentSocialMessage = value
+				end,
+				setDailyRewardValue = setDailyRewardValue,
+				pulseTokenValue = function()
+					if ui.Lobby.TokenValue and ui.Lobby.TokenValue.Parent then
+						pulseGuiObject(ui.Lobby.TokenValue.Parent, Theme.Colors.AccentWarm)
+					end
+				end,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
+		refreshShopCatalog = refreshShopCatalog,
 		refreshSquadDirectory = refreshSquadDirectory,
 		setActivePopup = setActivePopup,
 		setCurrentShopStatus = function(value)
@@ -9655,8 +10453,28 @@ end
 		end,
 		openMissionPanel = openMissionPanel,
 		closeMissionPanel = closeMissionPanel,
-		requestDeploy = requestDeploy,
-		requestMapVote = requestMapVote,
+		requestDeploy = function()
+			requestDeployFlow({
+				safeInvoke = safeInvoke,
+				setCurrentDeployStatus = function(value)
+					currentDeployStatus = value
+				end,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
+		requestMapVote = function(optionId)
+			requestMapVoteFlow(optionId, {
+				safeInvoke = safeInvoke,
+				setCurrentDeployStatus = function(value)
+					currentDeployStatus = value
+				end,
+				setCurrentVoteOptionId = function(value)
+					currentVoteOptionId = value
+				end,
+				setLobbyValue = setLobbyValue,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
 		getCurrentInventoryTab = function()
 			return currentInventoryTab
 		end,
@@ -9675,7 +10493,7 @@ end
 		setPendingRespecConfirmation = function(value)
 			pendingRespecConfirmation = value
 		end,
-		requestRespecSkillTree = requestRespecSkillTree,
+		requestRespecSkillTree = progressionRequestHandlers.requestRespecSkillTree,
 		getPendingNpcDialogue = function()
 			return pendingNpcDialogue
 		end,
@@ -9689,8 +10507,34 @@ end
 		getActivePopup = function()
 			return activePopup
 		end,
-		requestWeeklyReward = requestWeeklyReward,
-		requestActivityTransit = requestActivityTransit,
+		requestWeeklyReward = function()
+			requestWeeklyRewardFlow({
+				safeInvoke = safeInvoke,
+				setCurrentSocialMessage = function(value)
+					currentSocialMessage = value
+				end,
+				setWeeklyRewardValue = setWeeklyRewardValue,
+				refreshSubscriptionState = refreshSubscriptionState,
+				pulseWeeklyReward = function(rewardPayload)
+					if ui.Lobby.TokenValue and ui.Lobby.TokenValue.Parent then
+						pulseGuiObject(ui.Lobby.TokenValue.Parent, Color3.fromRGB(180, 154, 86))
+					end
+					if (tonumber(rewardPayload.experience) or 0) > 0 then
+						if ui.Lobby.SkillSummary then
+							pulseGuiObject(ui.Lobby.SkillSummary, Color3.fromRGB(188, 214, 128))
+						end
+						if ui.Lobby.InventorySkillSummary then
+							pulseGuiObject(ui.Lobby.InventorySkillSummary, Color3.fromRGB(188, 214, 128))
+						end
+						if ui.Lobby.SkillTreeSummary then
+							pulseGuiObject(ui.Lobby.SkillTreeSummary, Color3.fromRGB(188, 214, 128))
+						end
+					end
+				end,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
+		requestActivityTransit = socialRequestHandlers.requestActivityTransit,
 		getUiAudioEnabled = function()
 			return uiAudioEnabled
 		end,
@@ -9722,8 +10566,30 @@ end
 			return progression
 		end,
 		setAdminTab = setAdminTab,
-		requestAdminCommand = requestAdminCommand,
-		requestAdminTargetCommand = requestAdminTargetCommand,
+		requestAdminCommand = function(commandRequest)
+			requestAdminCommandFlow(commandRequest, {
+				safeInvoke = safeInvoke,
+				setCurrentAdminStatus = function(value)
+					currentAdminStatus = value
+				end,
+				setProgressionValue = setProgressionValue,
+				applyAdminPanelState = applyAdminPanelState,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
+		requestAdminTargetCommand = function(commandId, extraPayload)
+			requestAdminTargetCommandFlow(commandId, extraPayload, {
+				player = player,
+				getAdminTargetPlayer = getAdminTargetPlayer,
+				safeInvoke = safeInvoke,
+				setCurrentAdminStatus = function(value)
+					currentAdminStatus = value
+				end,
+				setProgressionValue = setProgressionValue,
+				applyAdminPanelState = applyAdminPanelState,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
 		refreshAdminTargets = function()
 			if renderAdminTargetList then
 				renderAdminTargetList()
@@ -9735,17 +10601,61 @@ end
 		setSelectedAdminTargetUserId = function(value)
 			selectedAdminTargetUserId = value
 		end,
-		respondToInvite = respondToInvite,
+		respondToInvite = function(acceptInvite)
+			respondToInviteFlow(acceptInvite, {
+				getPendingInvite = function()
+					return pendingInvite
+				end,
+				setPendingInvite = function(value)
+					pendingInvite = value
+				end,
+				safeInvoke = safeInvoke,
+				setCurrentSocialMessage = function(value)
+					currentSocialMessage = value
+				end,
+				setSquadValue = setSquadValue,
+				refreshSquadDirectory = refreshSquadDirectory,
+				refreshInviteablePlayers = refreshInviteablePlayers,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
 		isPlayerInMission = function()
 			return player:GetAttribute("InMission") == true
 		end,
-		requestLeaveMission = requestLeaveMission,
+		requestLeaveMission = function()
+			requestLeaveMissionFlow({
+				safeInvoke = safeInvoke,
+				setCurrentDeployStatus = function(value)
+					currentDeployStatus = value
+				end,
+				hideResultsPopup = hideResultsPopup,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
 		setPendingResults = function(value)
 			pendingResults = value
 		end,
 		hideResultsPopup = hideResultsPopup,
-		requestLeaveSquad = requestLeaveSquad,
-		requestSetSquadPrivacy = requestSetSquadPrivacy,
+		requestLeaveSquad = function()
+			requestLeaveSquadFlow({
+				safeInvoke = safeInvoke,
+				setCurrentSocialMessage = function(value)
+					currentSocialMessage = value
+				end,
+				setSquadValue = setSquadValue,
+				refreshSquadDirectory = refreshSquadDirectory,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
+		requestSetSquadPrivacy = function(isPrivate)
+			requestSetSquadPrivacyFlow(isPrivate, {
+				safeInvoke = safeInvoke,
+				setCurrentSocialMessage = function(value)
+					currentSocialMessage = value
+				end,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
 		isSquadLocked = function()
 			return player:GetAttribute("SquadLocked") == true
 		end,
@@ -9777,11 +10687,32 @@ end
 		isInMission = function()
 			return player:GetAttribute("InMission") == true
 		end,
-		requestDuel = requestDuel,
+		requestDuel = function(action)
+			requestDuelFlow(action, {
+				safeInvoke = safeInvoke,
+				setCurrentSocialMessage = function(value)
+					currentSocialMessage = value
+				end,
+				updateLobbyText = updateLobbyText,
+			})
+		end,
 		openStationPanel = openStationPanel,
-		showPremiumUnlockBanner = showPremiumUnlockBanner,
+		showPremiumUnlockBanner = function(titleText, bodyText, accentColor, chipText)
+			premiumUnlockBannerNonce = renderPremiumUnlockBanner(
+				ui,
+				premiumUnlockBannerNonce,
+				titleText,
+				bodyText,
+				accentColor,
+				chipText,
+				playUiSound,
+				pulseGuiObject
+			)
+		end,
 		playUiSound = playUiSound,
-		refreshEntitlements = refreshEntitlements,
+		refreshEntitlements = function()
+			refreshEntitlementsFlow(safeInvoke, setProgressionValue)
+		end,
 		pulsePremiumStatus = function(color)
 			if ui and ui.Lobby then
 				if ui.Lobby.SubscriptionValue then
@@ -9792,6 +10723,7 @@ end
 				end
 			end
 		end,
+		pendingTipPurchases = pendingTipPurchases,
 		getPromptTween = function()
 			return promptTween
 		end,

@@ -329,6 +329,34 @@ function ServerSystems.start()
 		end
 		return squadService:SendInvite(player, targetUserId)
 	end)
+	remotes:SetFunctionHandler(RemoteNames.Functions.GiftTokensToPlayer, function(player, targetUserId, amount)
+		if not guardRequest(player, "GiftTokensToPlayer", 4, 4) then
+			return false, "rate_limited"
+		end
+		local target = game:GetService("Players"):GetPlayerByUserId(tonumber(targetUserId) or -1)
+		if not target then
+			return false, "invalid_target"
+		end
+		local success, transferredOrCode = tokenService:TransferTokens(player, target, amount or 25, "player_token_gift")
+		if not success then
+			return false, transferredOrCode
+		end
+		return true, transferredOrCode, inventoryService:BuildProgressionPayload(player)
+	end)
+	remotes:SetFunctionHandler(RemoteNames.Functions.GiftLoadoutItemToPlayer, function(player, targetUserId, itemId)
+		if not guardRequest(player, "GiftLoadoutItemToPlayer", 4, 4) then
+			return false, "rate_limited"
+		end
+		local target = game:GetService("Players"):GetPlayerByUserId(tonumber(targetUserId) or -1)
+		if not target then
+			return false, "invalid_target"
+		end
+		local success, itemNameOrCode = inventoryService:TransferItem(player, target, itemId)
+		if not success then
+			return false, itemNameOrCode, inventoryService:BuildProgressionPayload(player)
+		end
+		return true, itemNameOrCode, inventoryService:BuildProgressionPayload(player)
+	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.RespondToSquadInvite, function(player, fromSquadId, acceptInvite)
 		if not guardRequest(player, "RespondToSquadInvite", 4, 6) then
 			return false, "rate_limited"

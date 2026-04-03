@@ -3,6 +3,27 @@ local Players = game:GetService("Players")
 local SquadService = {}
 SquadService.__index = SquadService
 
+local function getTipPassIdsForPlayer(player)
+	local tipPassIds = {}
+	local attributeNamesByAmount = {
+		["10"] = { "TipPass10", "TipGamePass10", "Tip10PassId" },
+		["50"] = { "TipPass50", "TipGamePass50", "Tip50PassId" },
+		["100"] = { "TipPass100", "TipGamePass100", "Tip100PassId" },
+	}
+
+	for amountKey, attributeNames in pairs(attributeNamesByAmount) do
+		for _, attributeName in ipairs(attributeNames) do
+			local passId = tonumber(player:GetAttribute(attributeName))
+			if passId and passId > 0 then
+				tipPassIds[amountKey] = math.floor(passId)
+				break
+			end
+		end
+	end
+
+	return tipPassIds
+end
+
 function SquadService.new(context)
 	local self = setmetatable({}, SquadService)
 	self._squadConfig = context.SquadConfig
@@ -296,6 +317,7 @@ function SquadService:GetInviteablePlayers(requestingPlayer)
 				squadId = targetSquad and targetSquad.id or nil,
 				canInvite = not isSameSquad,
 				isSameSquad = isSameSquad == true,
+				tipPassIds = getTipPassIdsForPlayer(target),
 			})
 		end
 	end

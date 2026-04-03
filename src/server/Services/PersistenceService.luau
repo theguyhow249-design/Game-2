@@ -406,6 +406,21 @@ function PersistenceService:UnlockItem(player, itemId)
 	self:_markDirty(player.UserId)
 end
 
+function PersistenceService:RemoveUnlock(player, itemId)
+	if not player or type(itemId) ~= "string" or itemId == "" then
+		return false
+	end
+
+	local unlocks = self:GetProfile(player).unlocks
+	if unlocks[itemId] ~= true then
+		return false
+	end
+
+	unlocks[itemId] = nil
+	self:_markDirty(player.UserId)
+	return true
+end
+
 function PersistenceService:GetEquippedWeapon(player)
 	return self:GetProfile(player).equippedWeapon
 end
@@ -446,6 +461,25 @@ function PersistenceService:AddWeaponExperience(player, weaponId, amount)
 	self:_markDirty(player.UserId)
 end
 
+function PersistenceService:HasClaimedReward(player, rewardId)
+	if type(rewardId) ~= "string" or rewardId == "" then
+		return false
+	end
+	local profile = self:GetProfile(player)
+	profile.claimedRewards = profile.claimedRewards or {}
+	return profile.claimedRewards[rewardId] == true
+end
+
+function PersistenceService:MarkRewardClaimed(player, rewardId)
+	if type(rewardId) ~= "string" or rewardId == "" then
+		return
+	end
+	local profile = self:GetProfile(player)
+	profile.claimedRewards = profile.claimedRewards or {}
+	profile.claimedRewards[rewardId] = true
+	self:_markDirty(player.UserId)
+end
+
 function PersistenceService:IncrementStat(player, statName, amount)
 	local profile = self:GetProfile(player)
 	local stats = self:_normalizeStats(profile)
@@ -455,6 +489,20 @@ function PersistenceService:IncrementStat(player, statName, amount)
 	stats.weekly[statName] = math.max(0, math.floor((stats.weekly[statName] or 0) + delta))
 	stats.daily[statName] = math.max(0, math.floor((stats.daily[statName] or 0) + delta))
 	self:_markDirty(player.UserId)
+end
+
+function PersistenceService:SetStat(player, statName, amount, syncWindows)
+	local profile = self:GetProfile(player)
+	local stats = self:_normalizeStats(profile)
+	local value = math.max(0, math.floor(amount or 0))
+	stats.allTime[statName] = value
+	if syncWindows == true then
+		stats.monthly[statName] = value
+		stats.weekly[statName] = value
+		stats.daily[statName] = value
+	end
+	self:_markDirty(player.UserId)
+	return value
 end
 
 function PersistenceService:GetStats(player)
