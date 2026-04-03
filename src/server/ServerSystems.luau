@@ -244,9 +244,30 @@ function ServerSystems.start()
 	instanceDeploymentService:Start()
 	adminService:Start()
 	nameplateService:Start()
+	task.defer(function()
+		for _, delaySeconds in ipairs({ 1, 3, 6 }) do
+			task.wait(delaySeconds)
+			flowService:ForceLobbySpawnSync()
+		end
+	end)
 
 	local function guardRequest(player, actionKey, limit, windowSeconds)
 		return antiExploitService:AllowRequest(player, actionKey, limit, windowSeconds)
+	end
+
+	local function makeDeployStatus(code)
+		if code == "insufficient_tokens" then
+			return "Need more deploy tokens to start."
+		elseif code == "busy" then
+			return "Squad launch already in progress."
+		elseif code == "mission_unavailable" then
+			return "Mission staging is offline right now."
+		elseif code == "missing_squad" then
+			return "No active squad found."
+		elseif code == "rate_limited" then
+			return "Deploy request is cooling down."
+		end
+		return ("Unable to deploy right now. [%s]"):format(tostring(code))
 	end
 
 	remotes:SetFunctionHandler(RemoteNames.Functions.GetBootstrapData, function(player)
@@ -331,6 +352,45 @@ function ServerSystems.start()
 			return false, "rate_limited"
 		end
 		return flowService:RequestDeployment(player)
+	end)
+	local deployRequestedEvent = remotes:GetEvent(RemoteNames.Events.DeployRequested)
+	if deployRequestedEvent then
+		deployRequestedEvent.OnServerEvent:Connect(function(player)
+			if not player or player.Parent ~= game:GetService("Players") then
+				return
+			end
+			if not guardRequest(player, "RequestDeployEvent", 2, 2.5) then
+				remotes:FireEventFor(player, RemoteNames.Events.DeployStateChanged, {
+					userId = player.UserId,
+					stage = "Lobby",
+					status = "Deploy request is cooling down.",
+				})
+				return
+			end
+			local success, code = flowService:RequestDeployment(player)
+			if not success then
+				remotes:FireEventFor(player, RemoteNames.Events.DeployStateChanged, {
+					userId = player.UserId,
+					stage = "Lobby",
+					status = makeDeployStatus(code),
+				})
+			end
+		end)
+	end
+	remotes:SetFunctionHandler(RemoteNames.Functions.RequestActivityTransit, function(player, activityKey)
+		if not guardRequest(player, "RequestActivityTransit", 4, 1.5) then
+			return false, "rate_limited"
+		end
+		return activityService:RequestTransit(player, activityKey)
+	end)
+	remotes:SetFunctionHandler(RemoteNames.Functions.LeaveMission, function(player)
+		if not guardRequest(player, "LeaveMission", 2, 3) then
+			return false, "rate_limited"
+		end
+		if player:GetAttribute("InMission") ~= true then
+			return false, "not_in_mission"
+		end
+		return missionService:AbortMissionForPlayer(player, "Returning to bunker.")
 	end)
 	remotes:SetFunctionHandler(RemoteNames.Functions.RequestMapVote, function(player, optionId)
 		if not guardRequest(player, "RequestMapVote", 5, 2) then

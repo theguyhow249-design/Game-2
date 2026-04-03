@@ -30,6 +30,8 @@ local TokenEconomy = {
 			EndDay = 31,
 			GlobalDropBonus = 1.5,
 			FeaturedDropBonus = 4,
+			MissionRewardBonus = 2,
+			MissionExperienceBonus = 6,
 		},
 		{
 			Id = "harvest_hunt",
@@ -41,6 +43,8 @@ local TokenEconomy = {
 			EndDay = 15,
 			GlobalDropBonus = 1,
 			FeaturedDropBonus = 5,
+			MissionRewardBonus = 3,
+			MissionExperienceBonus = 4,
 		},
 		{
 			Id = "winter_siege",
@@ -52,6 +56,8 @@ local TokenEconomy = {
 			EndDay = 20,
 			GlobalDropBonus = 2,
 			FeaturedDropBonus = 6,
+			MissionRewardBonus = 4,
+			MissionExperienceBonus = 8,
 		},
 	},
 	ShopCatalog = {
@@ -157,6 +163,15 @@ local TokenEconomy = {
 				DropChance = 7,
 			},
 			{
+				Id = "weapon_siege_revolver",
+				DisplayName = "Siege Revolver",
+				Description = "Heavy-caliber hand cannon built for precise burst damage and slow deliberate reloads.",
+				CostType = "Tokens",
+				Rarity = "Epic",
+				Cost = 44,
+				DropChance = 4,
+			},
+			{
 				Id = "weapon_patrol_carbine",
 				DisplayName = "Patrol Carbine",
 				Description = "Balanced bunker-issued rifle with stronger sustained ranged pressure.",
@@ -175,6 +190,15 @@ local TokenEconomy = {
 				DropChance = 3,
 			},
 			{
+				Id = "weapon_guardian_carbine",
+				DisplayName = "Guardian Carbine",
+				Description = "Hold-line rifle with steadier recoil and a deeper magazine than precision carbines.",
+				CostType = "Tokens",
+				Rarity = "Rare",
+				Cost = 40,
+				DropChance = 6,
+			},
+			{
 				Id = "weapon_street_smg",
 				DisplayName = "Street SMG",
 				Description = "Fast-firing close-quarters weapon for crowd control and panic clears.",
@@ -182,6 +206,15 @@ local TokenEconomy = {
 				Rarity = "Rare",
 				Cost = 42,
 				DropChance = 6,
+			},
+			{
+				Id = "weapon_compact_smg",
+				DisplayName = "Compact SMG",
+				Description = "Very fast room-clearer with a huge mag and weaker reach outside close fights.",
+				CostType = "Tokens",
+				Rarity = "Uncommon",
+				Cost = 36,
+				DropChance = 9,
 			},
 			{
 				Id = "weapon_fire_axe",
@@ -200,6 +233,15 @@ local TokenEconomy = {
 				Rarity = "Epic",
 				Cost = 38,
 				DropChance = 4,
+			},
+			{
+				Id = "weapon_scattershot",
+				DisplayName = "Scattershot",
+				Description = "Fast breach shotgun with a larger tube and lighter individual pellet hits.",
+				CostType = "Tokens",
+				Rarity = "Rare",
+				Cost = 41,
+				DropChance = 5,
 			},
 			{
 				Id = "weapon_vernal_carbine",

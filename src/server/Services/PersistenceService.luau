@@ -355,6 +355,11 @@ function PersistenceService:BindPlayer(player)
 end
 
 function PersistenceService:GetProfile(player)
+	if not player or type(player.UserId) ~= "number" then
+		warn("[PersistenceService] GetProfile called without a valid player. Returning a temporary default profile.")
+		return self:_defaultProfile()
+	end
+
 	if not self._profiles[player.UserId] then
 		self:BindPlayer(player)
 	end

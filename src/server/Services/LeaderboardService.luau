@@ -119,6 +119,74 @@ local function monoPadRight(value, width)
 	return text .. string.rep(" ", width - #text)
 end
 
+local function getLobbyPlaza(lobbyName)
+	local lobbyRoot = Workspace:FindFirstChild(lobbyName)
+	if not lobbyRoot then
+		for _, child in ipairs(Workspace:GetChildren()) do
+			if child:GetAttribute("WorldType") == "LobbyHub" then
+				lobbyRoot = child
+				break
+			end
+		end
+	end
+	if not lobbyRoot then
+		return nil
+	end
+	if lobbyRoot:IsA("Model") then
+		return lobbyRoot
+	end
+	return lobbyRoot:FindFirstChildWhichIsA("Model")
+end
+
+local function getLeaderboardMonument(lobbyName)
+	local plaza = getLobbyPlaza(lobbyName)
+	return plaza and plaza:FindFirstChild("LeaderboardMonument", true)
+end
+
+local function getLeaderboardBoardFace(lobbyName, boardName)
+	local monument = getLeaderboardMonument(lobbyName)
+	if not monument then
+		return nil
+	end
+
+	if boardName and boardName ~= "" then
+		return monument:FindFirstChild(boardName, true)
+	end
+
+	return monument:FindFirstChild("MasterBoard", true)
+		or monument:FindFirstChild("LeaderboardBoard", true)
+		or monument:FindFirstChild("BoardFace", true)
+		or monument:FindFirstChild("LeaderboardBoard", true)
+end
+
+local function getLeaderboardBoardFrame(lobbyName, boardName)
+	local boardFace = getLeaderboardBoardFace(lobbyName, boardName)
+	local boardGui = boardFace and boardFace:FindFirstChild("BoardGui")
+	return boardGui and boardGui:FindFirstChild("Frame")
+end
+
+local CATEGORY_BOARD_NAMES = {
+	Levels = { "Leaderboard (Levels)" },
+	Runs = { "Leaderboard (Runs)" },
+	Kills = { "Leaderboard (Kills)", "leaderboard (Kills)" },
+}
+
+local function getCategoryBoardFrame(lobbyName, categoryKey)
+	local plaza = getLobbyPlaza(lobbyName)
+	if not plaza then
+		return nil
+	end
+	for _, boardName in ipairs(CATEGORY_BOARD_NAMES[categoryKey] or {}) do
+		local board = plaza:FindFirstChild(boardName, true)
+		local gui = board and board:FindFirstChild("BoardGui")
+		local frame = gui and gui:FindFirstChild("Frame")
+		if frame then
+			return frame
+		end
+	end
+	return nil
+end
+
 local function monoPadLeft(value, width)
 	local text = tostring(value or "")
 	if #text >= width then
@@ -237,12 +305,7 @@ function LeaderboardService:_formatBoardLines(entries, key, formatter)
 end
 
 function LeaderboardService:_setBoardColumnText(columnName, text)
-	local lobbyRoot = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
-	local plaza = lobbyRoot and lobbyRoot:FindFirstChild("OpenSkyLobby")
-	local monument = plaza and plaza:FindFirstChild("LeaderboardMonument")
-	local boardFace = monument and monument:FindFirstChild("BoardFace")
-	local boardGui = boardFace and boardFace:FindFirstChild("BoardGui")
-	local frame = boardGui and boardGui:FindFirstChild("Frame")
+	local frame = getLeaderboardBoardFrame(self._gameFlowConfig.LobbyName)
 	local column = frame and frame:FindFirstChild(columnName .. "Column")
 	local body = column and column:FindFirstChild("Body")
 	if body and body:IsA("TextLabel") then
@@ -251,12 +314,7 @@ function LeaderboardService:_setBoardColumnText(columnName, text)
 end
 
 function LeaderboardService:_setBoardHeaderText(text)
-	local lobbyRoot = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
-	local plaza = lobbyRoot and lobbyRoot:FindFirstChild("OpenSkyLobby")
-	local monument = plaza and plaza:FindFirstChild("LeaderboardMonument")
-	local boardFace = monument and monument:FindFirstChild("BoardFace")
-	local boardGui = boardFace and boardFace:FindFirstChild("BoardGui")
-	local frame = boardGui and boardGui:FindFirstChild("Frame")
+	local frame = getLeaderboardBoardFrame(self._gameFlowConfig.LobbyName)
 	local header = frame and frame:FindFirstChild("Header")
 	if header and header:IsA("TextLabel") then
 		header.Text = text
@@ -264,12 +322,7 @@ function LeaderboardService:_setBoardHeaderText(text)
 end
 
 function LeaderboardService:_setWorldBoardText(boardName, headerText, subheaderText, bodyText)
-	local lobbyRoot = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
-	local plaza = lobbyRoot and lobbyRoot:FindFirstChild("OpenSkyLobby")
-	local monument = plaza and plaza:FindFirstChild("LeaderboardMonument")
-	local boardFace = monument and monument:FindFirstChild(boardName)
-	local boardGui = boardFace and boardFace:FindFirstChild("BoardGui")
-	local frame = boardGui and boardGui:FindFirstChild("Frame")
+	local frame = getLeaderboardBoardFrame(self._gameFlowConfig.LobbyName, boardName)
 	local header = frame and frame:FindFirstChild("Header")
 	local subheader = frame and frame:FindFirstChild("Subheader")
 	local body = frame and frame:FindFirstChild("Body")
@@ -291,13 +344,26 @@ function LeaderboardService:_setWorldBoardText(boardName, headerText, subheaderT
 	end
 end
 
+function LeaderboardService:_setCategoryBoardText(categoryKey, headerText, subheaderText, bodyText)
+	local frame = getCategoryBoardFrame(self._gameFlowConfig.LobbyName, categoryKey)
+	local header = frame and frame:FindFirstChild("Header")
+	local subheader = frame and frame:FindFirstChild("Subheader")
+	local body = frame and frame:FindFirstChild("Body")
+	if header and header:IsA("TextLabel") then
+		header.Text = headerText
+	end
+	if subheader and subheader:IsA("TextLabel") then
+		subheader.Text = subheaderText
+	end
+	if body and body:IsA("TextLabel") then
+		body.Text = bodyText
+	end
+end
+
 function LeaderboardService:_getWorldBoardFrame()
-	local lobbyRoot = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
-	local plaza = lobbyRoot and lobbyRoot:FindFirstChild("OpenSkyLobby")
-	local monument = plaza and plaza:FindFirstChild("LeaderboardMonument")
-	local boardFace = monument and monument:FindFirstChild("MasterBoard")
-	local boardGui = boardFace and boardFace:FindFirstChild("BoardGui")
-	return boardGui and boardGui:FindFirstChild("Frame")
+	return getLeaderboardBoardFrame(self._gameFlowConfig.LobbyName, "MasterBoard")
+		or getLeaderboardBoardFrame(self._gameFlowConfig.LobbyName, "LeaderboardBoard")
+		or getLeaderboardBoardFrame(self._gameFlowConfig.LobbyName)
 end
 
 function LeaderboardService:_hasWorldBoardFrame()
@@ -686,17 +752,22 @@ function LeaderboardService:_refreshGlobalWorldBoards()
 end
 
 function LeaderboardService:_bindWorldBoardControls()
-	if self._worldControlsBound then
-		return
-	end
-
-	local lobbyRoot = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
-	local plaza = lobbyRoot and lobbyRoot:FindFirstChild("OpenSkyLobby")
-	local monument = plaza and plaza:FindFirstChild("LeaderboardMonument")
-	local controls = monument and monument:FindFirstChild("Controls")
+	local monument = getLeaderboardMonument(self._gameFlowConfig.LobbyName)
+	local controls = monument and monument:FindFirstChild("Controls", true)
 	if not controls then
 		return
 	end
+
+	if self._worldControlsBound and self._worldControlsInstance == controls then
+		return
+	end
+
+	for _, connection in ipairs(self._worldControlConnections) do
+		connection:Disconnect()
+	end
+	self._worldControlConnections = {}
+	self._worldControlsBound = false
+	self._worldControlsInstance = controls
 
 	local bindings = {
 		AllTimeButton = function()
@@ -735,7 +806,7 @@ function LeaderboardService:_bindWorldBoardControls()
 	}
 
 	for partName, callback in pairs(bindings) do
-		local button = controls:FindFirstChild(partName)
+		local button = controls:FindFirstChild(partName, true)
 		local detector = button and button:FindFirstChildOfClass("ClickDetector")
 		local prompt = button and button:FindFirstChild("Prompt")
 		if detector then
@@ -748,20 +819,31 @@ function LeaderboardService:_bindWorldBoardControls()
 		end
 	end
 
+	for _, prompt in ipairs(monument:GetDescendants()) do
+		if prompt:IsA("ProximityPrompt") then
+			local parentName = prompt.Parent and prompt.Parent.Name
+			local callback = parentName and bindings[parentName]
+			if callback and prompt.Name == "Prompt" then
+				table.insert(self._worldControlConnections, prompt.Triggered:Connect(function()
+					callback()
+				end))
+			end
+		end
+	end
+
 	self._worldControlsBound = true
 end
 
 function LeaderboardService:RefreshWorldBoard(windowName)
-	if not self:_hasWorldBoardFrame() then
-		return
+	self:_bindWorldBoardControls()
+	for _, player in ipairs(Players:GetPlayers()) do
+		self:_applyPlayerAttributes(player)
 	end
-
 	local entries = self:_buildEntries()
 	self:_applyTopRanks(entries)
 	local targetWindow = WINDOW_CONFIG[windowName] and windowName or (self._currentWindow or "allTime")
 	self._currentWindow = targetWindow
 	local headerLabel = WINDOW_CONFIG[targetWindow].label
-	self:_setBoardHeaderText(("OUTPOST LEADERBOARD • %s"):format(headerLabel))
 
 	local runsKey = targetWindow == "daily" and "dailyRuns"
 		or (targetWindow == "weekly" and "weeklyRuns"
@@ -770,15 +852,28 @@ function LeaderboardService:RefreshWorldBoard(windowName)
 		or (targetWindow == "weekly" and "weeklyKills"
 		or (targetWindow == "monthly" and "monthlyKills" or "kills"))
 
-	self:_setBoardColumnText("Levels", self:_formatBoardLines(self:_sortEntries(entries, "level"), "level", function(value)
+	local levelsText = self:_formatBoardLines(self:_sortEntries(entries, "level"), "level", function(value)
 		return ("Level %d"):format(value)
-	end))
-	self:_setBoardColumnText("Runs", self:_formatBoardLines(self:_sortEntries(entries, runsKey), runsKey, function(value)
+	end)
+	local runsText = self:_formatBoardLines(self:_sortEntries(entries, runsKey), runsKey, function(value)
 		return ("%d run%s"):format(value, value == 1 and "" or "s")
-	end))
-	self:_setBoardColumnText("Kills", self:_formatBoardLines(self:_sortEntries(entries, killsKey), killsKey, function(value)
+	end)
+	local killsText = self:_formatBoardLines(self:_sortEntries(entries, killsKey), killsKey, function(value)
 		return ("%d kill%s"):format(value, value == 1 and "" or "s")
-	end))
+	end)
+
+	self:_setCategoryBoardText("Levels", "LEVELS", headerLabel, levelsText)
+	self:_setCategoryBoardText("Runs", "RUNS", headerLabel, runsText)
+	self:_setCategoryBoardText("Kills", "KILLS", headerLabel, killsText)
+
+	if not self:_hasWorldBoardFrame() then
+		return
+	end
+
+	self:_setBoardHeaderText(("OUTPOST LEADERBOARD • %s"):format(headerLabel))
+	self:_setBoardColumnText("Levels", levelsText)
+	self:_setBoardColumnText("Runs", runsText)
+	self:_setBoardColumnText("Kills", killsText)
 	self:_refreshGlobalWorldBoards()
 end
 

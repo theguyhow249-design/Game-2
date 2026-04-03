@@ -11,6 +11,17 @@ local RING_RADIUS = 15
 local RING_OUT_GRACE = 2.5
 local DUEL_COOLDOWN = 8
 
+local DUEL_PART_ALIASES = {
+	RedCornerPad = { "RedCornerPad", "RedCorner", "RedPad", "CornerRed", "RedStart" },
+	BlueCornerPad = { "BlueCornerPad", "BlueCorner", "BluePad", "CornerBlue", "BlueStart" },
+	RingPlatform = { "RingPlatform", "Platform", "CenterPad", "ArenaFloor", "Floor" },
+	LobbyReturnAnchor = { "LobbyReturnAnchor", "ReturnPad", "ReturnAnchor", "ExitPad" },
+}
+
+local function normalizeName(value)
+	return string.lower((tostring(value or ""):gsub("[%s%p_]+", "")))
+end
+
 function DuelService.new(context)
 	local self = setmetatable({}, DuelService)
 	self._gameFlowConfig = context.GameFlowConfig
@@ -51,13 +62,22 @@ function DuelService:_notify(target, message)
 end
 
 function DuelService:_getLobbyRoot()
-	return Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
+	local lobby = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
+	if lobby then
+		return lobby
+	end
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if child:GetAttribute("WorldType") == "LobbyHub" then
+			return child
+		end
+	end
+	return Workspace:FindFirstChild("OpenSkyLobby")
 end
 
 function DuelService:_getDuelRing()
 	local lobby = self:_getLobbyRoot()
-	local plaza = lobby and lobby:FindFirstChild("OpenSkyLobby")
-	local ring = plaza and plaza:FindFirstChild("DuelRing")
+	local plaza = lobby and (lobby:IsA("Model") and lobby or (lobby:FindFirstChild("OpenSkyLobby") or lobby:FindFirstChildWhichIsA("Model")))
+	local ring = plaza and plaza:FindFirstChild("DuelRing", true)
 	if ring and ring:IsA("Model") then
 		return ring
 	end
@@ -66,19 +86,38 @@ end
 
 function DuelService:_getDuelPart(name)
 	local ring = self:_getDuelRing()
-	local part = ring and ring:FindFirstChild(name)
-	if part and part:IsA("BasePart") then
-		return part
+	local aliases = DUEL_PART_ALIASES[name] or { name }
+	for _, alias in ipairs(aliases) do
+		local part = ring and ring:FindFirstChild(alias, true)
+		if part and part:IsA("BasePart") then
+			return part
+		end
+	end
+
+	if ring then
+		for _, descendant in ipairs(ring:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				local descendantName = normalizeName(descendant.Name)
+				for _, alias in ipairs(aliases) do
+					local aliasName = normalizeName(alias)
+					if descendantName == aliasName or string.find(descendantName, aliasName, 1, true) then
+						return descendant
+					end
+				end
+			end
+		end
 	end
 	return nil
 end
 
 function DuelService:_getLobbyReturnAnchor()
 	local lobby = self:_getLobbyRoot()
-	local plaza = lobby and lobby:FindFirstChild("OpenSkyLobby")
-	local part = plaza and plaza:FindFirstChild("LobbyReturnAnchor")
-	if part and part:IsA("BasePart") then
-		return part
+	local plaza = lobby and (lobby:IsA("Model") and lobby or (lobby:FindFirstChild("OpenSkyLobby") or lobby:FindFirstChildWhichIsA("Model")))
+	for _, alias in ipairs(DUEL_PART_ALIASES.LobbyReturnAnchor) do
+		local part = plaza and plaza:FindFirstChild(alias, true)
+		if part and part:IsA("BasePart") then
+			return part
+		end
 	end
 	local fallback = lobby and lobby:FindFirstChild("LobbySpawn")
 	if fallback and fallback:IsA("BasePart") then
@@ -237,6 +276,10 @@ function DuelService:_startMatch()
 	local redCorner = self:_getDuelPart("RedCornerPad")
 	local blueCorner = self:_getDuelPart("BlueCornerPad")
 	local platform = self:_getDuelPart("RingPlatform")
+	local ring = self:_getDuelRing()
+	if not platform and ring and ring.PrimaryPart then
+		platform = ring.PrimaryPart
+	end
 	if not redCorner or not blueCorner or not platform then
 		self:_notify({ redPlayer, bluePlayer }, "Duel ring is offline.")
 		return

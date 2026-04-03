@@ -697,11 +697,18 @@ function AdminService:_spawnSpecialZombie(kind)
 	local scaledStats = {
 		health = math.max(40, math.floor(baseHealth * 1.2)),
 		damage = math.max(6, math.floor(baseDamage * 1.1)),
-		spawnCount = kind == "runner" and 3 or 4,
+		spawnCount = (kind == "runner" and 3) or ((kind == "spitter" or kind == "bruiser" or kind == "exploder") and 6) or (kind == "artillery" and 8) or 4,
 	}
+	if kind == "warden_hulk" then
+		scaledStats.health = math.max(120, math.floor(baseHealth * 2.6))
+		scaledStats.damage = math.max(12, math.floor(baseDamage * 1.8))
+		scaledStats.spawnCount = 1
+		scaledStats.forceBoss = true
+		scaledStats.bossProfileKey = "warden_hulk"
+	end
 
-	local index = kind == "runner" and 3 or 4
-	local spawnOffset = kind == "runner" and Vector3.new(10, 0, 4) or Vector3.new(-10, 0, 4)
+	local index = (kind == "runner" and 3) or ((kind == "spitter" or kind == "bruiser" or kind == "exploder") and 6) or (kind == "artillery" and 8) or (kind == "warden_hulk" and 1) or 4
+	local spawnOffset = kind == "runner" and Vector3.new(10, 0, 4) or (kind == "spitter" and Vector3.new(0, 0, 12) or (kind == "exploder" and Vector3.new(12, 0, 10) or (kind == "artillery" and Vector3.new(16, 0, -4)) or (kind == "bruiser" and Vector3.new(-14, 0, 2) or (kind == "warden_hulk" and Vector3.new(-6, 0, 14) or Vector3.new(-10, 0, 4)))))
 	self._missionService._activeMission.remainingZombies += 1
 	self._missionService:_spawnZombie(anchor.Position + spawnOffset, scaledStats, index)
 	return true
@@ -717,6 +724,13 @@ function AdminService:_giveAllDrops(players)
 		total += type(drops) == "table" and #drops or 0
 	end
 	return total
+end
+
+function AdminService:_forceMissionPreview(scenarioId, layoutId, modifierId)
+	if not self._flowService or not self._flowService.ForceMissionPreview then
+		return false, "missing_flow_service"
+	end
+	return self._flowService:ForceMissionPreview(scenarioId, layoutId, modifierId or "modifier_standard_ops")
 end
 
 function AdminService:_requireRole(player, role)
@@ -995,6 +1009,16 @@ function AdminService:Execute(player, request)
 			return false, reason
 		end
 		return true, self:_makeResponse("Spawned a brute near the mission objective.")
+	elseif command == "spawn_bruiser" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local success, reason = self:_spawnSpecialZombie("bruiser")
+		if not success then
+			return false, reason
+		end
+		return true, self:_makeResponse("Spawned a bruiser near the mission objective.")
 	elseif command == "spawn_runner" then
 		local okay, code = self:_requireRole(player, "admin")
 		if not okay then
@@ -1005,6 +1029,46 @@ function AdminService:Execute(player, request)
 			return false, reason
 		end
 		return true, self:_makeResponse("Spawned a runner near the mission objective.")
+	elseif command == "spawn_spitter" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local success, reason = self:_spawnSpecialZombie("spitter")
+		if not success then
+			return false, reason
+		end
+		return true, self:_makeResponse("Spawned a spitter near the mission objective.")
+	elseif command == "spawn_exploder" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local success, reason = self:_spawnSpecialZombie("exploder")
+		if not success then
+			return false, reason
+		end
+		return true, self:_makeResponse("Spawned an exploder near the mission objective.")
+	elseif command == "spawn_artillery" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local success, reason = self:_spawnSpecialZombie("artillery")
+		if not success then
+			return false, reason
+		end
+		return true, self:_makeResponse("Spawned an artillery fiend near the mission objective.")
+	elseif command == "spawn_warden_hulk" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local success, reason = self:_spawnSpecialZombie("warden_hulk")
+		if not success then
+			return false, reason
+		end
+		return true, self:_makeResponse("Spawned Warden Hulk near the mission objective.")
 	elseif command == "give_all_drops" then
 		local okay, code = self:_requireRole(player, "admin")
 		if not okay then
@@ -1012,6 +1076,36 @@ function AdminService:Execute(player, request)
 		end
 		local unlocked = self:_giveAllDrops(self:_getActiveParty(player))
 		return true, self:_makeResponse(("Forced %d loot unlock%s across the active squad."):format(unlocked, unlocked == 1 and "" or "s"))
+	elseif command == "force_power_relay" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local success, reason = self:_forceMissionPreview("directive_power_relay", "arena_power_relay", "modifier_standard_ops")
+		if not success then
+			return false, reason
+		end
+		return true, self:_makeResponse("Queued Power Relay as the next deploy route.")
+	elseif command == "force_evac_tunnel" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local success, reason = self:_forceMissionPreview("directive_evac_tunnel", "arena_evac_tunnel", "modifier_standard_ops")
+		if not success then
+			return false, reason
+		end
+		return true, self:_makeResponse("Queued Evac Tunnel as the next deploy route.")
+	elseif command == "force_blacksite_sweep" then
+		local okay, code = self:_requireRole(player, "admin")
+		if not okay then
+			return false, code
+		end
+		local success, reason = self:_forceMissionPreview("directive_commander_hunt", "arena_blacksite_sweep", "modifier_standard_ops")
+		if not success then
+			return false, reason
+		end
+		return true, self:_makeResponse("Queued Blacksite Sweep as the next deploy route.")
 	end
 
 	return false, "unknown_command"

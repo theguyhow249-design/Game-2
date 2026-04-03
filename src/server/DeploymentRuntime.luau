@@ -10,12 +10,14 @@ local function findMissionSpawn()
 		return nil
 	end
 
-	local mission = root:FindFirstChild("MissionStaging")
+	local mission = root:FindFirstChild("MissionStaging", true)
 	if not mission then
 		return nil
 	end
 
-	return mission:FindFirstChild("MissionSpawn")
+	return mission:FindFirstChild("MissionSpawn", true)
+		or mission:FindFirstChild("DropMarker", true)
+		or mission:FindFirstChild("Base", true)
 end
 
 local function getDeploymentOffset(index: number): Vector3
@@ -38,32 +40,49 @@ function DeploymentRuntime.start(serverSystems)
 	flowService:SetDeploymentHandler(function(request)
 		local missionSpawn = findMissionSpawn()
 		local flyInDuration = request.deployPayload.duration or 4
+		if not missionSpawn then
+			warn("[DeploymentRuntime] MissionSpawn is missing. Completing deployment without teleport and skipping mission start.")
+			task.delay(flyInDuration + 0.5, function()
+				if flowService:GetPhase() == "Deployment" then
+					flowService:ResolveDeployment()
+				end
+			end)
+			return
+		end
 
 		task.delay(math.max(0.25, flyInDuration * 0.6), function()
 			if flowService:GetPhase() ~= "Deployment" then
-				return
-			end
-
-			if not missionSpawn then
+				warn(("[DeploymentRuntime] Teleport skipped because phase=%s"):format(tostring(flowService:GetPhase())))
 				return
 			end
 
 			for index, player in ipairs(request.party) do
-				local character = player and player.Character
-				local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-				if rootPart then
-					local offset = getDeploymentOffset(index)
-					character:PivotTo(missionSpawn.CFrame + offset)
-					player:SetAttribute("DeploymentState", "Mission")
+				if player and player.Parent then
+					local character = player and player.Character
+					local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+					if rootPart then
+						local offset = getDeploymentOffset(index)
+						character:PivotTo(missionSpawn.CFrame + offset)
+						player:SetAttribute("DeploymentState", "Mission")
+					end
 				end
 			end
 		end)
 
 		task.delay(flyInDuration + 0.5, function()
 			if flowService:GetPhase() == "Deployment" then
-				flowService:CompleteDeployment()
+				-- Ensure mission service is ready
 				if missionService then
-					missionService:StartMission(request)
+					local success = missionService:StartMission(request)
+					if success then
+						flowService:CompleteDeployment()
+					else
+						warn("[DeploymentRuntime] Mission start failed. Returning players to lobby.")
+						flowService:ReturnPlayersToLobby(request.party, "Mission launch failed")
+					end
+				else
+					warn("[DeploymentRuntime] MissionService is unavailable")
+					flowService:ResolveDeployment()
 				end
 			end
 		end)

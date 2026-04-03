@@ -48,6 +48,10 @@ function ShopService:Purchase(player, request)
 		return false, "missing_item"
 	end
 
+	if category ~= self._tokenEconomy.ShopCategories.DeployTokens and self._inventoryService:IsUnlocked(player, itemId) then
+		return false, "already_owned"
+	end
+
 	local activeEvent = self:GetSeasonalEventState()
 	if item.DropOnly then
 		return false, "drop_only_item"

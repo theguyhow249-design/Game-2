@@ -6,6 +6,25 @@ local remoteNames = RemoteNames.getAllRemoteNames()
 
 local Remotes = {}
 
+local function findRemoteByNameAndClass(container, name, className)
+	if not container then
+		return nil
+	end
+
+	local direct = container:FindFirstChild(name)
+	if direct and direct:IsA(className) then
+		return direct
+	end
+
+	for _, descendant in ipairs(container:GetDescendants()) do
+		if descendant.Name == name and descendant:IsA(className) then
+			return descendant
+		end
+	end
+
+	return nil
+end
+
 local function connectRemoteEvent(remoteEvent, handlers, connections)
 	if connections[remoteEvent] then
 		return
@@ -55,11 +74,12 @@ function Remotes.bind(handlers)
 end
 
 function Remotes.waitForRemote(name, className, timeout)
-	local root = ReplicatedStorage:FindFirstChild(RemoteNames.FolderName) or ReplicatedStorage
 	local deadline = os.clock() + (timeout or 5)
 
 	while os.clock() < deadline do
-		local remote = root:FindFirstChild(name, true)
+		local root = ReplicatedStorage:FindFirstChild(RemoteNames.FolderName) or ReplicatedStorage
+		local remote = findRemoteByNameAndClass(root, name, className)
+			or findRemoteByNameAndClass(ReplicatedStorage, name, className)
 		if remote and remote:IsA(className) then
 			return remote
 		end
@@ -72,10 +92,34 @@ end
 function Remotes.invoke(name, ...)
 	local remoteFunction = Remotes.waitForRemote(name, "RemoteFunction")
 	if not remoteFunction then
+		local remotesFolder = ReplicatedStorage:FindFirstChild(RemoteNames.FolderName)
+		local direct = ReplicatedStorage:FindFirstChild(name, true)
+		warn(("[Remotes] Missing RemoteFunction %s | remotesFolder=%s | directMatch=%s"):format(
+			tostring(name),
+			remotesFolder and remotesFolder:GetFullName() or "nil",
+			direct and (direct:GetFullName() .. ":" .. direct.ClassName) or "nil"
+		))
 		return false, "missing_remote"
 	end
 
 	return remoteFunction:InvokeServer(...)
+end
+
+function Remotes.fire(name, ...)
+	local remoteEvent = Remotes.waitForRemote(name, "RemoteEvent")
+	if not remoteEvent then
+		local remotesFolder = ReplicatedStorage:FindFirstChild(RemoteNames.FolderName)
+		local direct = ReplicatedStorage:FindFirstChild(name, true)
+		warn(("[Remotes] Missing RemoteEvent %s | remotesFolder=%s | directMatch=%s"):format(
+			tostring(name),
+			remotesFolder and remotesFolder:GetFullName() or "nil",
+			direct and (direct:GetFullName() .. ":" .. direct.ClassName) or "nil"
+		))
+		return false, "missing_remote"
+	end
+
+	remoteEvent:FireServer(...)
+	return true
 end
 
 return Remotes

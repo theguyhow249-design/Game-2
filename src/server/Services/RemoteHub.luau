@@ -24,10 +24,13 @@ function RemoteHub.new(context)
 	self._remoteNames = context.RemoteNames
 	self._events = {}
 	self._functions = {}
+	self._eventAliases = {}
+	self._functionAliases = {}
+	self._handlers = {}
 	return self
 end
 
-function RemoteHub:Start()
+function RemoteHub:_ensureRemotes()
 	local folder = ReplicatedStorage:FindFirstChild(self._remoteNames.FolderName)
 	if not folder then
 		folder = Instance.new("Folder")
@@ -41,13 +44,63 @@ function RemoteHub:Start()
 		self._events[name] = ensureChild(folder, "RemoteEvent", name)
 	end
 
+	for _, name in ipairs({
+		self._remoteNames.Events.DeployRequested,
+	}) do
+		if type(name) == "string" and name ~= "" then
+			self._eventAliases[name] = ensureChild(ReplicatedStorage, "RemoteEvent", name)
+		end
+	end
+
 	for _, name in pairs(self._remoteNames.Functions) do
 		self._functions[name] = ensureChild(folder, "RemoteFunction", name)
 	end
+
+	for _, name in ipairs({
+		self._remoteNames.Functions.GetBootstrapData,
+		self._remoteNames.Functions.RequestDeploy,
+		self._remoteNames.Functions.RequestMapVote,
+		self._remoteNames.Functions.LeaveMission,
+	}) do
+		if type(name) == "string" and name ~= "" then
+			self._functionAliases[name] = ensureChild(ReplicatedStorage, "RemoteFunction", name)
+		end
+	end
+
+	for name, handler in pairs(self._handlers) do
+		local remoteFunction = self._functions[name]
+		if remoteFunction then
+			remoteFunction.OnServerInvoke = handler
+		end
+		local alias = self._functionAliases[name]
+		if alias then
+			alias.OnServerInvoke = handler
+		end
+	end
+end
+
+function RemoteHub:Start()
+	self:_ensureRemotes()
+
+	ReplicatedStorage.ChildAdded:Connect(function(child)
+		if child.Name == self._remoteNames.FolderName or child:IsA("RemoteFunction") or child:IsA("RemoteEvent") then
+			task.defer(function()
+				self:_ensureRemotes()
+			end)
+		end
+	end)
+
+	ReplicatedStorage.ChildRemoved:Connect(function(child)
+		if child.Name == self._remoteNames.FolderName or child:IsA("RemoteFunction") or child:IsA("RemoteEvent") then
+			task.defer(function()
+				self:_ensureRemotes()
+			end)
+		end
+	end)
 end
 
 function RemoteHub:GetEvent(name)
-	return self._events[name]
+	return self._events[name] or self._eventAliases[name]
 end
 
 function RemoteHub:GetFunction(name)
@@ -82,10 +135,8 @@ function RemoteHub:FireEventForMany(players, name, ...)
 end
 
 function RemoteHub:SetFunctionHandler(name, handler)
-	local remoteFunction = self._functions[name]
-	if remoteFunction then
-		remoteFunction.OnServerInvoke = handler
-	end
+	self._handlers[name] = handler
+	self:_ensureRemotes()
 end
 
 return RemoteHub

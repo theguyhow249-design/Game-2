@@ -129,7 +129,11 @@ end
 
 function MissionService:_getMissionSpawn()
 	local mission = self:_getMissionModel()
-	return mission and mission:FindFirstChild("MissionSpawn")
+	return mission and (
+		mission:FindFirstChild("MissionSpawn", true)
+		or mission:FindFirstChild("DropMarker", true)
+		or mission:FindFirstChild("Base", true)
+	)
 end
 
 function MissionService:_getMissionAnchorCFrame()
@@ -160,6 +164,9 @@ function MissionService:_grantSpawnProtection(player)
 	end
 
 	local protectionSeconds = self._missionConfig.Mission.SpawnProtectionSeconds or 0
+	if self._skillTreeService then
+		protectionSeconds = self._skillTreeService:GetSpawnProtectionSeconds(player, protectionSeconds)
+	end
 	local expiresAt = os.clock() + protectionSeconds
 	player:SetAttribute("MissionSpawnProtectedUntil", expiresAt)
 
@@ -197,6 +204,21 @@ function MissionService:_isNestScenario(mission)
 	return currentMission and currentMission.scenario and currentMission.scenario.ObjectiveType == "NestHunt"
 end
 
+function MissionService:_isPowerRelayScenario(mission)
+	local currentMission = mission or self._activeMission
+	return currentMission and currentMission.scenario and currentMission.scenario.ObjectiveType == "PowerRelay"
+end
+
+function MissionService:_isEvacEscortScenario(mission)
+	local currentMission = mission or self._activeMission
+	return currentMission and currentMission.scenario and currentMission.scenario.ObjectiveType == "EvacEscort"
+end
+
+function MissionService:_isCommanderHuntScenario(mission)
+	local currentMission = mission or self._activeMission
+	return currentMission and currentMission.scenario and currentMission.scenario.ObjectiveType == "CommanderHunt"
+end
+
 function MissionService:_clearRuntime()
 	local mission = self:_getMissionModel()
 	if not mission then
@@ -229,6 +251,12 @@ function MissionService:_notifyResults(mission, success, summary, rewardTokens)
 		return
 	end
 
+	local scenarioBonus = mission.scenario and (mission.scenario.RewardBonus or 0) or 0
+	local modifierBonus = mission.modifier and (mission.modifier.RewardBonus or 0) or 0
+	local activeSeasonalEvent, seasonalTokenBonus = self:_getActiveSeasonalMissionBonus()
+	local finalePlan = self:_getExtractionFinalePlan(mission)
+	local objectiveType = mission.scenario and mission.scenario.ObjectiveType or "CoreDefense"
+
 	for _, player in ipairs(mission.party) do
 		if player and player.Parent then
 			local stats = self._persistenceService:GetStats(player)
@@ -249,18 +277,42 @@ function MissionService:_notifyResults(mission, success, summary, rewardTokens)
 				summary = summary,
 				rewardTokens = playerReward,
 				scenarioName = mission.scenario and mission.scenario.DisplayName or "Hold The Core",
+				objectiveType = objectiveType,
 				layoutName = mission.layout and mission.layout.DisplayName or "Mission Arena",
+				modifierName = mission.modifier and mission.modifier.DisplayName or "Standard Ops",
+				finaleLabel = finalePlan and finalePlan.label or "Extraction breach detected",
 				wave = mission.wave or 0,
 				totalWaves = self._missionConfig.Mission.WaveCount,
 				kills = runStats and runStats.kills or (stats and stats.zombiesDefeated or 0),
 				xpGained = runStats and runStats.xpGained or 0,
 				xpBreakdown = runStats and runStats.xpBreakdown or {},
+				specialKills = runStats and runStats.specialKills or {},
+				bossesDefeated = runStats and runStats.bossesDefeated or 0,
+				bossName = runStats and runStats.lastBossName or nil,
+				rewardBreakdown = {
+					scenarioBonus = scenarioBonus,
+					modifierBonus = modifierBonus,
+					seasonalBonus = seasonalTokenBonus,
+					seasonalEventName = activeSeasonalEvent and activeSeasonalEvent.DisplayName or nil,
+					waveReward = self._missionConfig.Mission.WaveReward,
+					completionReward = success and (self._missionConfig.Mission.CompletionReward + scenarioBonus + modifierBonus + seasonalTokenBonus) or self._missionConfig.Mission.FailureReward,
+					bossBonus = runStats and runStats.bossRewardTokens or 0,
+				},
 				dailyOps = dailyOpsState and dailyOpsState.tasks or {},
 				level = progression and progression.level or 1,
 				skillPoints = progression and progression.skillPoints or 0,
 			})
 		end
 	end
+end
+
+function MissionService:_getActiveSeasonalMissionBonus()
+	local activeEvent = self._tokenEconomy and self._tokenEconomy.getActiveSeasonalEvent and self._tokenEconomy.getActiveSeasonalEvent() or nil
+	if not activeEvent then
+		return nil, 0, 0
+	end
+
+	return activeEvent, math.max(0, tonumber(activeEvent.MissionRewardBonus) or 0), math.max(0, tonumber(activeEvent.MissionExperienceBonus) or 0)
 end
 
 function MissionService:_getRunStats(player)
@@ -276,6 +328,11 @@ function MissionService:_getRunStats(player)
 			kills = 0,
 			xpGained = 0,
 			xpBreakdown = {},
+			specialKills = {},
+			bossesDefeated = 0,
+			lastBossName = nil,
+			bossRewardTokens = 0,
+			bossExperienceBonus = 0,
 		}
 		mission.runStats[player.UserId] = stats
 	end
@@ -597,8 +654,33 @@ function MissionService:_getModifierRuntimeTraits()
 		HazardWindupScale = tonumber(modifier and modifier.HazardWindupScale) or 1,
 		HazardActiveScale = tonumber(modifier and modifier.HazardActiveScale) or 1,
 		ObjectivePressureInterval = clampPositiveInteger(modifier and modifier.ObjectivePressureInterval or 4, 4),
+		RunnerStep = clampPositiveInteger(modifier and modifier.RunnerStep or 3, 3),
+		ShieldCarrierStep = clampPositiveInteger(modifier and modifier.ShieldCarrierStep or 5, 5),
+		ScreamerStep = clampPositiveInteger(modifier and modifier.ScreamerStep or 6, 6),
+		SpitterStep = clampPositiveInteger(modifier and modifier.SpitterStep or 5, 5),
+		ArtilleryStep = clampPositiveInteger(modifier and modifier.ArtilleryStep or 8, 8),
+		ExploderStep = clampPositiveInteger(modifier and modifier.ExploderStep or 7, 7),
+		BruteStep = clampPositiveInteger(modifier and modifier.BruteStep or 4, 4),
+		BruiserStep = clampPositiveInteger(modifier and modifier.BruiserStep or 6, 6),
+		AmmoPickupScale = math.max(0.25, tonumber(modifier and modifier.AmmoPickupScale) or 1),
+		SalvagePickupBonus = math.max(0, math.floor(tonumber(modifier and modifier.SalvagePickupBonus) or 0)),
+		MedkitPickupCount = clampPositiveInteger(modifier and modifier.MedkitPickupCount or 1, 1),
+		RunnerSpeedScale = math.max(0.5, tonumber(modifier and modifier.RunnerSpeedScale) or 1),
+		ShieldCarrierSpeedScale = math.max(0.5, tonumber(modifier and modifier.ShieldCarrierSpeedScale) or 1),
+		ScreamerSpeedScale = math.max(0.5, tonumber(modifier and modifier.ScreamerSpeedScale) or 1),
+		SpitterSpeedScale = math.max(0.5, tonumber(modifier and modifier.SpitterSpeedScale) or 1),
+		ExploderSpeedScale = math.max(0.5, tonumber(modifier and modifier.ExploderSpeedScale) or 1),
+		BruteSpeedScale = math.max(0.5, tonumber(modifier and modifier.BruteSpeedScale) or 1),
+		BruiserSpeedScale = math.max(0.5, tonumber(modifier and modifier.BruiserSpeedScale) or 1),
+		WaveSurgeLabel = type(modifier and modifier.WaveSurgeLabel) == "string" and modifier.WaveSurgeLabel or "Pressure spike",
 		ForceRunnerPressure = modifier and modifier.ForceRunnerPressure == true,
+		ForceShieldCarrierPressure = modifier and modifier.ForceShieldCarrierPressure == true,
+		ForceScreamerPressure = modifier and modifier.ForceScreamerPressure == true,
+		ForceSpitterPressure = modifier and modifier.ForceSpitterPressure == true,
+		ForceArtilleryPressure = modifier and modifier.ForceArtilleryPressure == true,
+		ForceExploderPressure = modifier and modifier.ForceExploderPressure == true,
 		ForceBrutePressure = modifier and modifier.ForceBrutePressure == true,
+		ForceBruiserPressure = modifier and modifier.ForceBruiserPressure == true,
 		BonusSupplyPickup = type(modifier and modifier.BonusSupplyPickup) == "string" and modifier.BonusSupplyPickup or nil,
 	}
 end
@@ -609,6 +691,664 @@ function MissionService:_getLayoutWorldPosition(offset: Vector3)
 		return offset
 	end
 	return (anchor * CFrame.new(offset)).Position
+end
+
+function MissionService:_getLayoutBounds(layout)
+	local activeLayout = layout or self:_getActiveLayout()
+	if not activeLayout then
+		return nil
+	end
+
+	local explicitBounds = activeLayout.PlayBounds
+	if explicitBounds and explicitBounds.Min and explicitBounds.Max then
+		return {
+			min = explicitBounds.Min,
+			max = explicitBounds.Max,
+		}
+	end
+
+	local minX, minZ = math.huge, math.huge
+	local maxX, maxZ = -math.huge, -math.huge
+	local hasBounds = false
+
+	local function includeOffset(offset, size)
+		if typeof(offset) ~= "Vector3" then
+			return
+		end
+		local halfX = 0
+		local halfZ = 0
+		if typeof(size) == "Vector3" then
+			halfX = size.X * 0.5
+			halfZ = size.Z * 0.5
+		end
+		minX = math.min(minX, offset.X - halfX)
+		maxX = math.max(maxX, offset.X + halfX)
+		minZ = math.min(minZ, offset.Z - halfZ)
+		maxZ = math.max(maxZ, offset.Z + halfZ)
+		hasBounds = true
+	end
+
+	for _, decoration in ipairs(activeLayout.DecorationPieces or {}) do
+		includeOffset(decoration.Offset, decoration.Size)
+	end
+	includeOffset(activeLayout.ObjectiveOffset, Vector3.new(20, 0, 20))
+	includeOffset(activeLayout.ExtractionOffset, Vector3.new(24, 0, 24))
+	for _, offset in ipairs(activeLayout.SpawnOffsets or {}) do
+		includeOffset(offset, Vector3.new(8, 0, 8))
+	end
+	for _, offset in ipairs(activeLayout.SupplyOffsets or {}) do
+		includeOffset(offset, Vector3.new(6, 0, 6))
+	end
+	for _, offset in ipairs(activeLayout.PowerCellOffsets or {}) do
+		includeOffset(offset, Vector3.new(6, 0, 6))
+	end
+	for _, offset in ipairs(activeLayout.NestOffsets or {}) do
+		includeOffset(offset, Vector3.new(8, 0, 8))
+	end
+	for _, hazard in ipairs(activeLayout.HazardZones or {}) do
+		includeOffset(hazard.Offset, hazard.Size)
+	end
+
+	if not hasBounds then
+		return nil
+	end
+
+	local padding = Vector3.new(10, 0, 10)
+	return {
+		min = Vector3.new(minX - padding.X, 0, minZ - padding.Z),
+		max = Vector3.new(maxX + padding.X, 0, maxZ + padding.Z),
+	}
+end
+
+function MissionService:_clampWorldPositionToLayoutBounds(worldPosition, margin)
+	local bounds = self:_getLayoutBounds()
+	local anchor = self:_getMissionAnchorCFrame()
+	if not bounds or not anchor or typeof(worldPosition) ~= "Vector3" then
+		return worldPosition
+	end
+
+	local localPosition = anchor:PointToObjectSpace(worldPosition)
+	local clampMargin = math.max(0, tonumber(margin) or 0)
+	local clampedLocal = Vector3.new(
+		math.clamp(localPosition.X, bounds.min.X + clampMargin, bounds.max.X - clampMargin),
+		localPosition.Y,
+		math.clamp(localPosition.Z, bounds.min.Z + clampMargin, bounds.max.Z - clampMargin)
+	)
+	return anchor:PointToWorldSpace(clampedLocal)
+end
+
+function MissionService:_getContainedSpawnPosition(worldPosition, margin)
+	local anchor = self:_getMissionAnchorCFrame()
+	local clampedPosition = self:_clampWorldPositionToLayoutBounds(worldPosition, margin)
+	if not anchor or typeof(clampedPosition) ~= "Vector3" then
+		return clampedPosition
+	end
+
+	return Vector3.new(clampedPosition.X, anchor.Position.Y + 0.2, clampedPosition.Z)
+end
+
+function MissionService:_describeSpawnLane(offset: Vector3)
+	if math.abs(offset.Z) > math.abs(offset.X) + 12 then
+		return offset.Z >= 0 and "North breach" or "South breach"
+	end
+	if math.abs(offset.X) > math.abs(offset.Z) + 12 then
+		return offset.X >= 0 and "East breach" or "West breach"
+	end
+	if offset.X >= 0 and offset.Z >= 0 then
+		return "North-east breach"
+	elseif offset.X < 0 and offset.Z >= 0 then
+		return "North-west breach"
+	elseif offset.X >= 0 and offset.Z < 0 then
+		return "South-east breach"
+	end
+	return "South-west breach"
+end
+
+function MissionService:_telegraphSpawnLane(runtime, worldPosition, laneName, color)
+	self:_emitPulse(CFrame.new(worldPosition + Vector3.new(0, 1.8, 0)), Vector3.new(7.2, 3.6, 7.2), color, 0.72, 0.2)
+	self:_emitPulse(CFrame.new(worldPosition + Vector3.new(0, 0.08, 0)), Vector3.new(10.8, 0.16, 10.8), color:Lerp(Color3.fromRGB(255, 244, 214), 0.15), 0.42, 0.24)
+	local marker, _ = self:_createWorldMarker(runtime, ("SpawnTelegraph_%s_%d"):format(laneName:gsub("%s+", ""), math.floor(worldPosition.X + worldPosition.Z)), laneName, color, Vector2.new(148, 28), 13)
+	marker.CFrame = CFrame.new(worldPosition + Vector3.new(0, 5.4, 0))
+	local gui = marker:FindFirstChildOfClass("BillboardGui")
+	if gui then
+		gui.MaxDistance = 70
+	end
+	Debris:AddItem(marker, 1.1)
+end
+
+function MissionService:_buildSpawnPlan(spawnOffsets, totalCount, cycleSeed)
+	if not spawnOffsets or #spawnOffsets == 0 then
+		return nil, nil
+	end
+
+	local laneCount = math.clamp(totalCount >= 12 and 3 or 2, 1, #spawnOffsets)
+	local activeLayout = self:_getActiveLayout()
+	local candidateOffsets = {}
+	for _, offset in ipairs(spawnOffsets) do
+		local allowOffset = true
+		if activeLayout and activeLayout.Id == "arena_reactor_fields" and offset.Z <= -72 then
+			allowOffset = false
+		end
+		if allowOffset then
+			table.insert(candidateOffsets, offset)
+		end
+	end
+	if #candidateOffsets == 0 then
+		candidateOffsets = spawnOffsets
+	end
+
+	table.sort(candidateOffsets, function(a, b)
+		local scoreA = math.abs(a.X) * 0.7 + math.max(0, a.Z) + math.abs(a.Z) * 0.12
+		local scoreB = math.abs(b.X) * 0.7 + math.max(0, b.Z) + math.abs(b.Z) * 0.12
+		if scoreA == scoreB then
+			return self:_describeSpawnLane(a) < self:_describeSpawnLane(b)
+		end
+		return scoreA > scoreB
+	end)
+
+	local poolSize = math.max(laneCount, math.min(#candidateOffsets, laneCount + 2))
+	local startIndex = ((cycleSeed - 1) % poolSize) + 1
+	local step = math.max(1, math.floor(poolSize / laneCount))
+	local selectedOffsets = {}
+	local laneNames = {}
+	local seenNames = {}
+
+	for laneIndex = 1, laneCount do
+		local offsetIndex = ((startIndex + ((laneIndex - 1) * step) - 1) % poolSize) + 1
+		local offset = candidateOffsets[offsetIndex]
+		if not offset then
+			continue
+		end
+		local laneName = self:_describeSpawnLane(offset)
+		if not seenNames[laneName] then
+			seenNames[laneName] = true
+			table.insert(selectedOffsets, offset)
+			table.insert(laneNames, laneName)
+		end
+	end
+
+	if #selectedOffsets == 0 then
+		table.insert(selectedOffsets, candidateOffsets[1])
+		table.insert(laneNames, self:_describeSpawnLane(candidateOffsets[1]))
+	end
+
+	return selectedOffsets, laneNames
+end
+
+function MissionService:_selectExtractionFinaleOffsets(spawnOffsets)
+	if not spawnOffsets or #spawnOffsets == 0 then
+		return nil
+	end
+
+	local candidates = {}
+	for _, offset in ipairs(spawnOffsets) do
+		if offset.Z > -12 then
+			table.insert(candidates, offset)
+		end
+	end
+	if #candidates == 0 then
+		candidates = spawnOffsets
+	end
+
+	table.sort(candidates, function(a, b)
+		return a.Z > b.Z
+	end)
+
+	local selected = {}
+	for index = 1, math.min(3, #candidates) do
+		table.insert(selected, candidates[index])
+	end
+	return selected
+end
+
+function MissionService:_getObjectivePressurePlan(mission)
+	local currentMission = mission or self._activeMission
+	if not currentMission then
+		return {
+			label = "Objective pressure spike",
+			color = Color3.fromRGB(255, 182, 124),
+			forceObjectivePressure = true,
+			stateText = "Objective pressure spike",
+			notifyText = "Objective pressure spike inbound. Hold the objective.",
+			countBonus = 0,
+			healthScale = 1,
+			damageScale = 1,
+		}
+	end
+
+	local plan = {
+		label = "Objective pressure spike",
+		color = Color3.fromRGB(255, 182, 124),
+		forceObjectivePressure = true,
+		stateText = "Objective pressure spike",
+		notifyText = "Objective pressure spike inbound. Hold the objective.",
+		countBonus = 0,
+		healthScale = 1,
+		damageScale = 1,
+	}
+
+	if self:_isCommanderHuntScenario(currentMission) then
+		plan.label = "Commander guard counterpush"
+		plan.color = Color3.fromRGB(255, 138, 118)
+		plan.stateText = "Commander relocated"
+		plan.notifyText = "Commander guard counterpush inbound. The target is repositioning under escort."
+		plan.countBonus = 1
+		plan.healthScale = 1.08
+		plan.forceBruiser = true
+	elseif self:_isEvacEscortScenario(currentMission) then
+		plan.label = "Convoy choke breach"
+		plan.color = Color3.fromRGB(244, 196, 128)
+		plan.stateText = "Convoy stalled"
+		plan.notifyText = "Convoy choke breach inbound. Push through and reopen the lane."
+		plan.countBonus = 1
+		plan.healthScale = 1.06
+		plan.forceBrute = true
+	elseif self:_isPowerRelayScenario(currentMission) then
+		plan.label = "Relay destabilization wave"
+		plan.color = Color3.fromRGB(156, 220, 255)
+		plan.stateText = "Relay spike detected"
+		plan.notifyText = "Relay destabilization wave inbound. Outer nodes are surging."
+		plan.damageScale = 1.08
+		plan.forceScreamer = true
+	elseif self:_isPowerCellScenario(currentMission) then
+		plan.label = "Power cell recovery breach"
+		plan.color = Color3.fromRGB(255, 224, 132)
+		plan.stateText = "Recover overloaded cell"
+		plan.notifyText = "Recovery breach inbound. An overloaded power cell was thrown off-route."
+		plan.countBonus = 1
+		plan.forceRunner = true
+	elseif self:_isNestScenario(currentMission) then
+		plan.label = "Nest defender surge"
+		plan.color = Color3.fromRGB(184, 255, 146)
+		plan.stateText = "Burn fresh nest cluster"
+		plan.notifyText = "Nest defender surge inbound. A fresh cluster is rooting near the breach."
+		plan.healthScale = 1.04
+		plan.forceExploder = true
+	else
+		plan.label = "Core pressure breach"
+		plan.color = Color3.fromRGB(255, 188, 132)
+		plan.stateText = "Core under pressure"
+		plan.notifyText = "Core pressure breach inbound. Emergency support is dropping near the bunker."
+		plan.forceScreamer = true
+	end
+
+	local modifier = currentMission.modifier
+	local modifierId = modifier and modifier.Id or nil
+	if modifierId == "modifier_blackout" then
+		plan.label = "Blackout pressure wave"
+		plan.color = Color3.fromRGB(202, 176, 255)
+		plan.forceScreamer = true
+	elseif modifierId == "modifier_hunter" then
+		plan.label = "Hunter flank burst"
+		plan.color = Color3.fromRGB(198, 255, 142)
+		plan.forceRunner = true
+	elseif modifierId == "modifier_siege" or modifierId == "modifier_bulwark" then
+		plan.label = "Heavy breach wave"
+		plan.color = Color3.fromRGB(255, 188, 132)
+		plan.forceShieldCarrier = true
+	elseif modifierId == "modifier_biohazard" then
+		plan.label = "Biohazard pressure wave"
+		plan.color = Color3.fromRGB(152, 255, 198)
+		plan.forceExploder = true
+	elseif modifierId == "modifier_bombardment" then
+		plan.label = "Bombardment volley"
+		plan.color = Color3.fromRGB(255, 210, 142)
+		plan.forceArtillery = true
+	end
+
+	return plan
+end
+
+function MissionService:_getExtractionFinalePlan(mission)
+	local currentMission = mission or self._activeMission
+	local plan = {
+		label = "Extraction breach detected",
+		stateText = "Extraction under pressure",
+		notifyText = "Extraction breach detected. Hold the pad.",
+		color = Color3.fromRGB(255, 132, 132),
+		countBonus = 0,
+		healthScale = 1,
+		damageScale = 1,
+	}
+
+	if not currentMission then
+		return plan
+	end
+
+	if self:_isCommanderHuntScenario(currentMission) then
+		plan.label = "Commander loyalist breach"
+		plan.stateText = "Commander loyalists pushing extraction"
+		plan.notifyText = "Commander loyalists are collapsing on extraction. Hold the bunker edge."
+		plan.color = Color3.fromRGB(255, 146, 124)
+		plan.countBonus = 1
+		plan.healthScale = 1.08
+		plan.forceBruiser = true
+	elseif self:_isEvacEscortScenario(currentMission) then
+		plan.label = "Convoy tail breach"
+		plan.stateText = "Escort survivors board now"
+		plan.notifyText = "The convoy tail is collapsing. Board under pressure and hold the exit."
+		plan.color = Color3.fromRGB(255, 196, 138)
+		plan.countBonus = 1
+		plan.forceBrute = true
+	elseif self:_isPowerRelayScenario(currentMission) then
+		plan.label = "Relay overload breach"
+		plan.stateText = "Relay overload at extraction"
+		plan.notifyText = "A relay overload is spilling into extraction. Silence support infected and keep the pad clear."
+		plan.color = Color3.fromRGB(156, 220, 255)
+		plan.damageScale = 1.08
+		plan.forceScreamer = true
+	elseif self:_isPowerCellScenario(currentMission) then
+		plan.label = "Recovery pack collapse"
+		plan.stateText = "Recovery pack closing"
+		plan.notifyText = "A recovery pack is swarming the dropped cells. Clear them and board immediately."
+		plan.color = Color3.fromRGB(255, 224, 132)
+		plan.forceRunner = true
+	elseif self:_isNestScenario(currentMission) then
+		plan.label = "Nest rupture breach"
+		plan.stateText = "Nest rupture at extraction"
+		plan.notifyText = "A fresh rupture opened near extraction. Burn through it and get out."
+		plan.color = Color3.fromRGB(184, 255, 146)
+		plan.healthScale = 1.04
+		plan.forceExploder = true
+	end
+
+	local modifier = currentMission.modifier
+	local modifierId = modifier and modifier.Id or nil
+	if modifierId == "modifier_hunter" then
+		plan.label = "Hunter extraction collapse"
+		plan.stateText = "Hunter pack on extraction"
+		plan.notifyText = "Hunter pack collapsing on extraction. Watch the flanks."
+		plan.color = Color3.fromRGB(198, 255, 142)
+		plan.forceRunner = true
+	elseif modifierId == "modifier_biohazard" then
+		plan.label = "Biohazard extraction breach"
+		plan.stateText = "Biohazard flooding extraction"
+		plan.notifyText = "Biohazard breach at extraction. Clear volatile infected off the pad."
+		plan.color = Color3.fromRGB(152, 255, 198)
+		plan.forceExploder = true
+	elseif modifierId == "modifier_siege" or modifierId == "modifier_bulwark" then
+		plan.label = "Shield wall collapse"
+		plan.stateText = "Shield carriers on extraction"
+		plan.notifyText = "Shield carriers are locking the extraction lane. Break the wall and board."
+		plan.color = Color3.fromRGB(184, 214, 255)
+		plan.forceShieldCarrier = true
+	elseif modifierId == "modifier_bombardment" then
+		plan.label = "Bombardment extraction volley"
+		plan.stateText = "Artillery on extraction"
+		plan.notifyText = "Artillery volley locking onto extraction. Board fast and stay moving."
+		plan.color = Color3.fromRGB(255, 210, 142)
+		plan.forceArtillery = true
+	elseif modifierId == "modifier_blackout" then
+		plan.label = "Blackout extraction howl"
+		plan.stateText = "Support howls in the dark"
+		plan.notifyText = "Screamers are driving the blackout collapse. Cut them down and board fast."
+		plan.color = Color3.fromRGB(202, 176, 255)
+		plan.forceScreamer = true
+	end
+
+	return plan
+end
+
+function MissionService:_countRuntimeChildrenWithPrefix(runtime, prefix)
+	if not runtime or not prefix then
+		return 0
+	end
+
+	local count = 0
+	for _, child in ipairs(runtime:GetChildren()) do
+		if string.sub(child.Name, 1, #prefix) == prefix then
+			count += 1
+		end
+	end
+	return count
+end
+
+function MissionService:_triggerObjectivePressureEvent(mission, plan, eventIndex, selectedSpawnOffsets)
+	if not mission or not plan or not mission.runtime then
+		return
+	end
+
+	local runtime = mission.runtime
+	local objective = self:_getMissionObjective()
+	local focusOffset = selectedSpawnOffsets and selectedSpawnOffsets[1] or Vector3.new()
+	local focusPosition = self:_getLayoutWorldPosition(focusOffset + Vector3.new(0, 0, 6))
+
+	if self:_isPowerCellScenario(mission) then
+		local required = objective and (objective:GetAttribute("RequiredPowerCells") or self._missionConfig.Mission.PowerCellRequiredCount) or self._missionConfig.Mission.PowerCellRequiredCount
+		local liveCells = self:_countRuntimeChildrenWithPrefix(runtime, "PowerCell_")
+		if liveCells < (required + 1) then
+			local cellId = required + eventIndex + 10
+			self:_spawnPowerCell(runtime, focusPosition, cellId)
+			self:_emitPulse(CFrame.new(focusPosition + Vector3.new(0, 2, 0)), Vector3.new(8, 6, 8), plan.color, 0.38, 0.2)
+		end
+	elseif self:_isNestScenario(mission) then
+		local required = objective and (objective:GetAttribute("RequiredNests") or self._missionConfig.Mission.NestRequiredCount) or self._missionConfig.Mission.NestRequiredCount
+		local liveNests = self:_countRuntimeChildrenWithPrefix(runtime, "Nest_")
+		if liveNests < (required + 1) then
+			local nestId = required + eventIndex + 10
+			self:_spawnNest(runtime, focusPosition, nestId)
+			self:_emitPulse(CFrame.new(focusPosition + Vector3.new(0, 2, 0)), Vector3.new(9, 5, 9), plan.color, 0.42, 0.18)
+		end
+	elseif self:_isPowerRelayScenario(mission) then
+		local surgeNode = nil
+		for _, child in ipairs(runtime:GetChildren()) do
+			if string.sub(child.Name, 1, 10) == "RelayNode_" and child:GetAttribute("Stabilized") ~= true then
+				surgeNode = child
+				break
+			end
+		end
+
+		if surgeNode then
+			local core = surgeNode:FindFirstChild("Core")
+			local ring = surgeNode:FindFirstChild("Ring")
+			if core and core:IsA("BasePart") then
+				core.Color = Color3.fromRGB(255, 188, 118)
+			end
+			if ring and ring:IsA("BasePart") then
+				ring.Color = Color3.fromRGB(255, 210, 144)
+				ring.Transparency = 0.24
+			end
+			self:_emitPulse(surgeNode:GetPivot(), Vector3.new(10, 6, 10), plan.color, 0.32, 0.18)
+		end
+	elseif self:_isEvacEscortScenario(mission) then
+		local convoy = runtime:FindFirstChild("EvacConvoy")
+		local convoyGlow = convoy and convoy:FindFirstChild("ConvoyGlow")
+		if convoyGlow and convoyGlow:IsA("BasePart") then
+			convoyGlow.Color = Color3.fromRGB(255, 172, 124)
+			convoyGlow.Transparency = 0.38
+		end
+		if convoy then
+			self:_emitPulse(convoy:GetPivot(), Vector3.new(16, 5, 22), plan.color, 0.26, 0.24)
+		end
+	elseif self:_isCommanderHuntScenario(mission) then
+		local commander = runtime:FindFirstChild("BlacksiteCommander")
+		if commander and commander.Parent then
+			local relocatePosition = self:_getLayoutWorldPosition((selectedSpawnOffsets and selectedSpawnOffsets[#selectedSpawnOffsets] or focusOffset) + Vector3.new(0, 0, -6))
+			commander:PivotTo(CFrame.new(relocatePosition + Vector3.new(0, 3, 0)))
+			self:_emitPulse(commander:GetPivot(), Vector3.new(12, 8, 12), plan.color, 0.3, 0.22)
+		end
+	else
+		local supportPosition = objective and (objective.Position + Vector3.new(0, 0, 12)) or focusPosition
+		self:_createSupplyPickup(runtime, "Ammo", supportPosition)
+		self:_emitPulse(CFrame.new(supportPosition + Vector3.new(0, 2, 0)), Vector3.new(8, 5, 8), plan.color, 0.34, 0.18)
+	end
+end
+
+function MissionService:_scheduleObjectivePressure(mission, scaledStats)
+	if not mission or mission.phase ~= "Combat" or mission.wave < 2 then
+		return
+	end
+
+	local layout = mission.layout or self:_getActiveLayout()
+	local spawnOffsets = layout and layout.SpawnOffsets or nil
+	if not spawnOffsets or #spawnOffsets == 0 then
+		return
+	end
+
+	local modifierTraits = self:_getModifierRuntimeTraits()
+	local initialDelay = math.max(
+		3,
+		tonumber(self._missionConfig.Mission.ObjectivePressureInitialDelay) or 6
+	)
+	local repeatDelay = math.max(
+		5,
+		(tonumber(self._missionConfig.Mission.ObjectivePressureWaveDelay) or 8) + ((modifierTraits.ObjectivePressureInterval - 3) * 0.75)
+	)
+	local pressureCountBase = math.max(1, tonumber(self._missionConfig.Mission.ObjectivePressureBaseCount) or 2)
+	local countPerExtraPlayer = math.max(0, tonumber(self._missionConfig.Mission.ObjectivePressureCountPerExtraPlayer) or 1)
+	local pressureHealthScale = math.max(0.5, tonumber(self._missionConfig.Mission.ObjectivePressureHealthScale) or 1.06)
+	local pressureDamageScale = math.max(0.5, tonumber(self._missionConfig.Mission.ObjectivePressureDamageScale) or 1.08)
+	local startWave = mission.wave
+	local eventIndex = 0
+
+	task.delay(initialDelay, function()
+		while self._activeMission == mission and mission.phase == "Combat" and mission.wave == startWave and mission.remainingZombies > 0 do
+			local objective = self:_getMissionObjective()
+			if not objective or not objective.Parent then
+				return
+			end
+
+			eventIndex += 1
+			local plan = self:_getObjectivePressurePlan(mission)
+			local liveParty = self:_getLivePartyMembers()
+			local pressureCount = pressureCountBase + math.max(0, #liveParty - 1) * countPerExtraPlayer + (plan.countBonus or 0)
+			if mission.wave >= self._missionConfig.Mission.WaveCount then
+				pressureCount += 1
+			end
+			pressureCount = math.min(6, math.max(1, pressureCount))
+
+			local pressureStats = {
+				health = math.max(1, math.floor((scaledStats.health or self._missionConfig.Mission.ZombieBaseHealth) * pressureHealthScale * (plan.healthScale or 1))),
+				damage = math.max(1, math.floor((scaledStats.damage or self._missionConfig.Mission.ZombieBaseDamage) * pressureDamageScale * (plan.damageScale or 1))),
+				spawnCount = pressureCount,
+			}
+
+			local selectedSpawnOffsets, laneNames = self:_buildSpawnPlan(spawnOffsets, pressureCount, startWave + eventIndex + 2)
+			if not selectedSpawnOffsets or #selectedSpawnOffsets == 0 then
+				return
+			end
+
+			mission.remainingZombies += pressureCount
+			self:_notifyParty(mission.party, ("%s %s"):format(plan.notifyText or (plan.label .. " inbound."), laneNames and #laneNames > 0 and ("Watch " .. table.concat(laneNames, " / ")) or "Hold the objective"))
+			self:_fireMissionState(mission.party, plan.stateText or plan.label)
+
+			for _, baseOffset in ipairs(selectedSpawnOffsets) do
+				self:_telegraphSpawnLane(mission.runtime, self:_getLayoutWorldPosition(baseOffset), self:_describeSpawnLane(baseOffset), plan.color)
+			end
+			self:_triggerObjectivePressureEvent(mission, plan, eventIndex, selectedSpawnOffsets)
+
+			task.spawn(function()
+				for index = 1, pressureCount do
+					if not self._activeMission or self._activeMission ~= mission or mission.phase ~= "Combat" or mission.wave ~= startWave then
+						return
+					end
+
+					local baseOffset = selectedSpawnOffsets[((index - 1) % #selectedSpawnOffsets) + 1]
+					local jitter = Vector3.new(math.random(-4, 4), 0, math.random(-4, 4))
+					local spawnPosition = self:_getContainedSpawnPosition(self:_getLayoutWorldPosition(baseOffset + jitter), 8)
+					self:_spawnZombie(spawnPosition, pressureStats, (scaledStats.spawnCount or 0) + (eventIndex * 10) + index, {
+						laneOffset = baseOffset,
+						forceObjectivePressure = true,
+						forceRunner = plan.forceRunner == true,
+						forceShieldCarrier = plan.forceShieldCarrier == true,
+						forceSpitter = plan.forceSpitter == true,
+						forceArtillery = plan.forceArtillery == true,
+						forceExploder = plan.forceExploder == true,
+						forceBrute = plan.forceBrute == true,
+						forceBruiser = plan.forceBruiser == true,
+					})
+					if index < pressureCount then
+						task.wait(0.12)
+					end
+				end
+			end)
+
+			task.wait(repeatDelay)
+		end
+	end)
+end
+
+function MissionService:_getLaneFocusPosition(laneOffset: Vector3, role: string?)
+	if typeof(laneOffset) ~= "Vector3" then
+		return nil
+	end
+
+	if role == "Flank" then
+		local sideBias = laneOffset.X >= 0 and 1 or -1
+		return self:_getLayoutWorldPosition(Vector3.new(sideBias * 58, 0, 6))
+	elseif role == "Ranged" then
+		local sideBias = laneOffset.X >= 0 and 1 or -1
+		local depth = laneOffset.Z >= 0 and 44 or -12
+		return self:_getLayoutWorldPosition(Vector3.new(sideBias * 52, 0, depth))
+	elseif role == "Objective" then
+		return self:_getLayoutWorldPosition(Vector3.new(0, 0, 30))
+	end
+
+	return self:_getLayoutWorldPosition(Vector3.new(laneOffset.X * 0.45, 0, laneOffset.Z * 0.45))
+end
+
+function MissionService:_startExtractionPressure(mission)
+	if not mission or self._activeMission ~= mission or mission.phase ~= "Extraction" then
+		return
+	end
+	if mission.extractionFinaleTriggered then
+		return
+	end
+	mission.extractionFinaleTriggered = true
+
+	local runtime = mission.runtime
+	local layout = self:_getActiveLayout()
+	local spawnOffsets = layout and layout.SpawnOffsets or nil
+	local finaleOffsets = self:_selectExtractionFinaleOffsets(spawnOffsets)
+	if not finaleOffsets or #finaleOffsets == 0 then
+		return
+	end
+
+	local liveParty = self:_getLivePartyMembers()
+	local plan = self:_getExtractionFinalePlan(mission)
+	local finaleCount = (self._missionConfig.Mission.ExtractionFinaleBaseCount or 4)
+		+ math.max(0, #liveParty - 1) * (self._missionConfig.Mission.ExtractionFinaleCountPerExtraPlayer or 1)
+		+ (plan.countBonus or 0)
+	local baseScaledStats = self:_getScaledWaveStats(math.max(1, mission.wave))
+	local finaleStats = {
+		health = math.max(1, math.floor((baseScaledStats.health or self._missionConfig.Mission.ZombieBaseHealth) * (self._missionConfig.Mission.ExtractionFinaleHealthScale or 1) * (plan.healthScale or 1))),
+		damage = math.max(1, math.floor((baseScaledStats.damage or self._missionConfig.Mission.ZombieBaseDamage) * (self._missionConfig.Mission.ExtractionFinaleDamageScale or 1) * (plan.damageScale or 1))),
+		spawnCount = finaleCount,
+	}
+
+	mission.remainingZombies += finaleCount
+	self:_notifyParty(mission.party, plan.notifyText or "Extraction breach detected. Hold the pad.")
+	self:_fireMissionState(mission.party, plan.stateText or plan.label)
+
+	for _, baseOffset in ipairs(finaleOffsets) do
+		self:_telegraphSpawnLane(runtime, self:_getLayoutWorldPosition(baseOffset), self:_describeSpawnLane(baseOffset), plan.color)
+	end
+
+	task.spawn(function()
+		for index = 1, finaleCount do
+			if not self._activeMission or self._activeMission ~= mission or mission.phase ~= "Extraction" then
+				return
+			end
+			local baseOffset = finaleOffsets[((index - 1) % #finaleOffsets) + 1]
+			local jitter = Vector3.new(math.random(-5, 5), 0, math.random(-5, 5))
+			local spawnPosition = self:_getContainedSpawnPosition(self:_getLayoutWorldPosition(baseOffset + jitter), 8)
+			self:_spawnZombie(spawnPosition, finaleStats, index, {
+				laneOffset = baseOffset,
+				forceObjectivePressure = index % 2 == 0,
+				extractionFinale = true,
+				forceRunner = plan.forceRunner == true,
+				forceShieldCarrier = plan.forceShieldCarrier == true,
+				forceSpitter = plan.forceSpitter == true,
+				forceArtillery = plan.forceArtillery == true,
+				forceExploder = plan.forceExploder == true,
+				forceBrute = plan.forceBrute == true,
+				forceBruiser = plan.forceBruiser == true,
+			})
+			if index < finaleCount then
+				task.wait(index % math.max(2, math.floor(finaleCount / 2)) == 0 and 0.2 or 0.08)
+			end
+		end
+	end)
 end
 
 function MissionService:_spawnFrameStructure(parent, prefix, frame, anchor)
@@ -731,10 +1471,139 @@ function MissionService:_decorateMissionRuntime(runtime)
 		floorTrim.Size = Vector3.new(138, 0.18, 138)
 		floorTrim.CFrame = anchor * CFrame.new(0, -0.05, 0)
 	elseif layout.Id == "arena_reactor_fields" then
-		floor.Size = Vector3.new(168, 1.2, 188)
+		floor.Size = Vector3.new(246, 1.2, 278)
 		floor.CFrame = anchor * CFrame.new(0, -0.75, -2)
-		floorTrim.Size = Vector3.new(134, 0.18, 150)
+		floorTrim.Size = Vector3.new(208, 0.18, 232)
 		floorTrim.CFrame = anchor * CFrame.new(0, -0.05, -2)
+		createRuntimeGlow(shell, "ReactorCenterLaneGlow", Vector3.new(20, 0.08, 132), anchor * CFrame.new(0, 0.05, 0), Color3.fromRGB(118, 184, 164), 0.92)
+		createRuntimeGlow(shell, "ReactorNorthLaneGlow", Vector3.new(52, 0.08, 18), anchor * CFrame.new(0, 0.05, 66), Color3.fromRGB(214, 178, 108), 0.9)
+		createRuntimeGlow(shell, "ReactorSouthExtractGlow", Vector3.new(44, 0.08, 16), anchor * CFrame.new(0, 0.05, -54), Color3.fromRGB(112, 208, 176), 0.9)
+		for _, data in ipairs({
+			{ "ReactorWestPlatform", Vector3.new(34, 0.9, 58), Vector3.new(-54, 0.18, 14), Color3.fromRGB(56, 66, 78), Enum.Material.DiamondPlate },
+			{ "ReactorEastPlatform", Vector3.new(34, 0.9, 58), Vector3.new(54, 0.18, 14), Color3.fromRGB(56, 66, 78), Enum.Material.DiamondPlate },
+			{ "ReactorNorthBulkhead", Vector3.new(84, 10, 4), Vector3.new(0, 5, 96), Color3.fromRGB(42, 48, 56), Enum.Material.Metal },
+			{ "ReactorWestBulkhead", Vector3.new(4, 10, 104), Vector3.new(-96, 5, 0), Color3.fromRGB(42, 48, 56), Enum.Material.Metal },
+			{ "ReactorEastBulkhead", Vector3.new(4, 10, 104), Vector3.new(96, 5, 0), Color3.fromRGB(42, 48, 56), Enum.Material.Metal },
+			{ "ReactorCenterBridge", Vector3.new(22, 0.5, 118), Vector3.new(0, 0.7, 18), Color3.fromRGB(78, 90, 106), Enum.Material.Metal },
+			{ "ReactorSouthStaging", Vector3.new(52, 0.6, 24), Vector3.new(0, 0.36, -56), Color3.fromRGB(72, 82, 96), Enum.Material.DiamondPlate },
+			{ "ReactorWestTower", Vector3.new(12, 18, 12), Vector3.new(-72, 9, 44), Color3.fromRGB(62, 74, 88), Enum.Material.Metal },
+			{ "ReactorEastTower", Vector3.new(12, 18, 12), Vector3.new(72, 9, 44), Color3.fromRGB(62, 74, 88), Enum.Material.Metal },
+			{ "ReactorCenterCore", Vector3.new(18, 7.2, 18), Vector3.new(0, 3.6, 36), Color3.fromRGB(70, 82, 96), Enum.Material.Metal },
+		}) do
+			local structure = createRuntimePart(shell, data[1], data[2], anchor * CFrame.new(data[3]), data[4], data[5])
+			structure.CanQuery = false
+		end
+		for _, data in ipairs({
+			{ "ReactorWestLaneGlow", Vector3.new(14, 0.08, 118), Vector3.new(-54, 0.05, 12), Color3.fromRGB(134, 176, 226), 0.93 },
+			{ "ReactorEastLaneGlow", Vector3.new(14, 0.08, 118), Vector3.new(54, 0.05, 12), Color3.fromRGB(134, 176, 226), 0.93 },
+			{ "ReactorNorthBreachGlow", Vector3.new(66, 0.08, 16), Vector3.new(0, 0.05, 90), Color3.fromRGB(244, 182, 118), 0.9 },
+		}) do
+			local glowPart = createRuntimeGlow(shell, data[1], data[2], anchor * CFrame.new(data[3]), data[4], data[5])
+			glowPart.CanQuery = false
+		end
+		for _, data in ipairs({
+			{ "ReactorNorthWallLeft", Vector3.new(72, 9.2, 4), Vector3.new(-58, 4.6, 100) },
+			{ "ReactorNorthWallRight", Vector3.new(72, 9.2, 4), Vector3.new(58, 4.6, 100) },
+			{ "ReactorSouthWallLeft", Vector3.new(76, 8.2, 4), Vector3.new(-60, 4.1, -98) },
+			{ "ReactorSouthWallRight", Vector3.new(76, 8.2, 4), Vector3.new(60, 4.1, -98) },
+			{ "ReactorWestWallNorth", Vector3.new(4, 9.2, 72), Vector3.new(-98, 4.6, 56) },
+			{ "ReactorWestWallSouth", Vector3.new(4, 9.2, 62), Vector3.new(-98, 4.6, -56) },
+			{ "ReactorEastWallNorth", Vector3.new(4, 9.2, 72), Vector3.new(98, 4.6, 56) },
+			{ "ReactorEastWallSouth", Vector3.new(4, 9.2, 62), Vector3.new(98, 4.6, -56) },
+		}) do
+			local wall = createRuntimePart(shell, data[1], data[2], anchor * CFrame.new(data[3]), Color3.fromRGB(40, 48, 58), Enum.Material.Metal)
+			wall.CanQuery = false
+		end
+		for _, data in ipairs({
+			{ "ReactorNorthGate", Vector3.new(28, 6.2, 2.2), Vector3.new(0, 3.2, 99) },
+			{ "ReactorSouthGate", Vector3.new(24, 5.6, 2.2), Vector3.new(0, 2.9, -97) },
+			{ "ReactorWestGate", Vector3.new(2.2, 5.8, 24), Vector3.new(-97, 3, 0) },
+			{ "ReactorEastGate", Vector3.new(2.2, 5.8, 24), Vector3.new(97, 3, 0) },
+		}) do
+			local gate = createRuntimeGlow(shell, data[1], data[2], anchor * CFrame.new(data[3]), Color3.fromRGB(122, 184, 226), 0.72)
+			gate.CanQuery = false
+		end
+		for _, data in ipairs({
+			{ "ReactorCoverNorthWestA", Vector3.new(8, 3.2, 3), Vector3.new(-46, 1.6, 52), 16 },
+			{ "ReactorCoverNorthWestB", Vector3.new(8, 3.2, 3), Vector3.new(-36, 1.6, 46), -18 },
+			{ "ReactorCoverNorthEastA", Vector3.new(8, 3.2, 3), Vector3.new(46, 1.6, 52), -16 },
+			{ "ReactorCoverNorthEastB", Vector3.new(8, 3.2, 3), Vector3.new(36, 1.6, 46), 18 },
+			{ "ReactorCoverSouthWestA", Vector3.new(10, 3.2, 3), Vector3.new(-42, 1.6, -28), -14 },
+			{ "ReactorCoverSouthWestB", Vector3.new(10, 3.2, 3), Vector3.new(-26, 1.6, -18), 22 },
+			{ "ReactorCoverSouthEastA", Vector3.new(10, 3.2, 3), Vector3.new(42, 1.6, -28), 14 },
+			{ "ReactorCoverSouthEastB", Vector3.new(10, 3.2, 3), Vector3.new(26, 1.6, -18), -22 },
+		}) do
+			local cover = createRuntimePart(shell, data[1], data[2], anchor * CFrame.new(data[3]) * CFrame.Angles(0, math.rad(data[4]), 0), Color3.fromRGB(92, 102, 116), Enum.Material.Metal)
+			cover.CanQuery = false
+		end
+		for _, x in ipairs({ -66, -22, 22, 66 }) do
+			local pipe = createRuntimePart(shell, ("ReactorPipe_%d"):format(x), Vector3.new(1, 1, 120), anchor * CFrame.new(x, 7.6, 4), Color3.fromRGB(92, 108, 126), Enum.Material.Metal)
+			pipe.Shape = Enum.PartType.Cylinder
+			pipe.Orientation = Vector3.new(0, 0, 90)
+			pipe.CanQuery = false
+			local pipeGlow = createRuntimeGlow(shell, ("ReactorPipeGlow_%d"):format(x), Vector3.new(0.24, 0.24, 96), anchor * CFrame.new(x, 7.18, 4), Color3.fromRGB(132, 200, 246), 0.68)
+			pipeGlow.CanQuery = false
+		end
+		for _, z in ipairs({ -62, -6, 48 }) do
+			local catwalk = createRuntimePart(shell, ("ReactorCrossCatwalk_%d"):format(z), Vector3.new(164, 0.44, 7), anchor * CFrame.new(0, 4.8, z), Color3.fromRGB(72, 82, 94), Enum.Material.DiamondPlate)
+			catwalk.CanQuery = false
+		end
+		for _, side in ipairs({ -1, 1 }) do
+			local label = side < 0 and "West" or "East"
+			local x = side * 70
+
+			local serviceFloor = createRuntimePart(shell, "Reactor" .. label .. "ServiceFloor", Vector3.new(24, 0.8, 66), anchor * CFrame.new(x, 0.12, 6), Color3.fromRGB(60, 70, 82), Enum.Material.DiamondPlate)
+			serviceFloor.CanQuery = false
+
+			local serviceBack = createRuntimePart(shell, "Reactor" .. label .. "ServiceBack", Vector3.new(22, 8.2, 3.2), anchor * CFrame.new(x, 4.1, 36), Color3.fromRGB(46, 52, 62), Enum.Material.Metal)
+			serviceBack.CanQuery = false
+
+			local serviceFront = createRuntimePart(shell, "Reactor" .. label .. "ServiceFront", Vector3.new(22, 7.6, 3.2), anchor * CFrame.new(x, 3.8, -24), Color3.fromRGB(46, 52, 62), Enum.Material.Metal)
+			serviceFront.CanQuery = false
+
+			local serviceInner = createRuntimePart(shell, "Reactor" .. label .. "ServiceInner", Vector3.new(3.2, 8.4, 70), anchor * CFrame.new(side * 57, 4.2, 6), Color3.fromRGB(52, 60, 72), Enum.Material.Metal)
+			serviceInner.CanQuery = false
+
+			local serviceOuterNorth = createRuntimePart(shell, "Reactor" .. label .. "ServiceOuterNorth", Vector3.new(3.2, 8.4, 28), anchor * CFrame.new(side * 82, 4.2, 24), Color3.fromRGB(40, 48, 58), Enum.Material.Metal)
+			serviceOuterNorth.CanQuery = false
+
+			local serviceOuterSouth = createRuntimePart(shell, "Reactor" .. label .. "ServiceOuterSouth", Vector3.new(3.2, 8.4, 28), anchor * CFrame.new(side * 82, 4.2, -14), Color3.fromRGB(40, 48, 58), Enum.Material.Metal)
+			serviceOuterSouth.CanQuery = false
+
+			local serviceDoorNorth = createRuntimeGlow(shell, "Reactor" .. label .. "ServiceDoorNorth", Vector3.new(3.8, 5.2, 12), anchor * CFrame.new(side * 57, 2.8, 52), Color3.fromRGB(128, 196, 238), 0.74)
+			serviceDoorNorth.CanQuery = false
+
+			local serviceDoorSouth = createRuntimeGlow(shell, "Reactor" .. label .. "ServiceDoorSouth", Vector3.new(3.8, 5.2, 12), anchor * CFrame.new(side * 57, 2.8, -42), Color3.fromRGB(128, 196, 238), 0.74)
+			serviceDoorSouth.CanQuery = false
+
+			local serviceLane = createRuntimeGlow(shell, "Reactor" .. label .. "ServiceLaneGlow", Vector3.new(10, 0.08, 72), anchor * CFrame.new(side * 69, 0.06, 6), Color3.fromRGB(116, 164, 212), 0.92)
+			serviceLane.CanQuery = false
+
+			for _, z in ipairs({ -8, 18 }) do
+				local console = createRuntimePart(shell, ("Reactor%sConsole_%d"):format(label, z), Vector3.new(6.4, 2.8, 2.8), anchor * CFrame.new(side * 66, 1.4, z), Color3.fromRGB(88, 98, 112), Enum.Material.Metal)
+				console.CanQuery = false
+				local consoleGlow = createRuntimeGlow(shell, ("Reactor%sConsoleGlow_%d"):format(label, z), Vector3.new(4.2, 0.08, 1.2), anchor * CFrame.new(side * 66, 2.84, z), Color3.fromRGB(154, 218, 255), 0.48)
+				consoleGlow.CanQuery = false
+			end
+
+			for _, z in ipairs({ -18, 22 }) do
+				local crateStack = createRuntimePart(shell, ("Reactor%sCrate_%d"):format(label, z), Vector3.new(6, 4.6, 6), anchor * CFrame.new(side * 74, 2.3, z), Color3.fromRGB(92, 84, 68), Enum.Material.WoodPlanks)
+				crateStack.CanQuery = false
+			end
+		end
+		for _, z in ipairs({ -48, -16, 22, 58 }) do
+			local divider = createRuntimePart(shell, ("ReactorMidDivider_%d"):format(z), Vector3.new(38, 3.2, 3.2), anchor * CFrame.new(0, 1.6, z), Color3.fromRGB(78, 88, 100), Enum.Material.Metal)
+			divider.CanQuery = false
+		end
+		for _, data in ipairs({
+			{ "ReactorNorthApproachLeft", Vector3.new(12, 0.08, 44), Vector3.new(-22, 0.06, 74), Color3.fromRGB(228, 176, 112) },
+			{ "ReactorNorthApproachRight", Vector3.new(12, 0.08, 44), Vector3.new(22, 0.06, 74), Color3.fromRGB(228, 176, 112) },
+			{ "ReactorExtractApproachLeft", Vector3.new(10, 0.08, 34), Vector3.new(-18, 0.06, -70), Color3.fromRGB(124, 220, 184) },
+			{ "ReactorExtractApproachRight", Vector3.new(10, 0.08, 34), Vector3.new(18, 0.06, -70), Color3.fromRGB(124, 220, 184) },
+		}) do
+			local laneGlow = createRuntimeGlow(shell, data[1], data[2], anchor * CFrame.new(data[3]), data[4], 0.88)
+			laneGlow.CanQuery = false
+		end
 	else
 		for _, data in ipairs({
 			{ "YardNorthBarrierWest", Vector3.new(34, 5.5, 3), Vector3.new(-28, 2.2, 49) },
@@ -918,6 +1787,22 @@ function MissionService:_damageZombie(zombieModel, damage, attacker)
 			damage = math.max(1, math.floor(damage * self._skillTreeService:GetBossDamageMultiplier(attacker)))
 		end
 	end
+
+	local rootPart = zombieModel.PrimaryPart
+	if rootPart and zombieModel:GetAttribute("ShieldCarrier") and attacker and attacker.Character and attacker.Character:FindFirstChild("HumanoidRootPart") then
+		local incomingDirection = (rootPart.Position - attacker.Character.HumanoidRootPart.Position)
+		if incomingDirection.Magnitude > 0.01 then
+			local facingDot = rootPart.CFrame.LookVector:Dot((-incomingDirection).Unit)
+			if facingDot >= (self._missionConfig.Mission.ShieldCarrierFacingBlockDot or 0.42) then
+				damage = math.max(1, math.floor(damage * (self._missionConfig.Mission.ShieldCarrierFrontDamageScale or 0.35)))
+				zombieModel:SetAttribute("HitReactUntil", os.clock() + 0.08)
+				zombieModel:SetAttribute("HitReactPitch", 0.03)
+				zombieModel:SetAttribute("HitReactYaw", 0)
+				zombieModel:SetAttribute("HitReactRoll", 0.04)
+				self:_emitPulse(rootPart.CFrame * CFrame.new(0, 0.1, -(rootPart.Size.Z * 0.7)), Vector3.new(1.8, 1.8, 0.14), Color3.fromRGB(184, 222, 255), 0.32, 0.08)
+			end
+		end
+	end
 	self:_recordZombieDamage(zombieModel, attacker, damage)
 
 	if attacker then
@@ -925,10 +1810,14 @@ function MissionService:_damageZombie(zombieModel, damage, attacker)
 		zombieModel:SetAttribute("LastDamagerAt", os.clock())
 	end
 
-	local rootPart = zombieModel.PrimaryPart
 	if rootPart and attacker and attacker.Character and attacker.Character:FindFirstChild("HumanoidRootPart") then
 		local impulseDirection = (rootPart.Position - attacker.Character.HumanoidRootPart.Position).Unit
 		rootPart.AssemblyLinearVelocity = impulseDirection * 13 + Vector3.new(0, 8, 0)
+		local reactStrength = math.clamp(damage / math.max(18, humanoid.MaxHealth * 0.28), 0.12, 0.45)
+		zombieModel:SetAttribute("HitReactUntil", os.clock() + (zombieModel:GetAttribute("Brute") and 0.22 or 0.16))
+		zombieModel:SetAttribute("HitReactPitch", math.clamp(reactStrength * 0.48, 0.05, 0.22))
+		zombieModel:SetAttribute("HitReactYaw", math.clamp(impulseDirection.X * 0.18, -0.16, 0.16))
+		zombieModel:SetAttribute("HitReactRoll", math.clamp(-impulseDirection.X * 0.22, -0.18, 0.18))
 	end
 
 	local flash = zombieModel:FindFirstChild("DamageHighlight")
@@ -980,12 +1869,13 @@ function MissionService:_setBossWeakPointState(zombie, active)
 	end
 
 	zombie:SetAttribute("WeakPointActive", active)
+	local profile = self:_getBossProfile(self._activeMission)
 
 	local aura = zombie:FindFirstChild("BossAura")
 	if aura and aura:IsA("Highlight") then
 		local enraged = zombie:GetAttribute("Enraged") == true
-		aura.FillColor = active and Color3.fromRGB(255, 214, 112) or (enraged and Color3.fromRGB(255, 136, 96) or Color3.fromRGB(255, 88, 88))
-		aura.OutlineColor = active and Color3.fromRGB(255, 248, 214) or (enraged and Color3.fromRGB(255, 224, 188) or Color3.fromRGB(255, 228, 196))
+		aura.FillColor = active and profile.weakFillColor or (enraged and profile.enragedFillColor or profile.fillColor)
+		aura.OutlineColor = active and profile.weakOutlineColor or (enraged and profile.enragedOutlineColor or profile.outlineColor)
 		aura.FillTransparency = active and 0.24 or 0.42
 	end
 
@@ -993,8 +1883,8 @@ function MissionService:_setBossWeakPointState(zombie, active)
 	local label = marker and marker:FindFirstChildOfClass("TextLabel")
 	if label then
 		local enraged = zombie:GetAttribute("Enraged") == true
-		label.Text = active and "WEAK POINT OPEN" or (enraged and "SIEGE TYRANT RAGING" or "SIEGE TYRANT")
-		label.TextColor3 = active and Color3.fromRGB(255, 242, 152) or (enraged and Color3.fromRGB(255, 180, 160) or Color3.fromRGB(255, 212, 188))
+		label.Text = active and "WEAK POINT OPEN" or (enraged and (profile.name .. " RAGING") or profile.name)
+		label.TextColor3 = active and profile.weakTextColor or (enraged and profile.enragedTextColor or profile.textColor)
 	end
 end
 
@@ -1004,19 +1894,20 @@ function MissionService:_setBossEnrageState(zombie, active)
 	end
 
 	zombie:SetAttribute("Enraged", active)
+	local profile = self:_getBossProfile(self._activeMission)
 
 	local aura = zombie:FindFirstChild("BossAura")
 	if aura and aura:IsA("Highlight") then
-		aura.FillColor = active and Color3.fromRGB(255, 136, 96) or (zombie:GetAttribute("WeakPointActive") and Color3.fromRGB(255, 214, 112) or Color3.fromRGB(255, 88, 88))
-		aura.OutlineColor = active and Color3.fromRGB(255, 224, 188) or (zombie:GetAttribute("WeakPointActive") and Color3.fromRGB(255, 248, 214) or Color3.fromRGB(255, 228, 196))
+		aura.FillColor = active and profile.enragedFillColor or (zombie:GetAttribute("WeakPointActive") and profile.weakFillColor or profile.fillColor)
+		aura.OutlineColor = active and profile.enragedOutlineColor or (zombie:GetAttribute("WeakPointActive") and profile.weakOutlineColor or profile.outlineColor)
 		aura.FillTransparency = active and 0.28 or (zombie:GetAttribute("WeakPointActive") and 0.24 or 0.42)
 	end
 
 	local marker = zombie:FindFirstChild("BossMarker")
 	local label = marker and marker:FindFirstChildOfClass("TextLabel")
 	if label and zombie:GetAttribute("WeakPointActive") ~= true then
-		label.Text = active and "SIEGE TYRANT RAGING" or "SIEGE TYRANT"
-		label.TextColor3 = active and Color3.fromRGB(255, 180, 160) or Color3.fromRGB(255, 212, 188)
+		label.Text = active and (profile.name .. " RAGING") or profile.name
+		label.TextColor3 = active and profile.enragedTextColor or profile.textColor
 	end
 end
 
@@ -1026,8 +1917,9 @@ function MissionService:_openBossWeakPoint(zombie)
 		return
 	end
 
+	local profile = self:_getBossProfile(mission)
 	self:_setBossWeakPointState(zombie, true)
-	self:_notifyParty(mission.party, "Weak point exposed. Focus fire on the Siege Tyrant.")
+	self:_notifyParty(mission.party, ("Weak point exposed. Focus fire on the %s."):format(profile.notifyName))
 	local weakPulse = self:_emitPulse(zombie.PrimaryPart.CFrame * CFrame.new(0, 3.8, 0), Vector3.new(5.4, 5.4, 5.4), Color3.fromRGB(255, 226, 118), 0.24, 0.32)
 	if weakPulse then
 		weakPulse.Shape = Enum.PartType.Ball
@@ -1053,10 +1945,21 @@ function MissionService:_resolveRaycastZombie(result)
 	return nil
 end
 
-function MissionService:_emitTracer(originPosition, hitPosition, color)
+function MissionService:_emitTracer(originPosition, hitPosition, color, weapon)
 	local distance = (hitPosition - originPosition).Magnitude
 	if distance <= 0 then
 		return
+	end
+
+	local width = 0.18
+	if weapon then
+		if weapon.ModelStyle == "Shotgun" or weapon.WeaponType == "Spread" then
+			width = 0.24
+		elseif weapon.ModelStyle == "SMG" then
+			width = 0.12
+		elseif weapon.ModelStyle == "Carbine" then
+			width = 0.16
+		end
 	end
 
 	local tracer = Instance.new("Part")
@@ -1066,10 +1969,22 @@ function MissionService:_emitTracer(originPosition, hitPosition, color)
 	tracer.CanQuery = false
 	tracer.Material = Enum.Material.Neon
 	tracer.Color = color
-	tracer.Size = Vector3.new(0.18, 0.18, distance)
+	tracer.Size = Vector3.new(width, width, distance)
 	tracer.CFrame = CFrame.lookAt(originPosition:Lerp(hitPosition, 0.5), hitPosition)
 	tracer.Parent = Workspace
 	Debris:AddItem(tracer, 0.08)
+
+	local core = Instance.new("Part")
+	core.Name = "BulletTracerCore"
+	core.Anchored = true
+	core.CanCollide = false
+	core.CanQuery = false
+	core.Material = Enum.Material.Neon
+	core.Color = color:Lerp(Color3.fromRGB(255, 246, 222), 0.45)
+	core.Size = Vector3.new(width * 0.45, width * 0.45, distance)
+	core.CFrame = tracer.CFrame
+	core.Parent = Workspace
+	Debris:AddItem(core, 0.06)
 end
 
 function MissionService:_emitPulse(cframe, size, color, transparency, lifetime)
@@ -1101,7 +2016,7 @@ function MissionService:_emitMuzzleFlash(handle, color, weaponType, weapon)
 	if not size then
 		size = weaponType == "Spread" and Vector3.new(1.6, 1.6, 1.6) or Vector3.new(1.1, 1.1, 1.1)
 	end
-	local flash = self:_emitPulse(handle.CFrame * CFrame.new(offset), size, color, 0.14, 0.07)
+	local flash = self:_emitPulse(handle.CFrame * CFrame.new(offset), size, color, 0.14, weaponType == "Spread" and 0.09 or 0.07)
 	if flash then
 		flash.Shape = Enum.PartType.Ball
 	end
@@ -1109,11 +2024,27 @@ function MissionService:_emitMuzzleFlash(handle, color, weaponType, weapon)
 	if streak then
 		streak.Material = Enum.Material.Neon
 	end
+	local core = self:_emitPulse(handle.CFrame * CFrame.new(offset), size * 0.42, Color3.fromRGB(255, 246, 224), 0.08, 0.045)
+	if core then
+		core.Shape = Enum.PartType.Ball
+	end
+	if weaponType == "Spread" then
+		local blast = self:_emitPulse(handle.CFrame * CFrame.new(offset), Vector3.new(size.X * 0.65, size.Y * 0.65, size.Z * 2.1), color:Lerp(Color3.fromRGB(255, 214, 164), 0.55), 0.34, 0.08)
+		if blast then
+			blast.Material = Enum.Material.Neon
+		end
+	end
 end
 
-function MissionService:_emitImpactEffect(position, color, hitZombie)
+function MissionService:_emitImpactEffect(position, color, hitZombie, weapon)
 	local impactColor = hitZombie and color:Lerp(Color3.fromRGB(255, 236, 236), 0.45) or color:Lerp(Color3.fromRGB(255, 214, 176), 0.25)
-	local spark = self:_emitPulse(CFrame.new(position), Vector3.new(0.7, 0.7, 0.7), impactColor, 0.25, 0.1)
+	local impactSize = Vector3.new(0.7, 0.7, 0.7)
+	if weapon and (weapon.ModelStyle == "Shotgun" or weapon.WeaponType == "Spread") then
+		impactSize = Vector3.new(0.92, 0.92, 0.92)
+	elseif weapon and weapon.ModelStyle == "SMG" then
+		impactSize = Vector3.new(0.56, 0.56, 0.56)
+	end
+	local spark = self:_emitPulse(CFrame.new(position), impactSize, impactColor, 0.25, 0.1)
 	if spark then
 		spark.Shape = Enum.PartType.Ball
 	end
@@ -1121,6 +2052,12 @@ function MissionService:_emitImpactEffect(position, color, hitZombie)
 	local streak = self:_emitPulse(CFrame.new(position), Vector3.new(0.2, 1.4, 0.2), impactColor, 0.4, 0.12)
 	if streak then
 		streak.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(25))
+	end
+	if hitZombie then
+		local ring = self:_emitPulse(CFrame.new(position), Vector3.new(0.18, impactSize.X * 1.6, impactSize.Z * 1.6), impactColor:Lerp(Color3.fromRGB(255, 250, 234), 0.35), 0.5, 0.08)
+		if ring then
+			ring.Material = Enum.Material.ForceField
+		end
 	end
 end
 
@@ -1147,7 +2084,11 @@ function MissionService:_kickWeaponVisual(handle, weapon)
 	local originalCFrame = handle.CFrame
 	local recoilDistance = weapon.RecoilDistance or (weapon.WeaponType == "Spread" and 0.22 or 0.1)
 	local recoilTwist = math.rad(weapon.RecoilTwist or 6)
-	local kickCFrame = originalCFrame * CFrame.new(0, 0, recoilDistance) * CFrame.Angles(-recoilTwist, 0, 0)
+	local lateralKick = weapon.ModelStyle == "SMG" and 0.03 or (weapon.ModelStyle == "Pistol" and 0.018 or 0)
+	local verticalLift = weapon.ModelStyle == "Shotgun" and 0.04 or (weapon.ModelStyle == "Carbine" and 0.015 or 0.01)
+	local kickCFrame = originalCFrame
+		* CFrame.new(lateralKick, verticalLift, recoilDistance)
+		* CFrame.Angles(-recoilTwist, 0, math.rad((weapon.ModelStyle == "SMG" and 3.5 or (weapon.ModelStyle == "Shotgun" and 2 or 1.2))))
 	handle.CFrame = kickCFrame
 
 	local returnDelay = weapon.RecoilReturnTime or 0.08
@@ -1169,7 +2110,7 @@ function MissionService:_pumpShotgunVisual(tool, handle, weapon)
 	end
 
 	local original = pump.CFrame
-	local pulled = handle.CFrame * CFrame.new(0, 0.1, -0.95)
+	local pulled = handle.CFrame * CFrame.new(0, 0.08, -1.08) * CFrame.Angles(math.rad(-6), 0, 0)
 	pump.CFrame = pulled
 	task.delay(weapon.PumpDelay or 0.18, function()
 		if pump and pump.Parent then
@@ -1231,78 +2172,88 @@ function MissionService:_buildWeaponVisual(tool, handle, weapon)
 	end
 
 	if style == "Pistol" then
-		self:_attachWeaponPart(tool, handle, "Frame", Vector3.new(0.56, 0.4, 1.34), CFrame.new(0, 0.16, -0.04), weapon.HandleColor, Enum.Material.SmoothPlastic)
-		self:_attachWeaponPart(tool, handle, "Slide", Vector3.new(0.7, 0.24, 1.54), CFrame.new(0, 0.5, -0.14), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "SlideCap", Vector3.new(0.48, 0.06, 1.08), CFrame.new(0, 0.66, -0.12), Color3.fromRGB(84, 94, 108), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "DustTop", Vector3.new(0.26, 0.05, 0.86), CFrame.new(0, 0.68, 0.08), Color3.fromRGB(112, 120, 134), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.14, 0.14, 1.08), CFrame.new(0, 0.34, -1.18), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "MuzzleBrake", Vector3.new(0.2, 0.2, 0.16), CFrame.new(0, 0.34, -1.78), Color3.fromRGB(92, 98, 110), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "TriggerGuard", Vector3.new(0.32, 0.16, 0.3), CFrame.new(0, -0.1, -0.22), Color3.fromRGB(62, 68, 80), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Trigger", Vector3.new(0.05, 0.18, 0.08), CFrame.new(0, -0.04, -0.12), Color3.fromRGB(38, 42, 50), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "MagWell", Vector3.new(0.32, 0.16, 0.26), CFrame.new(0, -0.18, 0.12), Color3.fromRGB(54, 60, 70), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "GripPlateLeft", Vector3.new(0.08, 0.72, 0.56), CFrame.new(-0.21, -0.2, 0.08), accentColor:Lerp(Color3.fromRGB(255, 255, 255), 0.1), Enum.Material.SmoothPlastic)
-		self:_attachWeaponPart(tool, handle, "GripPlateRight", Vector3.new(0.08, 0.72, 0.56), CFrame.new(0.21, -0.2, 0.08), accentColor:Lerp(Color3.fromRGB(255, 255, 255), 0.1), Enum.Material.SmoothPlastic)
-		self:_attachWeaponPart(tool, handle, "Ejector", Vector3.new(0.06, 0.08, 0.22), CFrame.new(0.26, 0.48, -0.18), Color3.fromRGB(198, 206, 214), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "FrontSight", Vector3.new(0.08, 0.12, 0.08), CFrame.new(0, 0.68, -0.9), Color3.fromRGB(236, 242, 250), Enum.Material.Neon)
-		self:_attachWeaponPart(tool, handle, "RearSight", Vector3.new(0.14, 0.08, 0.1), CFrame.new(0, 0.66, 0.26), Color3.fromRGB(66, 74, 86), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Frame", Vector3.new(0.56, 0.34, 1.12), CFrame.new(0, 0.12, 0.02), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "Slide", Vector3.new(0.72, 0.24, 1.72), CFrame.new(0, 0.5, -0.22), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SlideTop", Vector3.new(0.54, 0.05, 1.38), CFrame.new(0, 0.64, -0.18), Color3.fromRGB(82, 90, 102), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "DustCover", Vector3.new(0.28, 0.08, 0.74), CFrame.new(0, 0.3, -0.64), Color3.fromRGB(70, 76, 88), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.14, 0.14, 1.02), CFrame.new(0, 0.34, -1.16), Color3.fromRGB(42, 46, 54), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MuzzleCap", Vector3.new(0.22, 0.22, 0.18), CFrame.new(0, 0.34, -1.82), Color3.fromRGB(88, 94, 106), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "TriggerGuard", Vector3.new(0.3, 0.12, 0.26), CFrame.new(0, -0.08, -0.14), Color3.fromRGB(60, 66, 78), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Trigger", Vector3.new(0.04, 0.16, 0.08), CFrame.new(0, -0.02, -0.08), Color3.fromRGB(36, 40, 48), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MagWell", Vector3.new(0.28, 0.12, 0.22), CFrame.new(0, -0.16, 0.16), Color3.fromRGB(50, 56, 66), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "GripPlateLeft", Vector3.new(0.07, 0.68, 0.48), CFrame.new(-0.2, -0.18, 0.14), Color3.fromRGB(24, 26, 30), Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "GripPlateRight", Vector3.new(0.07, 0.68, 0.48), CFrame.new(0.2, -0.18, 0.14), Color3.fromRGB(24, 26, 30), Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "EjectionPort", Vector3.new(0.06, 0.1, 0.24), CFrame.new(0.26, 0.48, -0.24), Color3.fromRGB(196, 204, 212), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSightBase", Vector3.new(0.1, 0.08, 0.1), CFrame.new(0, 0.66, -1.02), Color3.fromRGB(52, 56, 64), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSightDot", Vector3.new(0.05, 0.05, 0.05), CFrame.new(0, 0.73, -1.02), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		self:_attachWeaponPart(tool, handle, "RearSightLeft", Vector3.new(0.06, 0.08, 0.12), CFrame.new(-0.1, 0.66, 0.28), Color3.fromRGB(52, 56, 64), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "RearSightRight", Vector3.new(0.06, 0.08, 0.12), CFrame.new(0.1, 0.66, 0.28), Color3.fromRGB(52, 56, 64), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "RearSightDotLeft", Vector3.new(0.04, 0.04, 0.04), CFrame.new(-0.1, 0.72, 0.28), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		self:_attachWeaponPart(tool, handle, "RearSightDotRight", Vector3.new(0.04, 0.04, 0.04), CFrame.new(0.1, 0.72, 0.28), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
 		return
 	end
 
 	if style == "Carbine" then
-		self:_attachWeaponPart(tool, handle, "LowerReceiver", Vector3.new(0.68, 0.4, 1.08), CFrame.new(0, 0.16, 0.2), weapon.HandleColor, Enum.Material.SmoothPlastic)
-		self:_attachWeaponPart(tool, handle, "UpperReceiver", Vector3.new(0.78, 0.24, 1.26), CFrame.new(0, 0.54, -0.06), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "DustCover", Vector3.new(0.42, 0.1, 0.58), CFrame.new(0.18, 0.46, -0.02), Color3.fromRGB(72, 80, 92), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.14, 0.14, 2.56), CFrame.new(0, 0.32, -2.48), Color3.fromRGB(72, 80, 92), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "MuzzleDevice", Vector3.new(0.2, 0.2, 0.24), CFrame.new(0, 0.32, -3.82), Color3.fromRGB(108, 116, 126), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "StockTube", Vector3.new(0.18, 0.18, 1.24), CFrame.new(0, 0.28, 1.46), Color3.fromRGB(78, 86, 96), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Stock", Vector3.new(0.42, 0.64, 1.16), CFrame.new(0, 0.08, 1.98), weapon.HandleColor, Enum.Material.SmoothPlastic)
-		self:_attachWeaponPart(tool, handle, "ButtPad", Vector3.new(0.44, 0.58, 0.12), CFrame.new(0, 0.08, 2.58), Color3.fromRGB(36, 40, 48), Enum.Material.Rubber)
-		self:_attachWeaponPart(tool, handle, "Magazine", Vector3.new(0.26, 0.86, 0.38), CFrame.new(0, -0.58, -0.12) * CFrame.Angles(math.rad(14), 0, 0), weapon.HandleColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "MagWell", Vector3.new(0.34, 0.18, 0.3), CFrame.new(0, -0.2, 0.08), Color3.fromRGB(54, 62, 74), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "TopRail", Vector3.new(0.24, 0.05, 1.66), CFrame.new(0, 0.72, -0.08), Color3.fromRGB(78, 88, 102), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "RearSight", Vector3.new(0.16, 0.14, 0.14), CFrame.new(0, 0.8, 0.52), Color3.fromRGB(76, 86, 98), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "FrontSight", Vector3.new(0.08, 0.26, 0.08), CFrame.new(0, 0.76, -2.2), Color3.fromRGB(228, 238, 248), Enum.Material.Neon)
-		self:_attachWeaponPart(tool, handle, "Handguard", Vector3.new(0.4, 0.3, 1.74), CFrame.new(0, 0.18, -1.68), weapon.HandleColor, Enum.Material.SmoothPlastic)
-		self:_attachWeaponPart(tool, handle, "HandguardTop", Vector3.new(0.28, 0.06, 1.42), CFrame.new(0, 0.36, -1.68), Color3.fromRGB(84, 94, 106), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "SideRailLeft", Vector3.new(0.05, 0.16, 1.04), CFrame.new(-0.22, 0.18, -1.68), Color3.fromRGB(70, 78, 90), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "SideRailRight", Vector3.new(0.05, 0.16, 1.04), CFrame.new(0.22, 0.18, -1.68), Color3.fromRGB(70, 78, 90), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Foregrip", Vector3.new(0.12, 0.52, 0.14), CFrame.new(0, -0.04, -1.44), Color3.fromRGB(58, 66, 78), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "LowerReceiver", Vector3.new(0.66, 0.36, 1.02), CFrame.new(0, 0.14, 0.18), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "UpperReceiver", Vector3.new(0.74, 0.22, 1.42), CFrame.new(0, 0.52, -0.18), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "DustCover", Vector3.new(0.4, 0.08, 0.64), CFrame.new(0.16, 0.46, -0.14), Color3.fromRGB(66, 74, 84), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.12, 0.12, 2.92), CFrame.new(0, 0.3, -2.76), Color3.fromRGB(54, 60, 70), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MuzzleDevice", Vector3.new(0.18, 0.18, 0.26), CFrame.new(0, 0.3, -4.26), Color3.fromRGB(94, 102, 112), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "StockTube", Vector3.new(0.16, 0.16, 1.36), CFrame.new(0, 0.28, 1.58), Color3.fromRGB(72, 78, 90), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Stock", Vector3.new(0.38, 0.58, 1.28), CFrame.new(0, 0.08, 2.18), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "ButtPad", Vector3.new(0.4, 0.54, 0.12), CFrame.new(0, 0.08, 2.86), Color3.fromRGB(34, 38, 44), Enum.Material.Rubber)
+		self:_attachWeaponPart(tool, handle, "Magazine", Vector3.new(0.24, 0.92, 0.34), CFrame.new(0, -0.6, -0.08) * CFrame.Angles(math.rad(10), 0, 0), Color3.fromRGB(42, 46, 52), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MagWell", Vector3.new(0.32, 0.16, 0.26), CFrame.new(0, -0.18, 0.04), Color3.fromRGB(48, 54, 64), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "TopRail", Vector3.new(0.2, 0.04, 2.12), CFrame.new(0, 0.68, -0.34), Color3.fromRGB(66, 74, 86), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "RearSightBase", Vector3.new(0.14, 0.08, 0.18), CFrame.new(0, 0.76, 0.48), Color3.fromRGB(52, 58, 68), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSightBase", Vector3.new(0.08, 0.18, 0.08), CFrame.new(0, 0.74, -2.68), Color3.fromRGB(52, 58, 68), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSightDot", Vector3.new(0.04, 0.04, 0.04), CFrame.new(0, 0.86, -2.68), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		self:_attachWeaponPart(tool, handle, "Handguard", Vector3.new(0.36, 0.26, 2.02), CFrame.new(0, 0.18, -1.92), Color3.fromRGB(34, 38, 46), Enum.Material.SmoothPlastic)
+		self:_attachWeaponPart(tool, handle, "HandguardTop", Vector3.new(0.22, 0.04, 1.72), CFrame.new(0, 0.34, -1.92), Color3.fromRGB(74, 82, 94), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SideRailLeft", Vector3.new(0.04, 0.14, 1.46), CFrame.new(-0.2, 0.18, -1.92), Color3.fromRGB(62, 70, 82), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SideRailRight", Vector3.new(0.04, 0.14, 1.46), CFrame.new(0.2, 0.18, -1.92), Color3.fromRGB(62, 70, 82), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Foregrip", Vector3.new(0.1, 0.46, 0.12), CFrame.new(0, -0.02, -1.62), Color3.fromRGB(50, 56, 66), Enum.Material.Metal)
 		return
 	end
 
 	if style == "SMG" then
-		self:_attachWeaponPart(tool, handle, "Receiver", Vector3.new(0.68, 0.36, 1.38), CFrame.new(0, 0.36, -0.04), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "DustCover", Vector3.new(0.56, 0.1, 1), CFrame.new(0, 0.58, -0.02), Color3.fromRGB(80, 88, 100), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "ChargingTube", Vector3.new(0.1, 0.1, 1.08), CFrame.new(0, 0.5, 0.2), Color3.fromRGB(68, 74, 84), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.14, 0.14, 1.34), CFrame.new(0, 0.24, -1.68), Color3.fromRGB(70, 78, 90), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Muzzle", Vector3.new(0.2, 0.2, 0.16), CFrame.new(0, 0.24, -2.44), Color3.fromRGB(110, 118, 130), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Magazine", Vector3.new(0.24, 1.02, 0.34), CFrame.new(0, -0.7, -0.02), weapon.HandleColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "MagWell", Vector3.new(0.28, 0.16, 0.22), CFrame.new(0, -0.18, 0.12), Color3.fromRGB(58, 66, 74), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "StockArm", Vector3.new(0.12, 0.12, 1), CFrame.new(0, 0.38, 1.02), Color3.fromRGB(78, 86, 96), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "StockPad", Vector3.new(0.34, 0.3, 0.18), CFrame.new(0, 0.38, 1.54), weapon.HandleColor, Enum.Material.SmoothPlastic)
-		self:_attachWeaponPart(tool, handle, "TopRail", Vector3.new(0.2, 0.05, 0.94), CFrame.new(0, 0.66, -0.02), Color3.fromRGB(76, 84, 98), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "RearSight", Vector3.new(0.14, 0.1, 0.12), CFrame.new(0, 0.72, 0.28), Color3.fromRGB(76, 84, 98), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "FrontSight", Vector3.new(0.06, 0.18, 0.06), CFrame.new(0, 0.64, -1.36), Color3.fromRGB(230, 236, 246), Enum.Material.Neon)
-		self:_attachWeaponPart(tool, handle, "Foregrip", Vector3.new(0.12, 0.4, 0.14), CFrame.new(0, -0.02, -0.72), weapon.HandleColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "SideShroudLeft", Vector3.new(0.05, 0.18, 0.88), CFrame.new(-0.2, 0.18, -0.84), Color3.fromRGB(66, 74, 86), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "SideShroudRight", Vector3.new(0.05, 0.18, 0.88), CFrame.new(0.2, 0.18, -0.84), Color3.fromRGB(66, 74, 86), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Receiver", Vector3.new(0.64, 0.32, 1.52), CFrame.new(0, 0.34, -0.18), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "ReceiverTop", Vector3.new(0.44, 0.06, 1.3), CFrame.new(0, 0.54, -0.14), Color3.fromRGB(72, 80, 92), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "ChargingTube", Vector3.new(0.08, 0.08, 1.18), CFrame.new(0, 0.48, 0.1), Color3.fromRGB(58, 64, 74), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.12, 0.12, 1.54), CFrame.new(0, 0.22, -1.92), Color3.fromRGB(56, 62, 72), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Muzzle", Vector3.new(0.16, 0.16, 0.16), CFrame.new(0, 0.22, -2.78), Color3.fromRGB(96, 104, 116), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Magazine", Vector3.new(0.22, 1.08, 0.3), CFrame.new(0, -0.72, -0.04), Color3.fromRGB(36, 40, 46), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "MagWell", Vector3.new(0.26, 0.14, 0.2), CFrame.new(0, -0.16, 0.06), Color3.fromRGB(50, 56, 66), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "StockArm", Vector3.new(0.1, 0.1, 1.18), CFrame.new(0, 0.34, 1.12), Color3.fromRGB(68, 74, 84), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "StockPad", Vector3.new(0.28, 0.26, 0.18), CFrame.new(0, 0.34, 1.76), Color3.fromRGB(28, 30, 36), Enum.Material.Rubber)
+		self:_attachWeaponPart(tool, handle, "TopRail", Vector3.new(0.14, 0.04, 1.18), CFrame.new(0, 0.62, -0.18), Color3.fromRGB(70, 78, 92), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "RearSightBase", Vector3.new(0.12, 0.08, 0.14), CFrame.new(0, 0.68, 0.24), Color3.fromRGB(54, 60, 70), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSightBase", Vector3.new(0.06, 0.14, 0.06), CFrame.new(0, 0.64, -1.58), Color3.fromRGB(54, 60, 70), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSightDot", Vector3.new(0.04, 0.04, 0.04), CFrame.new(0, 0.74, -1.58), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		self:_attachWeaponPart(tool, handle, "Foregrip", Vector3.new(0.1, 0.34, 0.12), CFrame.new(0, 0, -0.86), Color3.fromRGB(42, 46, 54), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SideShroudLeft", Vector3.new(0.04, 0.16, 1.08), CFrame.new(-0.18, 0.18, -1.02), Color3.fromRGB(60, 68, 80), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "SideShroudRight", Vector3.new(0.04, 0.16, 1.08), CFrame.new(0.18, 0.18, -1.02), Color3.fromRGB(60, 68, 80), Enum.Material.Metal)
 		return
 	end
 
 	if style == "Shotgun" then
-		self:_attachWeaponPart(tool, handle, "Receiver", Vector3.new(0.8, 0.4, 1.54), CFrame.new(0, 0.38, -0.08), accentColor, Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "EjectionPort", Vector3.new(0.06, 0.12, 0.34), CFrame.new(0.28, 0.42, -0.18), Color3.fromRGB(198, 206, 214), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.16, 0.16, 2.94), CFrame.new(0, 0.3, -2.58), Color3.fromRGB(82, 70, 58), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Tube", Vector3.new(0.12, 0.12, 2.38), CFrame.new(0, 0.04, -2.12), Color3.fromRGB(108, 94, 76), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Pump", Vector3.new(0.42, 0.3, 1.02), CFrame.new(0, 0.08, -1.52), weapon.HandleColor, Enum.Material.WoodPlanks)
-		self:_attachWeaponPart(tool, handle, "PumpRailLeft", Vector3.new(0.04, 0.16, 0.82), CFrame.new(-0.18, 0.08, -1.52), Color3.fromRGB(82, 70, 58), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "PumpRailRight", Vector3.new(0.04, 0.16, 0.82), CFrame.new(0.18, 0.08, -1.52), Color3.fromRGB(82, 70, 58), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "HeatShield", Vector3.new(0.36, 0.1, 1.34), CFrame.new(0, 0.48, -1.76), Color3.fromRGB(76, 64, 54), Enum.Material.Metal)
-		self:_attachWeaponPart(tool, handle, "Stock", Vector3.new(0.5, 0.62, 1.28), CFrame.new(0, 0.02, 1.58), weapon.HandleColor, Enum.Material.WoodPlanks)
-		self:_attachWeaponPart(tool, handle, "StockComb", Vector3.new(0.24, 0.14, 0.68), CFrame.new(0, 0.34, 1.22), Color3.fromRGB(120, 94, 72), Enum.Material.WoodPlanks)
-		self:_attachWeaponPart(tool, handle, "ButtPad", Vector3.new(0.42, 0.54, 0.12), CFrame.new(0, 0.02, 2.28), Color3.fromRGB(40, 34, 30), Enum.Material.Rubber)
-		self:_attachWeaponPart(tool, handle, "FrontBead", Vector3.new(0.06, 0.12, 0.06), CFrame.new(0, 0.54, -3.9), Color3.fromRGB(246, 226, 168), Enum.Material.Neon)
-		self:_attachWeaponPart(tool, handle, "ReceiverRail", Vector3.new(0.2, 0.05, 0.76), CFrame.new(0, 0.62, -0.06), Color3.fromRGB(74, 64, 54), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Receiver", Vector3.new(0.76, 0.34, 1.68), CFrame.new(0, 0.34, -0.16), accentColor, Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "ReceiverTop", Vector3.new(0.48, 0.05, 1.1), CFrame.new(0, 0.54, -0.12), Color3.fromRGB(68, 58, 48), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "EjectionPort", Vector3.new(0.06, 0.1, 0.4), CFrame.new(0.28, 0.38, -0.22), Color3.fromRGB(198, 206, 214), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Barrel", Vector3.new(0.14, 0.14, 3.36), CFrame.new(0, 0.28, -3.02), Color3.fromRGB(60, 54, 48), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Tube", Vector3.new(0.1, 0.1, 2.82), CFrame.new(0, 0.04, -2.6), Color3.fromRGB(86, 76, 64), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Pump", Vector3.new(0.38, 0.26, 1.28), CFrame.new(0, 0.08, -1.84), weapon.HandleColor, Enum.Material.WoodPlanks)
+		self:_attachWeaponPart(tool, handle, "PumpRailLeft", Vector3.new(0.04, 0.14, 1.06), CFrame.new(-0.16, 0.08, -1.84), Color3.fromRGB(72, 62, 54), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "PumpRailRight", Vector3.new(0.04, 0.14, 1.06), CFrame.new(0.16, 0.08, -1.84), Color3.fromRGB(72, 62, 54), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "HeatShield", Vector3.new(0.32, 0.08, 1.72), CFrame.new(0, 0.44, -2.06), Color3.fromRGB(64, 56, 48), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "Stock", Vector3.new(0.46, 0.56, 1.42), CFrame.new(0, 0.02, 1.8), weapon.HandleColor, Enum.Material.WoodPlanks)
+		self:_attachWeaponPart(tool, handle, "StockComb", Vector3.new(0.22, 0.12, 0.8), CFrame.new(0, 0.3, 1.38), Color3.fromRGB(110, 88, 70), Enum.Material.WoodPlanks)
+		self:_attachWeaponPart(tool, handle, "ButtPad", Vector3.new(0.38, 0.5, 0.12), CFrame.new(0, 0.02, 2.56), Color3.fromRGB(38, 32, 28), Enum.Material.Rubber)
+		self:_attachWeaponPart(tool, handle, "FrontSightBase", Vector3.new(0.06, 0.1, 0.06), CFrame.new(0, 0.48, -4.42), Color3.fromRGB(52, 48, 42), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "FrontSightDot", Vector3.new(0.04, 0.04, 0.04), CFrame.new(0, 0.58, -4.42), Color3.fromRGB(246, 226, 168), Enum.Material.Neon)
+		self:_attachWeaponPart(tool, handle, "RearSightLeft", Vector3.new(0.04, 0.06, 0.08), CFrame.new(-0.08, 0.58, 0.26), Color3.fromRGB(60, 54, 48), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "RearSightRight", Vector3.new(0.04, 0.06, 0.08), CFrame.new(0.08, 0.58, 0.26), Color3.fromRGB(60, 54, 48), Enum.Material.Metal)
+		self:_attachWeaponPart(tool, handle, "ReceiverRail", Vector3.new(0.18, 0.04, 0.92), CFrame.new(0, 0.62, -0.12), Color3.fromRGB(74, 64, 54), Enum.Material.Metal)
 	end
 end
 
@@ -1398,12 +2349,20 @@ function MissionService:_createFistsTool(player)
 				recoil = weapon.RecoilDistance or 0.08,
 				twist = (weapon.RecoilTwist or 4) / 100,
 			})
-			self:_emitMuzzleFlash(handle, weapon.HandleColor, weapon.WeaponType)
+			self:_emitMuzzleFlash(handle, weapon.HandleColor, weapon.WeaponType, weapon)
 			self:_damageZombie(zombie, weapon.Damage, player)
-			local swing = self:_emitPulse(rootPart.CFrame * CFrame.new(0, 0, -3.2), Vector3.new(2.4, 1.8, 0.45), weapon.HandleColor, 0.48, 0.1)
+			local swing = self:_emitPulse(rootPart.CFrame * CFrame.new(0, 0, -3.2) * CFrame.Angles(0, 0, math.rad(18)), Vector3.new(3.4, 0.42, 1.18), weapon.HandleColor, 0.38, 0.1)
 			if swing then
 				swing.Material = Enum.Material.ForceField
 			end
+			local afterSlash = self:_emitPulse(rootPart.CFrame * CFrame.new(0, 0.1, -2.6) * CFrame.Angles(0, 0, math.rad(-12)), Vector3.new(2.6, 0.22, 0.92), weapon.HandleColor:Lerp(Color3.fromRGB(255, 244, 224), 0.22), 0.54, 0.08)
+			if afterSlash then
+				afterSlash.Material = Enum.Material.Neon
+			end
+			rootPart.AssemblyLinearVelocity = rootPart.AssemblyLinearVelocity + (rootPart.CFrame.LookVector * 8)
+			self:_fireMissionState({ player }, "Strike landed")
+		else
+			self:_fireMissionState({ player }, "No target in range")
 		end
 	end)
 end
@@ -1462,6 +2421,9 @@ function MissionService:_clearDownedState(player, restoreHealth)
 		if state.highlight then
 			state.highlight:Destroy()
 		end
+		if state.beacon then
+			state.beacon:Destroy()
+		end
 		if state.connection then
 			state.connection:Disconnect()
 		end
@@ -1486,9 +2448,74 @@ function MissionService:_clearDownedState(player, restoreHealth)
 	end
 end
 
+function MissionService:_getBossProfile(mission, overrideKey)
+	local useWarden = overrideKey == "warden_hulk" or self:_isCommanderHuntScenario(mission)
+	if useWarden then
+		return {
+			key = "warden_hulk",
+			name = "WARDEN HULK",
+			displayName = "Warden Hulk",
+			notifyName = "Warden Hulk",
+			fillColor = Color3.fromRGB(198, 132, 96),
+			outlineColor = Color3.fromRGB(255, 220, 188),
+			textColor = Color3.fromRGB(255, 226, 196),
+			enragedFillColor = Color3.fromRGB(255, 126, 88),
+			enragedOutlineColor = Color3.fromRGB(255, 220, 188),
+			enragedTextColor = Color3.fromRGB(255, 188, 164),
+			weakFillColor = Color3.fromRGB(255, 220, 118),
+			weakOutlineColor = Color3.fromRGB(255, 248, 214),
+			weakTextColor = Color3.fromRGB(255, 242, 152),
+			healthScale = self._missionConfig.Mission.WardenBossHealthScale or self._missionConfig.Mission.BossHealthScale,
+			damageScale = self._missionConfig.Mission.WardenBossDamageScale or self._missionConfig.Mission.BossDamageScale,
+			slamRadius = self._missionConfig.Mission.WardenBossSlamRadius or self._missionConfig.Mission.BossSlamRadius,
+			slamDamage = self._missionConfig.Mission.WardenBossSlamDamage or self._missionConfig.Mission.BossSlamDamage,
+			summonCount = self._missionConfig.Mission.WardenBossSummonCount or self._missionConfig.Mission.BossSummonCount,
+			summonCooldown = self._missionConfig.Mission.WardenBossSummonCooldown or self._missionConfig.Mission.BossSummonCooldown,
+			enrageThreshold = self._missionConfig.Mission.WardenBossEnrageThreshold or self._missionConfig.Mission.BossEnrageThreshold,
+			rewardTokens = self._missionConfig.Mission.WardenBossReward or self._missionConfig.Mission.BossReward or 0,
+			lootChanceScale = self._missionConfig.Mission.WardenBossLootChanceScale or self._missionConfig.Mission.BossLootChanceScale or 0.75,
+			experienceBonus = self._missionConfig.Mission.WardenBossExperienceBonus or self._missionConfig.Mission.BossExperienceBonus or 0,
+		}
+	end
+	return {
+		key = "siege_tyrant",
+		name = "SIEGE TYRANT",
+		displayName = "Siege Tyrant",
+		notifyName = "Siege Tyrant",
+		fillColor = Color3.fromRGB(255, 88, 88),
+		outlineColor = Color3.fromRGB(255, 228, 196),
+		textColor = Color3.fromRGB(255, 212, 188),
+		enragedFillColor = Color3.fromRGB(255, 136, 96),
+		enragedOutlineColor = Color3.fromRGB(255, 224, 188),
+		enragedTextColor = Color3.fromRGB(255, 180, 160),
+		weakFillColor = Color3.fromRGB(255, 214, 112),
+		weakOutlineColor = Color3.fromRGB(255, 248, 214),
+		weakTextColor = Color3.fromRGB(255, 242, 152),
+		healthScale = self._missionConfig.Mission.BossHealthScale,
+		damageScale = self._missionConfig.Mission.BossDamageScale,
+		slamRadius = self._missionConfig.Mission.BossSlamRadius,
+		slamDamage = self._missionConfig.Mission.BossSlamDamage,
+		summonCount = self._missionConfig.Mission.BossSummonCount,
+		summonCooldown = self._missionConfig.Mission.BossSummonCooldown,
+		enrageThreshold = self._missionConfig.Mission.BossEnrageThreshold,
+		rewardTokens = self._missionConfig.Mission.BossReward or 0,
+		lootChanceScale = self._missionConfig.Mission.BossLootChanceScale or 0.75,
+		experienceBonus = self._missionConfig.Mission.BossExperienceBonus or 0,
+	}
+end
+
 function MissionService:_getObjectiveStateText(mission)
 	if not mission then
 		return "Objective: defend the bunker core"
+	end
+	if self:_isCommanderHuntScenario(mission) then
+		return "Objective: eliminate commander"
+	end
+	if self:_isEvacEscortScenario(mission) then
+		return "Objective: escort convoy"
+	end
+	if self:_isPowerRelayScenario(mission) then
+		return "Objective: stabilize relay nodes"
 	end
 	if self:_isPowerCellScenario(mission) then
 		return "Objective: deliver power cells"
@@ -1520,16 +2547,22 @@ function MissionService:_enterDownedState(player, mission, character, humanoid)
 
 	local downedHighlight = Instance.new("Highlight")
 	downedHighlight.Name = "DownedHighlight"
-	downedHighlight.FillColor = Color3.fromRGB(255, 132, 102)
+	downedHighlight.FillColor = Color3.fromRGB(255, 148, 112)
 	downedHighlight.OutlineColor = Color3.fromRGB(255, 226, 210)
-	downedHighlight.FillTransparency = 0.58
-	downedHighlight.OutlineTransparency = 0.04
-	downedHighlight.DepthMode = Enum.HighlightDepthMode.Occluded
+	downedHighlight.FillTransparency = 0.44
+	downedHighlight.OutlineTransparency = 0
+	downedHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	downedHighlight.Parent = character
 
-	local marker, _ = self:_createWorldMarker(character, "DownedMarker", "REVIVE", Color3.fromRGB(255, 196, 152), Vector2.new(120, 30), 15)
+	local marker, _ = self:_createWorldMarker(character, "DownedMarker", "REVIVE NOW", Color3.fromRGB(255, 214, 164), Vector2.new(164, 38), 18)
 	local markerPart = marker :: BasePart
-	markerPart.CFrame = rootPart.CFrame * CFrame.new(0, 4.8, 0)
+	markerPart.CFrame = rootPart.CFrame * CFrame.new(0, 5.6, 0)
+	local downedBeacon = self:_emitPulse(rootPart.CFrame * CFrame.new(0, 1.4, 0), Vector3.new(4.8, 7.2, 4.8), Color3.fromRGB(255, 172, 128), 0.76, 0.22)
+	if downedBeacon then
+		downedBeacon.Name = "DownedBeacon"
+		downedBeacon.Material = Enum.Material.ForceField
+		downedBeacon.Parent = character
+	end
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "RevivePrompt"
@@ -1538,7 +2571,11 @@ function MissionService:_enterDownedState(player, mission, character, humanoid)
 	prompt:SetAttribute("MissionPrompt", true)
 	prompt.RequiresLineOfSight = false
 	prompt.HoldDuration = self._skillTreeService and self._skillTreeService:GetReviveHoldDuration(player, self._missionConfig.Mission.ReviveHoldDuration) or self._missionConfig.Mission.ReviveHoldDuration
-	prompt.MaxActivationDistance = self._missionConfig.Mission.RevivePromptDistance or 12
+	local reviveDistance = self._missionConfig.Mission.RevivePromptDistance or 12
+	if self._skillTreeService then
+		reviveDistance = self._skillTreeService:GetPromptDistance(player, reviveDistance)
+	end
+	prompt.MaxActivationDistance = reviveDistance
 	prompt.Parent = rootPart
 
 	local state = {
@@ -1546,6 +2583,7 @@ function MissionService:_enterDownedState(player, mission, character, humanoid)
 		prompt = prompt,
 		marker = marker,
 		highlight = downedHighlight,
+		beacon = downedBeacon,
 		connection = nil,
 	}
 	mission.downedStates = mission.downedStates or {}
@@ -1577,6 +2615,8 @@ function MissionService:_enterDownedState(player, mission, character, humanoid)
 		end
 		self:_clearDownedState(player, false)
 		player:SetAttribute("MissionEliminated", true)
+		self:_notifyParty(mission.party, player.DisplayName .. " bled out.")
+		self:_fireMissionState({ player }, "Eliminated. Spectating squad. Press B to return.")
 		if character and character.Parent then
 			character:SetAttribute("BleedoutFinalizing", true)
 		end
@@ -1592,14 +2632,15 @@ function MissionService:_bossSlam(zombie, root, scaledStats)
 		return
 	end
 
-	local radius = self._missionConfig.Mission.BossSlamRadius
-	local damage = self._missionConfig.Mission.BossSlamDamage
+	local profile = self:_getBossProfile(mission)
+	local radius = profile.slamRadius
+	local damage = profile.slamDamage
 	local pulse = self:_emitPulse(root.CFrame * CFrame.new(0, -1.8, 0), Vector3.new(radius * 2, 0.35, radius * 2), Color3.fromRGB(255, 118, 96), 0.2, 0.28)
 	if pulse then
 		pulse.Material = Enum.Material.Neon
 	end
 
-	self:_notifyParty(mission.party, "Siege Tyrant slam incoming.")
+	self:_notifyParty(mission.party, ("%s slam incoming."):format(profile.notifyName))
 	task.wait(0.45)
 
 	if not self._activeMission or self._activeMission ~= mission or not zombie.Parent or not root.Parent then
@@ -1672,6 +2713,201 @@ function MissionService:_bruteImpact(zombie, root, scaledStats)
 	end
 end
 
+function MissionService:_spitterVolley(zombie, root, scaledStats)
+	local mission = self._activeMission
+	if not mission or not zombie or not zombie.Parent or not root or not root.Parent then
+		return
+	end
+
+	local radius = self._missionConfig.Mission.SpitterVolleyRadius
+	local damage = math.max(4, math.floor((scaledStats.damage or self._missionConfig.Mission.ZombieBaseDamage) * self._missionConfig.Mission.SpitterVolleyDamage / math.max(1, self._missionConfig.Mission.ZombieBaseDamage)))
+	local splash = self:_emitPulse(root.CFrame * CFrame.new(0, -1.1, -4.8), Vector3.new(radius * 1.8, 0.22, radius * 1.8), Color3.fromRGB(142, 236, 168), 0.22, 0.2)
+	if splash then
+		splash.Material = Enum.Material.Neon
+	end
+
+	for _, player in ipairs(self:_getLivePartyMembers()) do
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if humanoid and humanoid.Health > 0 and targetRoot and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) and not self:_isSpawnProtected(player, character) then
+			local distance = (targetRoot.Position - root.Position).Magnitude
+			if distance <= radius + 6 then
+				humanoid:TakeDamage(damage)
+				self:_emitPlayerHitEffect(character, Color3.fromRGB(166, 244, 172))
+			end
+		end
+	end
+end
+
+function MissionService:_screamerPulse(zombie, root)
+	local mission = self._activeMission
+	if not mission or not zombie or not zombie.Parent or not root or not root.Parent then
+		return
+	end
+
+	local radius = self._missionConfig.Mission.ScreamerBuffRadius
+	local duration = self._missionConfig.Mission.ScreamerBuffDuration
+	local speedScale = self._missionConfig.Mission.ScreamerBuffSpeedScale
+	local damageScale = self._missionConfig.Mission.ScreamerBuffDamageScale
+
+	local pulse = self:_emitPulse(root.CFrame * CFrame.new(0, 1.2, 0), Vector3.new(radius * 1.8, 2.8, radius * 1.8), Color3.fromRGB(196, 142, 255), 0.3, 0.18)
+	if pulse then
+		pulse.Material = Enum.Material.Neon
+	end
+	self:_emitPulse(root.CFrame * CFrame.new(0, -1, 0), Vector3.new(radius * 2.2, 0.18, radius * 2.2), Color3.fromRGB(168, 112, 255), 0.38, 0.14)
+
+	local buffUntil = os.clock() + duration
+	for _, candidate in ipairs(mission.zombiesFolder:GetChildren()) do
+		if candidate:IsA("Model") and candidate ~= zombie and candidate.Parent == mission.zombiesFolder then
+			local candidateRoot = candidate.PrimaryPart or candidate:FindFirstChild("HumanoidRootPart")
+			local candidateHumanoid = candidate:FindFirstChildOfClass("Humanoid")
+			if candidateRoot and candidateHumanoid and candidateHumanoid.Health > 0 and (candidateRoot.Position - root.Position).Magnitude <= radius then
+				local currentUntil = tonumber(candidate:GetAttribute("ScreamBuffUntil")) or 0
+				if buffUntil > currentUntil then
+					local baseSpeed = tonumber(candidate:GetAttribute("BaseWalkSpeed")) or candidateHumanoid.WalkSpeed
+					local baseDamage = tonumber(candidate:GetAttribute("BaseZombieDamage")) or tonumber(candidate:GetAttribute("ZombieDamage")) or self._missionConfig.Mission.ZombieBaseDamage
+					local baseObjectiveDamage = tonumber(candidate:GetAttribute("BaseObjectiveDamage")) or tonumber(candidate:GetAttribute("ObjectiveDamage")) or math.max(4, math.floor(baseDamage * 0.7))
+					candidate:SetAttribute("ScreamBuffUntil", buffUntil)
+					candidate:SetAttribute("ZombieDamage", math.max(baseDamage, math.floor(baseDamage * damageScale)))
+					candidate:SetAttribute("ObjectiveDamage", math.max(baseObjectiveDamage, math.floor(baseObjectiveDamage * damageScale)))
+					candidateHumanoid.WalkSpeed = math.max(candidateHumanoid.WalkSpeed, baseSpeed * speedScale)
+					self:_emitPulse(candidateRoot.CFrame, Vector3.new(1.7, 1.7, 1.7), Color3.fromRGB(202, 154, 255), 0.42, 0.1)
+					task.delay(duration + 0.05, function()
+						if not candidate.Parent then
+							return
+						end
+						local restoredHumanoid = candidate:FindFirstChildOfClass("Humanoid")
+						if not restoredHumanoid or restoredHumanoid.Health <= 0 then
+							return
+						end
+						local activeUntil = tonumber(candidate:GetAttribute("ScreamBuffUntil")) or 0
+						if activeUntil > os.clock() then
+							return
+						end
+						local restoreSpeed = tonumber(candidate:GetAttribute("BaseWalkSpeed")) or restoredHumanoid.WalkSpeed
+						local restoreDamage = tonumber(candidate:GetAttribute("BaseZombieDamage")) or tonumber(candidate:GetAttribute("ZombieDamage")) or self._missionConfig.Mission.ZombieBaseDamage
+						local restoreObjective = tonumber(candidate:GetAttribute("BaseObjectiveDamage")) or tonumber(candidate:GetAttribute("ObjectiveDamage")) or math.max(4, math.floor(restoreDamage * 0.7))
+						restoredHumanoid.WalkSpeed = restoreSpeed
+						candidate:SetAttribute("ZombieDamage", restoreDamage)
+						candidate:SetAttribute("ObjectiveDamage", restoreObjective)
+					end)
+				end
+			end
+		end
+	end
+
+	if mission.party then
+		self:_fireMissionState(mission.party, "Screamer pulse")
+	end
+end
+
+function MissionService:_artilleryBarrage(zombie, root, scaledStats)
+	local mission = self._activeMission
+	if not mission or not zombie or not zombie.Parent or not root or not root.Parent then
+		return
+	end
+
+	local radius = self._missionConfig.Mission.ArtilleryVolleyRadius
+	local damage = math.max(8, math.floor((scaledStats.damage or self._missionConfig.Mission.ZombieBaseDamage) * self._missionConfig.Mission.ArtilleryDamageScale))
+	local targetPosition = root.Position + (root.CFrame.LookVector * 8)
+	local shell = self:_emitPulse(CFrame.new(targetPosition + Vector3.new(0, 5.5, 0)), Vector3.new(radius * 0.6, 5.4, radius * 0.6), Color3.fromRGB(255, 182, 104), 0.48, 0.12)
+	if shell then
+		shell.Material = Enum.Material.Neon
+	end
+
+	task.wait(0.28)
+	if not self._activeMission or self._activeMission ~= mission or not zombie.Parent or not root.Parent then
+		return
+	end
+
+	local blast = self:_emitPulse(CFrame.new(targetPosition), Vector3.new(radius * 2.1, 0.4, radius * 2.1), Color3.fromRGB(255, 164, 96), 0.2, 0.2)
+	if blast then
+		blast.Material = Enum.Material.ForceField
+	end
+
+	local objective = self:_getMissionObjective()
+	if objective and (objective.Position - targetPosition).Magnitude <= radius + 5 then
+		self:_damageObjective(math.max(6, math.floor(damage * 0.9)))
+	end
+
+	for _, player in ipairs(self:_getLivePartyMembers()) do
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if humanoid and humanoid.Health > 0 and targetRoot and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) and not self:_isSpawnProtected(player, character) then
+			local offset = targetRoot.Position - targetPosition
+			local distance = offset.Magnitude
+			if distance <= radius then
+				humanoid:TakeDamage(damage)
+				self:_emitPlayerHitEffect(character, Color3.fromRGB(255, 196, 118))
+				if distance > 0.1 then
+					targetRoot.AssemblyLinearVelocity = offset.Unit * 24 + Vector3.new(0, 18, 0)
+				end
+			end
+		end
+	end
+end
+
+function MissionService:_exploderBurst(zombie, root, scaledStats)
+	local mission = self._activeMission
+	if not mission or not zombie or not zombie.Parent or not root or not root.Parent then
+		return
+	end
+	if zombie:GetAttribute("Detonated") == true then
+		return
+	end
+
+	zombie:SetAttribute("Detonated", true)
+	local radius = self._missionConfig.Mission.ExploderBlastRadius
+	local damage = math.max(self._missionConfig.Mission.ExploderBlastDamage or 10, math.floor((scaledStats.damage or self._missionConfig.Mission.ZombieBaseDamage) * self._missionConfig.Mission.ExploderDamageScale))
+	local pulse = self:_emitPulse(root.CFrame * CFrame.new(0, -0.8, 0), Vector3.new(radius * 2.2, 1.4, radius * 2.2), Color3.fromRGB(255, 172, 96), 0.18, 0.2)
+	if pulse then
+		pulse.Material = Enum.Material.ForceField
+	end
+
+	local objective = self:_getMissionObjective()
+	if objective and (objective.Position - root.Position).Magnitude <= radius + 5 then
+		self:_damageObjective(math.max(5, math.floor(damage * (self._missionConfig.Mission.ExploderObjectiveDamageScale or 1))))
+	end
+
+	for _, player in ipairs(self:_getLivePartyMembers()) do
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if humanoid and humanoid.Health > 0 and targetRoot and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) and not self:_isSpawnProtected(player, character) then
+			local offset = targetRoot.Position - root.Position
+			local distance = offset.Magnitude
+			if distance <= radius then
+				humanoid:TakeDamage(damage)
+				self:_emitPlayerHitEffect(character, Color3.fromRGB(255, 188, 112))
+				if distance > 0.1 then
+					targetRoot.AssemblyLinearVelocity = offset.Unit * 28 + Vector3.new(0, 16, 0)
+				end
+			end
+		end
+	end
+
+	local humanoid = zombie:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.Health > 0 then
+		humanoid.Health = 0
+	end
+end
+
+function MissionService:_bruiseCharge(zombie, root, targetRoot)
+	if not zombie or not zombie.Parent or not root or not root.Parent or not targetRoot then
+		return
+	end
+
+	local direction = targetRoot.Position - root.Position
+	if direction.Magnitude <= 0.01 then
+		return
+	end
+
+	self:_emitPulse(root.CFrame, Vector3.new(2.8, 2.8, 2.8), Color3.fromRGB(236, 168, 104), 0.34, 0.12)
+	root.AssemblyLinearVelocity = direction.Unit * self._missionConfig.Mission.BruiserChargeSpeed + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+end
+
 function MissionService:_bossSummonAdds(root, scaledStats)
 	local mission = self._activeMission
 	if not mission or not root or not root.Parent then
@@ -1679,7 +2915,9 @@ function MissionService:_bossSummonAdds(root, scaledStats)
 	end
 
 	local count = self._missionConfig.Mission.BossSummonCount
-	self:_notifyParty(mission.party, "Siege Tyrant is calling reinforcements.")
+	local profile = self:_getBossProfile(mission)
+	local count = profile.summonCount
+	self:_notifyParty(mission.party, ("%s is calling reinforcements."):format(profile.notifyName))
 	for summonIndex = 1, count do
 		local angle = (math.pi * 2 / count) * summonIndex
 		local offset = Vector3.new(math.cos(angle) * 11, 0, math.sin(angle) * 11)
@@ -1758,7 +2996,16 @@ function MissionService:_refreshObjectiveVisuals()
 	local healthRatio = math.clamp(currentHealth / math.max(1, maxHealth), 0, 1)
 	local safeColor = Color3.fromRGB(116, 153, 198)
 	local dangerColor = Color3.fromRGB(209, 105, 105)
-	if self:_isPowerCellScenario() then
+	if self:_isCommanderHuntScenario() then
+		safeColor = Color3.fromRGB(198, 164, 122)
+		dangerColor = Color3.fromRGB(236, 108, 96)
+	elseif self:_isEvacEscortScenario() then
+		safeColor = Color3.fromRGB(122, 198, 176)
+		dangerColor = Color3.fromRGB(236, 138, 96)
+	elseif self:_isPowerRelayScenario() then
+		safeColor = Color3.fromRGB(108, 196, 214)
+		dangerColor = Color3.fromRGB(234, 132, 96)
+	elseif self:_isPowerCellScenario() then
 		safeColor = Color3.fromRGB(182, 164, 96)
 		dangerColor = Color3.fromRGB(218, 122, 92)
 	elseif self:_isNestScenario() then
@@ -1787,7 +3034,18 @@ function MissionService:_refreshObjectiveVisuals()
 		local frame = gui and gui:FindFirstChildOfClass("Frame")
 		local label = frame and frame:FindFirstChild("Label")
 		if label and label:IsA("TextLabel") then
-			if self:_isPowerCellScenario() then
+			if self:_isCommanderHuntScenario() then
+				local eliminated = objective:GetAttribute("CommanderEliminated") == true
+				label.Text = eliminated and ("COMMANDER DOWN  %d%%"):format(math.floor(healthRatio * 100)) or ("COMMANDER LIVE  %d%%"):format(math.floor(healthRatio * 100))
+			elseif self:_isEvacEscortScenario() then
+				local reached = objective:GetAttribute("ReachedEvacCheckpoint") or 0
+				local required = objective:GetAttribute("RequiredEvacCheckpoints") or 3
+				label.Text = ("EVAC ESCORT %d/%d  %d%%"):format(reached, required, math.floor(healthRatio * 100))
+			elseif self:_isPowerRelayScenario() then
+				local stabilized = objective:GetAttribute("StabilizedRelayNodes") or 0
+				local required = objective:GetAttribute("RequiredRelayNodes") or 3
+				label.Text = ("POWER RELAY %d/%d  %d%%"):format(stabilized, required, math.floor(healthRatio * 100))
+			elseif self:_isPowerCellScenario() then
 				local delivered = objective:GetAttribute("DeliveredPowerCells") or 0
 				local required = objective:GetAttribute("RequiredPowerCells") or self._missionConfig.Mission.PowerCellRequiredCount
 				label.Text = ("POWER RELAY %d/%d  %d%%"):format(delivered, required, math.floor(healthRatio * 100))
@@ -1932,7 +3190,8 @@ function MissionService:_spawnPowerCell(runtime, position, cellId)
 	prompt:SetAttribute("MissionPrompt", true)
 	prompt.RequiresLineOfSight = false
 	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = self._missionConfig.Mission.SupplyPickupPromptDistance or 14
+	local supplyDistance = self._missionConfig.Mission.SupplyPickupPromptDistance or 14
+	prompt.MaxActivationDistance = supplyDistance
 	prompt.Parent = cell
 
 	prompt.Triggered:Connect(function(player)
@@ -1998,7 +3257,8 @@ function MissionService:_spawnPowerCellObjective(runtime, objective)
 		prompt:SetAttribute("MissionPrompt", true)
 		prompt.RequiresLineOfSight = false
 		prompt.HoldDuration = 0
-		prompt.MaxActivationDistance = self._missionConfig.Mission.ObjectivePromptDistance or 14
+		local objectiveDistance = self._missionConfig.Mission.ObjectivePromptDistance or 14
+		prompt.MaxActivationDistance = objectiveDistance
 		prompt.Parent = socket
 
 		prompt.Triggered:Connect(function(player)
@@ -2023,6 +3283,449 @@ function MissionService:_spawnPowerCellObjective(runtime, objective)
 	for index = 1, required do
 		self:_spawnPowerCell(runtime, cellPositions[index] or (missionSpawn.Position + Vector3.new(index * 8, 0, 20)), index)
 	end
+end
+
+function MissionService:_stabilizeRelayNode(node, player)
+	local mission = self._activeMission
+	local objective = self:_getMissionObjective()
+	if not mission or not objective or not node or not node.Parent or not self:_isPowerRelayScenario(mission) then
+		return false
+	end
+
+	if node:GetAttribute("Stabilized") == true then
+		return false
+	end
+
+	node:SetAttribute("Stabilized", true)
+	local stabilized = (objective:GetAttribute("StabilizedRelayNodes") or 0) + 1
+	local required = objective:GetAttribute("RequiredRelayNodes") or 3
+	objective:SetAttribute("StabilizedRelayNodes", stabilized)
+	self:_refreshObjectiveVisuals()
+
+	local core = node:FindFirstChild("Core")
+	if core and core:IsA("BasePart") then
+		core.Color = Color3.fromRGB(134, 246, 220)
+	end
+
+	local ring = node:FindFirstChild("Ring")
+	if ring and ring:IsA("BasePart") then
+		ring.Color = Color3.fromRGB(122, 255, 228)
+		ring.Transparency = 0.32
+	end
+
+	local prompt = node:FindFirstChild("StabilizePrompt")
+	if prompt and prompt:IsA("ProximityPrompt") then
+		prompt.Enabled = false
+	end
+
+	local marker = node:FindFirstChild("NodeMarker")
+	local markerGui = marker and marker:FindFirstChildOfClass("BillboardGui")
+	local frame = markerGui and markerGui:FindFirstChildOfClass("Frame")
+	local label = frame and frame:FindFirstChild("Label")
+	if label and label:IsA("TextLabel") then
+		label.Text = "NODE STABLE"
+		label.TextColor3 = Color3.fromRGB(186, 255, 232)
+	end
+
+	self:_notifyParty(mission.party, ("%s stabilized a relay node (%d/%d)."):format(player.DisplayName, stabilized, required))
+	self:_fireMissionState(mission.party, ("Relay nodes stabilized %d/%d"):format(stabilized, required))
+
+	if stabilized >= required and mission.wave >= self._missionConfig.Mission.WaveCount and mission.remainingZombies <= 0 then
+		self:_completeMission()
+	end
+
+	return true
+end
+
+function MissionService:_spawnRelayNode(runtime, position, nodeId)
+	local node = Instance.new("Model")
+	node.Name = "RelayNode_" .. tostring(nodeId)
+	node:SetAttribute("Stabilized", false)
+	node.Parent = runtime
+
+	local pad = Instance.new("Part")
+	pad.Name = "Pad"
+	pad.Size = Vector3.new(6.5, 1.2, 6.5)
+	pad.Anchored = true
+	pad.CanCollide = true
+	pad.Material = Enum.Material.Metal
+	pad.Color = Color3.fromRGB(86, 94, 110)
+	pad.CFrame = CFrame.new(position + Vector3.new(0, 0.6, 0))
+	pad.Parent = node
+
+	local core = Instance.new("Part")
+	core.Name = "Core"
+	core.Shape = Enum.PartType.Ball
+	core.Size = Vector3.new(2.6, 2.6, 2.6)
+	core.Anchored = true
+	core.CanCollide = false
+	core.CanQuery = false
+	core.Material = Enum.Material.Neon
+	core.Color = Color3.fromRGB(250, 182, 112)
+	core.CFrame = pad.CFrame * CFrame.new(0, 2.5, 0)
+	core.Parent = node
+
+	local ring = Instance.new("Part")
+	ring.Name = "Ring"
+	ring.Size = Vector3.new(8.4, 0.14, 8.4)
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = Color3.fromRGB(255, 210, 144)
+	ring.Transparency = 0.62
+	ring.CFrame = pad.CFrame * CFrame.new(0, -0.52, 0)
+	ring.Parent = node
+
+	local marker, _ = self:_createWorldMarker(node, "NodeMarker", "STABILIZE NODE", Color3.fromRGB(255, 228, 176), Vector2.new(146, 30), 14)
+	marker.CFrame = core.CFrame * CFrame.new(0, 4.4, 0)
+	local markerGui = marker:FindFirstChildOfClass("BillboardGui")
+	if markerGui then
+		markerGui.MaxDistance = 34
+	end
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "StabilizePrompt"
+	prompt.ActionText = "Stabilize"
+	prompt.ObjectText = "Relay Node"
+	prompt:SetAttribute("MissionPrompt", true)
+	prompt.RequiresLineOfSight = false
+	prompt.HoldDuration = self._missionConfig.Mission.RelayStabilizeHoldDuration or 0.65
+	prompt.MaxActivationDistance = self._missionConfig.Mission.ObjectivePromptDistance or 14
+	prompt.Parent = pad
+
+	prompt.Triggered:Connect(function(player)
+		if not self._activeMission or not player or player.Parent ~= Players then
+			return
+		end
+
+		self:_stabilizeRelayNode(node, player)
+	end)
+end
+
+function MissionService:_spawnPowerRelayObjective(runtime, objective)
+	local missionSpawn = self:_getMissionSpawn()
+	if not missionSpawn then
+		return
+	end
+
+	local layout = self:_getActiveLayout()
+	local positions = {}
+	for _, offset in ipairs((layout and layout.PowerCellOffsets) or {}) do
+		table.insert(positions, self:_getLayoutWorldPosition(offset))
+	end
+	if #positions == 0 then
+		positions = {
+			missionSpawn.Position + Vector3.new(-24, 0, 18),
+			missionSpawn.Position + Vector3.new(24, 0, 10),
+			missionSpawn.Position + Vector3.new(0, 0, 48),
+		}
+	end
+
+	local required = math.max(1, #positions)
+	objective:SetAttribute("StabilizedRelayNodes", 0)
+	objective:SetAttribute("RequiredRelayNodes", required)
+
+	for index, position in ipairs(positions) do
+		self:_spawnRelayNode(runtime, position, index)
+	end
+end
+
+function MissionService:_advanceEvacCheckpoint(checkpoint, player)
+	local mission = self._activeMission
+	local objective = self:_getMissionObjective()
+	if not mission or not objective or not checkpoint or not checkpoint.Parent or not self:_isEvacEscortScenario(mission) then
+		return false
+	end
+
+	if checkpoint:GetAttribute("Secured") == true then
+		return false
+	end
+
+	checkpoint:SetAttribute("Secured", true)
+	local reached = (objective:GetAttribute("ReachedEvacCheckpoint") or 0) + 1
+	local required = objective:GetAttribute("RequiredEvacCheckpoints") or 3
+	objective:SetAttribute("ReachedEvacCheckpoint", reached)
+	self:_refreshObjectiveVisuals()
+
+	local gate = checkpoint:FindFirstChild("Gate")
+	if gate and gate:IsA("BasePart") then
+		gate.Color = Color3.fromRGB(118, 212, 168)
+	end
+
+	local ring = checkpoint:FindFirstChild("Ring")
+	if ring and ring:IsA("BasePart") then
+		ring.Color = Color3.fromRGB(126, 255, 214)
+		ring.Transparency = 0.34
+	end
+
+	local prompt = checkpoint:FindFirstChild("AdvancePrompt")
+	if prompt and prompt:IsA("ProximityPrompt") then
+		prompt.Enabled = false
+	end
+
+	local marker = checkpoint:FindFirstChild("CheckpointMarker")
+	local markerGui = marker and marker:FindFirstChildOfClass("BillboardGui")
+	local frame = markerGui and markerGui:FindFirstChildOfClass("Frame")
+	local label = frame and frame:FindFirstChild("Label")
+	if label and label:IsA("TextLabel") then
+		label.Text = "CHECKPOINT SECURE"
+		label.TextColor3 = Color3.fromRGB(196, 255, 228)
+	end
+
+	local convoy = mission.runtime and mission.runtime:FindFirstChild("EvacConvoy")
+	local convoyBase = convoy and convoy:FindFirstChild("ConvoyBase")
+	if convoyBase and convoyBase:IsA("BasePart") then
+		local pivotOffset = convoy:GetAttribute("ConvoyPivotOffsetZ") or 0
+		local newCFrame = checkpoint:GetPivot() * CFrame.new(0, 0.6, pivotOffset)
+		convoy:PivotTo(newCFrame)
+	end
+
+	self:_notifyParty(mission.party, ("%s secured evac checkpoint %d/%d."):format(player.DisplayName, reached, required))
+	self:_fireMissionState(mission.party, ("Evac checkpoints secured %d/%d"):format(reached, required))
+
+	if reached >= required and mission.wave >= self._missionConfig.Mission.WaveCount and mission.remainingZombies <= 0 then
+		self:_completeMission()
+	end
+
+	return true
+end
+
+function MissionService:_spawnEvacCheckpoint(runtime, position, checkpointId)
+	local checkpoint = Instance.new("Model")
+	checkpoint.Name = "EvacCheckpoint_" .. tostring(checkpointId)
+	checkpoint:SetAttribute("Secured", false)
+	checkpoint.Parent = runtime
+
+	local gate = Instance.new("Part")
+	gate.Name = "Gate"
+	gate.Size = Vector3.new(18, 7, 3.2)
+	gate.Anchored = true
+	gate.CanCollide = true
+	gate.Material = Enum.Material.Metal
+	gate.Color = Color3.fromRGB(96, 106, 118)
+	gate.CFrame = CFrame.new(position + Vector3.new(0, 3.5, 0))
+	gate.Parent = checkpoint
+
+	local ring = Instance.new("Part")
+	ring.Name = "Ring"
+	ring.Size = Vector3.new(22, 0.14, 12)
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = Color3.fromRGB(196, 224, 182)
+	ring.Transparency = 0.62
+	ring.CFrame = gate.CFrame * CFrame.new(0, -3.44, 0)
+	ring.Parent = checkpoint
+
+	local marker, _ = self:_createWorldMarker(checkpoint, "CheckpointMarker", "SECURE CHECKPOINT", Color3.fromRGB(214, 244, 196), Vector2.new(166, 30), 14)
+	marker.CFrame = gate.CFrame * CFrame.new(0, 4.8, 0)
+	local markerGui = marker:FindFirstChildOfClass("BillboardGui")
+	if markerGui then
+		markerGui.MaxDistance = 38
+	end
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "AdvancePrompt"
+	prompt.ActionText = "Advance Convoy"
+	prompt.ObjectText = "Evac Checkpoint"
+	prompt:SetAttribute("MissionPrompt", true)
+	prompt.RequiresLineOfSight = false
+	prompt.HoldDuration = self._missionConfig.Mission.EvacCheckpointHoldDuration or 0.8
+	prompt.MaxActivationDistance = self._missionConfig.Mission.ObjectivePromptDistance or 14
+	prompt.Parent = gate
+
+	prompt.Triggered:Connect(function(player)
+		if not self._activeMission or not player or player.Parent ~= Players then
+			return
+		end
+
+		self:_advanceEvacCheckpoint(checkpoint, player)
+	end)
+end
+
+function MissionService:_spawnEvacEscortObjective(runtime, objective)
+	local missionSpawn = self:_getMissionSpawn()
+	if not missionSpawn then
+		return
+	end
+
+	local layout = self:_getActiveLayout()
+	local objectiveOffset = layout and layout.ObjectiveOffset or Vector3.new(0, 0, 28)
+	local extractionOffset = layout and layout.ExtractionOffset or Vector3.new(0, 0, 72)
+	local escortPath = {
+		objectiveOffset + Vector3.new(0, 0, -54),
+		objectiveOffset + Vector3.new(0, 0, -20),
+		objectiveOffset,
+	}
+
+	local required = #escortPath
+	objective:SetAttribute("ReachedEvacCheckpoint", 0)
+	objective:SetAttribute("RequiredEvacCheckpoints", required)
+
+	local convoy = Instance.new("Model")
+	convoy.Name = "EvacConvoy"
+	convoy.Parent = runtime
+
+	local convoyBase = Instance.new("Part")
+	convoyBase.Name = "ConvoyBase"
+	convoyBase.Size = Vector3.new(10, 3, 16)
+	convoyBase.Anchored = true
+	convoyBase.CanCollide = true
+	convoyBase.Material = Enum.Material.Metal
+	convoyBase.Color = Color3.fromRGB(82, 96, 118)
+	convoyBase.CFrame = missionSpawn.CFrame * CFrame.new(objectiveOffset + Vector3.new(0, 0.6, -66))
+	convoyBase.Parent = convoy
+
+	local convoyCanopy = Instance.new("Part")
+	convoyCanopy.Name = "ConvoyCanopy"
+	convoyCanopy.Size = Vector3.new(8, 1.2, 10)
+	convoyCanopy.Anchored = true
+	convoyCanopy.CanCollide = true
+	convoyCanopy.Material = Enum.Material.Metal
+	convoyCanopy.Color = Color3.fromRGB(104, 118, 138)
+	convoyCanopy.CFrame = convoyBase.CFrame * CFrame.new(0, 3.2, 0)
+	convoyCanopy.Parent = convoy
+
+	local convoyGlow = Instance.new("Part")
+	convoyGlow.Name = "ConvoyGlow"
+	convoyGlow.Size = Vector3.new(14, 0.14, 20)
+	convoyGlow.Anchored = true
+	convoyGlow.CanCollide = false
+	convoyGlow.CanQuery = false
+	convoyGlow.Material = Enum.Material.Neon
+	convoyGlow.Color = Color3.fromRGB(160, 244, 210)
+	convoyGlow.Transparency = 0.72
+	convoyGlow.CFrame = convoyBase.CFrame * CFrame.new(0, -1.44, 0)
+	convoyGlow.Parent = convoy
+
+	local convoyMarker, _ = self:_createWorldMarker(convoy, "ConvoyMarker", "EVAC CONVOY", Color3.fromRGB(206, 255, 232), Vector2.new(144, 30), 14)
+	convoyMarker.CFrame = convoyBase.CFrame * CFrame.new(0, 5.2, 0)
+	convoy.PrimaryPart = convoyBase
+	convoy:SetAttribute("ConvoyPivotOffsetZ", -8)
+
+	for index, offset in ipairs(escortPath) do
+		self:_spawnEvacCheckpoint(runtime, self:_getLayoutWorldPosition(offset), index)
+	end
+
+	objective:SetAttribute("EvacExtractionOffsetZ", extractionOffset.Z)
+end
+
+function MissionService:_eliminateCommander(commander, player)
+	local mission = self._activeMission
+	local objective = self:_getMissionObjective()
+	if not mission or not objective or not commander or not commander.Parent or not self:_isCommanderHuntScenario(mission) then
+		return false
+	end
+
+	if objective:GetAttribute("CommanderEliminated") == true then
+		return false
+	end
+
+	objective:SetAttribute("CommanderEliminated", true)
+	self:_refreshObjectiveVisuals()
+	self:_emitPulse(commander:GetPivot(), Vector3.new(12, 8, 12), Color3.fromRGB(255, 154, 124), 0.34, 0.22)
+	self:_notifyParty(mission.party, ("%s eliminated the blacksite commander."):format(player and player.DisplayName or "The squad"))
+	self:_fireMissionState(mission.party, "Commander eliminated")
+
+	if mission.wave >= self._missionConfig.Mission.WaveCount and mission.remainingZombies <= 0 then
+		self:_completeMission()
+	end
+
+	return true
+end
+
+function MissionService:_spawnCommanderTarget(runtime, position)
+	local commander = Instance.new("Model")
+	commander.Name = "BlacksiteCommander"
+	commander.Parent = runtime
+
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Size = Vector3.new(4, 4, 2.4)
+	root.Anchored = true
+	root.CanCollide = true
+	root.Material = Enum.Material.Slate
+	root.Color = Color3.fromRGB(112, 60, 60)
+	root.CFrame = CFrame.new(position + Vector3.new(0, 3, 0))
+	root.Parent = commander
+
+	local torso = Instance.new("Part")
+	torso.Name = "Torso"
+	torso.Size = Vector3.new(4.8, 5.6, 2.8)
+	torso.Anchored = true
+	torso.CanCollide = true
+	torso.Material = Enum.Material.SmoothPlastic
+	torso.Color = Color3.fromRGB(156, 72, 72)
+	torso.CFrame = root.CFrame * CFrame.new(0, 3, 0)
+	torso.Parent = commander
+
+	local head = Instance.new("Part")
+	head.Name = "Head"
+	head.Shape = Enum.PartType.Ball
+	head.Size = Vector3.new(2.6, 2.6, 2.6)
+	head.Anchored = true
+	head.CanCollide = true
+	head.Material = Enum.Material.SmoothPlastic
+	head.Color = Color3.fromRGB(222, 126, 118)
+	head.CFrame = torso.CFrame * CFrame.new(0, 3.5, 0)
+	head.Parent = commander
+
+	local ring = Instance.new("Part")
+	ring.Name = "Ring"
+	ring.Size = Vector3.new(10, 0.14, 10)
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = Color3.fromRGB(255, 176, 142)
+	ring.Transparency = 0.54
+	ring.CFrame = root.CFrame * CFrame.new(0, -2.02, 0)
+	ring.Parent = commander
+
+	local aura = Instance.new("Highlight")
+	aura.Name = "CommanderAura"
+	aura.FillColor = Color3.fromRGB(184, 82, 82)
+	aura.OutlineColor = Color3.fromRGB(255, 206, 176)
+	aura.FillTransparency = 0.7
+	aura.OutlineTransparency = 0.08
+	aura.DepthMode = Enum.HighlightDepthMode.Occluded
+	aura.Parent = commander
+
+	local marker, _ = self:_createWorldMarker(commander, "CommanderMarker", "ELIMINATE COMMANDER", Color3.fromRGB(255, 208, 176), Vector2.new(180, 30), 14)
+	marker.CFrame = head.CFrame * CFrame.new(0, 4.2, 0)
+	local markerGui = marker:FindFirstChildOfClass("BillboardGui")
+	if markerGui then
+		markerGui.MaxDistance = 44
+	end
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "EliminatePrompt"
+	prompt.ActionText = "Finish Commander"
+	prompt.ObjectText = "Blacksite Commander"
+	prompt:SetAttribute("MissionPrompt", true)
+	prompt.RequiresLineOfSight = false
+	prompt.HoldDuration = self._missionConfig.Mission.CommanderFinishHoldDuration or 0.9
+	prompt.MaxActivationDistance = self._missionConfig.Mission.ObjectivePromptDistance or 14
+	prompt.Parent = torso
+
+	prompt.Triggered:Connect(function(player)
+		if not self._activeMission or not player or player.Parent ~= Players then
+			return
+		end
+
+		if self:_eliminateCommander(commander, player) then
+			commander:Destroy()
+		end
+	end)
+end
+
+function MissionService:_spawnCommanderHuntObjective(runtime, objective)
+	local layout = self:_getActiveLayout()
+	local objectiveOffset = layout and layout.ObjectiveOffset or Vector3.new(0, 0, 58)
+	objective:SetAttribute("CommanderEliminated", false)
+	self:_spawnCommanderTarget(runtime, self:_getLayoutWorldPosition(objectiveOffset + Vector3.new(0, 0, 20)))
 end
 
 function MissionService:_destroyNest(nest)
@@ -2114,7 +3817,8 @@ function MissionService:_spawnNest(runtime, position, nestId)
 	prompt:SetAttribute("MissionPrompt", true)
 	prompt.RequiresLineOfSight = false
 	prompt.HoldDuration = self._missionConfig.Mission.NestBurnHoldDuration or 0.35
-	prompt.MaxActivationDistance = self._missionConfig.Mission.ObjectivePromptDistance or 14
+	local objectiveDistance = self._missionConfig.Mission.ObjectivePromptDistance or 14
+	prompt.MaxActivationDistance = objectiveDistance
 	prompt.Parent = mound
 
 	prompt.Triggered:Connect(function(player)
@@ -2231,7 +3935,11 @@ function MissionService:_createWeaponTool(player)
 		if weapon.WeaponType == "Spread" then
 			task.spawn(function()
 				while true do
-					task.wait(weapon.ShellReloadTime or math.max(0.25, (weapon.ReloadTime or 1.6) / math.max(1, weapon.MagazineSize or 1)))
+					local shellReloadTime = weapon.ShellReloadTime or math.max(0.25, (weapon.ReloadTime or 1.6) / math.max(1, weapon.MagazineSize or 1))
+					if self._skillTreeService then
+						shellReloadTime = self._skillTreeService:GetReloadDuration(player, shellReloadTime)
+					end
+					task.wait(shellReloadTime)
 					local currentState = self._weaponState[player.UserId]
 					if not currentState or currentState ~= state or currentState.reloadToken ~= reloadToken or not currentState.reloading then
 						return
@@ -2272,7 +3980,11 @@ function MissionService:_createWeaponTool(player)
 			self:_fireMissionState({ player }, "Loading shell...")
 		else
 			self:_fireMissionState({ player }, "Reloading...")
-			task.delay(weapon.ReloadTime or 1, function()
+			local reloadDuration = weapon.ReloadTime or 1
+			if self._skillTreeService then
+				reloadDuration = self._skillTreeService:GetReloadDuration(player, reloadDuration)
+			end
+			task.delay(reloadDuration, function()
 				local currentState = self._weaponState[player.UserId]
 				if not currentState or currentState ~= state or currentState.reloadToken ~= reloadToken then
 					return
@@ -2376,10 +4088,16 @@ function MissionService:_createWeaponTool(player)
 				local pelletDirection = direction
 				if weapon.WeaponType == "Spread" then
 					local spreadValue = weapon.HipSpread or 0.12
+					if self._skillTreeService then
+						spreadValue *= self._skillTreeService:GetWeaponSpreadMultiplier(player)
+					end
 					local spread = Vector3.new(math.random(-100, 100) / 100 * spreadValue, math.random(-100, 100) / 100 * spreadValue, math.random(-100, 100) / 100 * spreadValue)
 					pelletDirection = (rootPart.CFrame.LookVector + spread).Unit * weapon.Range
 				elseif weapon.HipSpread and weapon.HipSpread > 0 then
 					local spreadValue = weapon.HipSpread
+					if self._skillTreeService then
+						spreadValue *= self._skillTreeService:GetWeaponSpreadMultiplier(player)
+					end
 					if weapon.ModelStyle == "SMG" then
 						spreadValue *= 1 + math.clamp((pellet - 1) * 0.16, 0, 0.65)
 					end
@@ -2394,8 +4112,8 @@ function MissionService:_createWeaponTool(player)
 					hitPosition = result.Position
 					hitZombie = self:_resolveRaycastZombie(result)
 				end
-				self:_emitTracer(origin, hitPosition, weapon.HandleColor)
-				self:_emitImpactEffect(hitPosition, weapon.HandleColor, hitZombie ~= nil)
+				self:_emitTracer(origin, hitPosition, weapon.HandleColor, weapon)
+				self:_emitImpactEffect(hitPosition, weapon.HandleColor, hitZombie ~= nil, weapon)
 
 				local zombie = hitZombie
 				if not zombie and weapon.WeaponType == "Ranged" then
@@ -2545,7 +4263,8 @@ function MissionService:_grantMedkitPickup(player)
 		return false
 	end
 
-	player:SetAttribute("MissionMedkits", (player:GetAttribute("MissionMedkits") or 0) + 1)
+	local modifierTraits = self:_getModifierRuntimeTraits()
+	player:SetAttribute("MissionMedkits", (player:GetAttribute("MissionMedkits") or 0) + modifierTraits.MedkitPickupCount)
 	self:_createMedkitTool(player)
 	self:_fireMissionState({ player }, ("Medkit secured x%d"):format(player:GetAttribute("MissionMedkits") or 0))
 	return true
@@ -2599,6 +4318,7 @@ function MissionService:_createDashTool(player)
 		local now = os.clock()
 		if now < cooldownEndsAt then
 			refreshState()
+			self:_fireMissionState({ player }, ("Dash cooling %.1fs"):format(math.max(0, cooldownEndsAt - now)))
 			return
 		end
 
@@ -2614,12 +4334,31 @@ function MissionService:_createDashTool(player)
 		refreshState()
 		characterNow:SetAttribute("MissionDashing", true)
 		self:_emitPulse(rootPart.CFrame, Vector3.new(3.2, 3.2, 3.2), Color3.fromRGB(132, 224, 255), 0.4, 0.16)
-		rootPart.AssemblyLinearVelocity = rootPart.CFrame.LookVector * self._missionConfig.Mission.DashSpeed + Vector3.new(0, rootPart.AssemblyLinearVelocity.Y, 0)
-		self:_fireMissionState({ player }, "Dash used")
+		local dashDirection = humanoid.MoveDirection
+		if dashDirection.Magnitude <= 0.1 then
+			dashDirection = rootPart.CFrame.LookVector
+		else
+			dashDirection = dashDirection.Unit
+		end
+		local forwardBias = rootPart.CFrame.LookVector
+		local blendedDirection = (dashDirection * 0.72 + forwardBias * 0.28)
+		if blendedDirection.Magnitude <= 0.01 then
+			blendedDirection = forwardBias
+		else
+			blendedDirection = blendedDirection.Unit
+		end
+		local currentVelocity = rootPart.AssemblyLinearVelocity
+		local planarVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
+		local carriedSpeed = math.min(planarVelocity.Magnitude, self._missionConfig.Mission.DashSpeed * 0.35)
+		local dashVelocity = blendedDirection * (self._missionConfig.Mission.DashSpeed + carriedSpeed)
+		rootPart.AssemblyLinearVelocity = dashVelocity + Vector3.new(0, math.max(currentVelocity.Y, 0), 0)
+		self:_emitPulse(rootPart.CFrame * CFrame.new(0, 0, -1.4), Vector3.new(2.1, 0.2, 3.8), Color3.fromRGB(164, 238, 255), 0.54, 0.12)
+		self:_fireMissionState({ player }, "Dash active")
 
 		task.delay(self._missionConfig.Mission.DashDuration, function()
 			if characterNow and characterNow.Parent then
 				characterNow:SetAttribute("MissionDashing", false)
+				self:_fireMissionState({ player }, "Weapon ready")
 			end
 		end)
 
@@ -2703,51 +4442,82 @@ function MissionService:_bindCharacter(player)
 	task.defer(placeCurrentCharacter)
 end
 
-function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
+function MissionService:_spawnZombie(spawnPosition, scaledStats, index, spawnContext)
 	local runtime = self._activeMission and self._activeMission.zombiesFolder
 	if not runtime then
 		return
 	end
+	spawnContext = type(spawnContext) == "table" and spawnContext or {}
 
 	local zombie = Instance.new("Model")
 	zombie.Name = ("Zombie_%d_%d"):format(self._activeMission.wave, index)
 	zombie.Parent = runtime
-	local isBoss = index == scaledStats.spawnCount and self._activeMission and self._activeMission.wave >= self._missionConfig.Mission.WaveCount
-	local isElite = false
-	local isBrute = not isBoss and self._activeMission and self._activeMission.wave >= 3 and index % 4 == 0
-	local isRunner = not isElite and not isBrute and self._activeMission and self._activeMission.wave >= 2 and index % 3 == 0
+	local forceBoss = scaledStats.forceBoss == true
+	local isBoss = forceBoss or (index == scaledStats.spawnCount and self._activeMission and self._activeMission.wave >= self._missionConfig.Mission.WaveCount)
+	local wave = self._activeMission and self._activeMission.wave or 1
+	local modifierTraits = self:_getModifierRuntimeTraits()
+	local forceBruiser = spawnContext.forceBruiser == true
+	local forceArtillery = spawnContext.forceArtillery == true
+	local forceSpitter = spawnContext.forceSpitter == true
+	local forceExploder = spawnContext.forceExploder == true
+	local forceBrute = spawnContext.forceBrute == true
+	local forceRunner = spawnContext.forceRunner == true
+	local forceShieldCarrier = spawnContext.forceShieldCarrier == true
+	local forceScreamer = spawnContext.forceScreamer == true
+	local isArtillery = not isBoss and (forceArtillery or (wave >= 5 and index % modifierTraits.ArtilleryStep == 0))
+	local isElite = isArtillery
+	local isBruiser = not isBoss and (forceBruiser or (wave >= 4 and index % modifierTraits.BruiserStep == 0))
+	if isBruiser then
+		isArtillery = false
+		isElite = false
+	end
+	local isShieldCarrier = not isBoss and not isBruiser and not isArtillery and (forceShieldCarrier or (wave >= 3 and index % modifierTraits.ShieldCarrierStep == 0))
+	local isScreamer = not isBoss and not isBruiser and not isArtillery and not isShieldCarrier and (forceScreamer or (wave >= 3 and index % modifierTraits.ScreamerStep == 0))
+	local isSpitter = not isBoss and not isBruiser and not isArtillery and not isShieldCarrier and not isScreamer and (forceSpitter or (wave >= 3 and index % modifierTraits.SpitterStep == 0))
+	local isExploder = not isBoss and not isBruiser and not isArtillery and not isShieldCarrier and not isScreamer and not isSpitter and (forceExploder or (wave >= 4 and index % modifierTraits.ExploderStep == 0))
+	local isBrute = not isElite and not isBruiser and not isShieldCarrier and not isScreamer and not isSpitter and not isExploder and (forceBrute or (wave >= 3 and index % modifierTraits.BruteStep == 0))
+	local isRunner = not isElite and not isBruiser and not isShieldCarrier and not isScreamer and not isSpitter and not isExploder and not isBrute and (forceRunner or (wave >= 2 and index % modifierTraits.RunnerStep == 0))
+	local bossProfile = isBoss and self:_getBossProfile(self._activeMission, scaledStats.bossProfileKey) or nil
+	local laneOffset = typeof(spawnContext.laneOffset) == "Vector3" and spawnContext.laneOffset or nil
+	local laneRole = (isRunner and "Flank")
+		or (isScreamer and "Support")
+		or (isShieldCarrier and "Objective")
+		or ((isSpitter or isArtillery) and "Ranged")
+		or ((isBruiser or isBrute or isBoss or spawnContext.forceObjectivePressure == true) and "Objective")
+		or "Lane"
+	local laneFocusPosition = laneOffset and self:_getLaneFocusPosition(laneOffset, laneRole) or nil
 
 	local root = Instance.new("Part")
 	root.Name = "HumanoidRootPart"
-	root.Size = isBoss and Vector3.new(4.2, 4.2, 2.4) or (isBrute and Vector3.new(2.8, 2.8, 1.4) or Vector3.new(2, 2, 1))
+	root.Size = isBoss and Vector3.new(4.2, 4.2, 2.4) or (isBruiser and Vector3.new(3.1, 3.1, 1.6) or (isArtillery and Vector3.new(2.45, 2.45, 1.28) or (isBrute and Vector3.new(2.8, 2.8, 1.4) or (isShieldCarrier and Vector3.new(2.9, 2.9, 1.46) or (isScreamer and Vector3.new(2.15, 2.15, 1.14) or (isSpitter and Vector3.new(2.1, 2.1, 1.1) or (isExploder and Vector3.new(2.15, 2.15, 1.18) or Vector3.new(2, 2, 1))))))))
 	root.CFrame = CFrame.new(spawnPosition + Vector3.new(0, 3, 0))
 	root.Material = Enum.Material.Slate
-	root.Color = isBoss and Color3.fromRGB(110, 54, 54) or (isElite and Color3.fromRGB(130, 70, 70) or (isBrute and Color3.fromRGB(114, 88, 68) or (isRunner and Color3.fromRGB(108, 132, 82) or Color3.fromRGB(78, 100, 74))))
+	root.Color = isBoss and Color3.fromRGB(110, 54, 54) or (isArtillery and Color3.fromRGB(134, 92, 66) or (isElite and Color3.fromRGB(130, 70, 70) or (isBruiser and Color3.fromRGB(118, 84, 72) or (isBrute and Color3.fromRGB(114, 88, 68) or (isShieldCarrier and Color3.fromRGB(84, 92, 112) or (isScreamer and Color3.fromRGB(92, 74, 134) or (isSpitter and Color3.fromRGB(72, 112, 86) or (isExploder and Color3.fromRGB(132, 94, 54) or (isRunner and Color3.fromRGB(108, 132, 82) or Color3.fromRGB(78, 100, 74))))))))))
 	root.Parent = zombie
 
 	local torso = Instance.new("Part")
 	torso.Name = "Torso"
-	torso.Size = isBoss and Vector3.new(4.8, 5.8, 2.8) or (isElite and Vector3.new(2.6, 3.2, 1.5) or (isBrute and Vector3.new(3.3, 3.8, 1.9) or (isRunner and Vector3.new(2, 2.1, 1.1) or Vector3.new(2.2, 2.5, 1.3))))
-	torso.CFrame = root.CFrame + Vector3.new(0, isBoss and 3.2 or (isBrute and 2.1 or 1.6), 0)
+	torso.Size = isBoss and Vector3.new(4.8, 5.8, 2.8) or (isArtillery and Vector3.new(2.8, 3.3, 1.55) or (isElite and Vector3.new(2.6, 3.2, 1.5) or (isBruiser and Vector3.new(3.7, 4.1, 2.2) or (isBrute and Vector3.new(3.3, 3.8, 1.9) or (isShieldCarrier and Vector3.new(3.35, 3.85, 1.95) or (isScreamer and Vector3.new(2.2, 2.95, 1.28) or (isSpitter and Vector3.new(2.1, 2.8, 1.2) or (isExploder and Vector3.new(2.2, 2.7, 1.3) or (isRunner and Vector3.new(2, 2.1, 1.1) or Vector3.new(2.2, 2.5, 1.3))))))))))
+	torso.CFrame = root.CFrame + Vector3.new(0, isBoss and 3.2 or (isBruiser and 2.3 or (isShieldCarrier and 2.2 or (isBrute and 2.1 or 1.6))), 0)
 	torso.Material = Enum.Material.SmoothPlastic
-	torso.Color = isBoss and Color3.fromRGB(148, 64, 64) or (isElite and Color3.fromRGB(156, 82, 82) or (isBrute and Color3.fromRGB(152, 112, 84) or (isRunner and Color3.fromRGB(138, 168, 96) or Color3.fromRGB(95, 125, 88))))
+	torso.Color = isBoss and Color3.fromRGB(148, 64, 64) or (isArtillery and Color3.fromRGB(188, 124, 82) or (isElite and Color3.fromRGB(156, 82, 82) or (isBruiser and Color3.fromRGB(162, 116, 94) or (isBrute and Color3.fromRGB(152, 112, 84) or (isShieldCarrier and Color3.fromRGB(122, 138, 166) or (isScreamer and Color3.fromRGB(132, 102, 188) or (isSpitter and Color3.fromRGB(98, 154, 116) or (isExploder and Color3.fromRGB(188, 132, 78) or (isRunner and Color3.fromRGB(138, 168, 96) or Color3.fromRGB(95, 125, 88))))))))))
 	torso.Parent = zombie
 
 	local head = Instance.new("Part")
 	head.Name = "Head"
 	head.Shape = Enum.PartType.Ball
-	head.Size = isBoss and Vector3.new(2.8, 2.8, 2.8) or (isElite and Vector3.new(1.9, 1.9, 1.9) or (isBrute and Vector3.new(2.1, 2.1, 2.1) or (isRunner and Vector3.new(1.4, 1.4, 1.4) or Vector3.new(1.6, 1.6, 1.6))))
-	head.CFrame = root.CFrame + Vector3.new(0, isBoss and 6.2 or (isElite and 3.9 or (isBrute and 4.8 or (isRunner and 3.1 or 3.4))), 0)
+	head.Size = isBoss and Vector3.new(2.8, 2.8, 2.8) or (isArtillery and Vector3.new(1.95, 1.95, 1.95) or (isElite and Vector3.new(1.9, 1.9, 1.9) or (isBruiser and Vector3.new(2.3, 2.3, 2.3) or (isBrute and Vector3.new(2.1, 2.1, 2.1) or (isShieldCarrier and Vector3.new(2.05, 2.05, 2.05) or (isScreamer and Vector3.new(1.95, 1.95, 1.95) or (isSpitter and Vector3.new(1.75, 1.75, 1.75) or (isExploder and Vector3.new(1.85, 1.85, 1.85) or (isRunner and Vector3.new(1.4, 1.4, 1.4) or Vector3.new(1.6, 1.6, 1.6))))))))))
+	head.CFrame = root.CFrame + Vector3.new(0, isBoss and 6.2 or (isArtillery and 4.2 or (isElite and 3.9 or (isBruiser and 5.15 or (isBrute and 4.8 or (isShieldCarrier and 4.85 or (isScreamer and 4.05 or (isSpitter and 3.75 or (isExploder and 3.9 or (isRunner and 3.1 or 3.4))))))))), 0)
 	head.Material = Enum.Material.SmoothPlastic
-	head.Color = isBoss and Color3.fromRGB(222, 118, 118) or (isElite and Color3.fromRGB(210, 116, 116) or (isBrute and Color3.fromRGB(210, 168, 128) or (isRunner and Color3.fromRGB(182, 204, 136) or Color3.fromRGB(142, 167, 128))))
+	head.Color = isBoss and Color3.fromRGB(222, 118, 118) or (isArtillery and Color3.fromRGB(244, 172, 118) or (isElite and Color3.fromRGB(210, 116, 116) or (isBruiser and Color3.fromRGB(214, 164, 142) or (isBrute and Color3.fromRGB(210, 168, 128) or (isShieldCarrier and Color3.fromRGB(198, 214, 238) or (isScreamer and Color3.fromRGB(198, 172, 255) or (isSpitter and Color3.fromRGB(162, 228, 176) or (isExploder and Color3.fromRGB(244, 188, 124) or (isRunner and Color3.fromRGB(182, 204, 136) or Color3.fromRGB(142, 167, 128))))))))))
 	head.Parent = zombie
 
 	local leftArm = Instance.new("Part")
 	leftArm.Name = "LeftArm"
-	leftArm.Size = isBoss and Vector3.new(1.2, 4.4, 1.2) or (isBrute and Vector3.new(0.95, 3.2, 0.95) or (isRunner and Vector3.new(0.45, 2.6, 0.45) or Vector3.new(0.62, 2.8, 0.62)))
+	leftArm.Size = isBoss and Vector3.new(1.2, 4.4, 1.2) or (isBruiser and Vector3.new(1.08, 3.5, 1.08) or (isArtillery and Vector3.new(0.66, 3.1, 0.66) or (isBrute and Vector3.new(0.95, 3.2, 0.95) or (isShieldCarrier and Vector3.new(1.18, 3.2, 1.18) or (isScreamer and Vector3.new(0.5, 3.15, 0.5) or (isSpitter and Vector3.new(0.52, 2.9, 0.52) or (isExploder and Vector3.new(0.58, 2.85, 0.58) or (isRunner and Vector3.new(0.45, 2.6, 0.45) or Vector3.new(0.62, 2.8, 0.62)))))))))
 	leftArm.CFrame = torso.CFrame * CFrame.new(-(torso.Size.X * 0.5 + leftArm.Size.X * 0.35), 0.05, 0)
 	leftArm.Material = Enum.Material.SmoothPlastic
-	leftArm.Color = torso.Color:Lerp(Color3.fromRGB(38, 42, 48), isRunner and 0.18 or 0.1)
+	leftArm.Color = torso.Color:Lerp(Color3.fromRGB(38, 42, 48), (isRunner or isScreamer) and 0.18 or 0.1)
 	leftArm.Parent = zombie
 
 	local rightArm = Instance.new("Part")
@@ -2758,34 +4528,48 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 	rightArm.Color = leftArm.Color
 	rightArm.Parent = zombie
 
-	local leftArmWeld = Instance.new("WeldConstraint")
-	leftArmWeld.Part0 = torso
-	leftArmWeld.Part1 = leftArm
-	leftArmWeld.Parent = torso
+	local leftLeg = Instance.new("Part")
+	leftLeg.Name = "LeftLeg"
+	leftLeg.Size = isBoss and Vector3.new(1.34, 4.3, 1.34) or (isBruiser and Vector3.new(1.18, 3.65, 1.18) or (isArtillery and Vector3.new(0.78, 3.2, 0.78) or (isBrute and Vector3.new(1.02, 3.35, 1.02) or (isShieldCarrier and Vector3.new(1.08, 3.25, 1.08) or (isScreamer and Vector3.new(0.58, 3.05, 0.58) or (isSpitter and Vector3.new(0.62, 2.9, 0.62) or (isExploder and Vector3.new(0.68, 2.85, 0.68) or (isRunner and Vector3.new(0.48, 2.85, 0.48) or Vector3.new(0.72, 3, 0.72)))))))))
+	leftLeg.CFrame = root.CFrame * CFrame.new(-(root.Size.X * 0.18 + leftLeg.Size.X * 0.2), -(root.Size.Y * 0.52 + leftLeg.Size.Y * 0.5), 0)
+	leftLeg.Material = Enum.Material.SmoothPlastic
+	leftLeg.Color = torso.Color:Lerp(Color3.fromRGB(44, 48, 54), 0.12)
+	leftLeg.Parent = zombie
 
-	local rightArmWeld = Instance.new("WeldConstraint")
-	rightArmWeld.Part0 = torso
-	rightArmWeld.Part1 = rightArm
-	rightArmWeld.Parent = torso
+	local rightLeg = Instance.new("Part")
+	rightLeg.Name = "RightLeg"
+	rightLeg.Size = leftLeg.Size
+	rightLeg.CFrame = root.CFrame * CFrame.new(root.Size.X * 0.18 + rightLeg.Size.X * 0.2, -(root.Size.Y * 0.52 + rightLeg.Size.Y * 0.5), 0)
+	rightLeg.Material = Enum.Material.SmoothPlastic
+	rightLeg.Color = leftLeg.Color
+	rightLeg.Parent = zombie
 
-	local rootWeld = Instance.new("WeldConstraint")
-	rootWeld.Part0 = root
-	rootWeld.Part1 = torso
-	rootWeld.Parent = root
+	local function createLimbMotor(name, part0, part1, c0)
+		local motor = Instance.new("Motor6D")
+		motor.Name = name
+		motor.Part0 = part0
+		motor.Part1 = part1
+		motor.C0 = c0
+		motor.C1 = CFrame.new()
+		motor.Parent = part0
+		return motor
+	end
 
-	local headWeld = Instance.new("WeldConstraint")
-	headWeld.Part0 = torso
-	headWeld.Part1 = head
-	headWeld.Parent = torso
+	local torsoJoint = createLimbMotor("RootJoint", root, torso, CFrame.new(0, isBoss and 3.2 or (isBruiser and 2.3 or (isShieldCarrier and 2.2 or (isBrute and 2.1 or 1.6))), 0))
+	local neckJoint = createLimbMotor("Neck", torso, head, CFrame.new(0, head.Position.Y - torso.Position.Y, 0))
+	local leftShoulder = createLimbMotor("LeftShoulder", torso, leftArm, CFrame.new(-(torso.Size.X * 0.5 + leftArm.Size.X * 0.35), 0.05, 0))
+	local rightShoulder = createLimbMotor("RightShoulder", torso, rightArm, CFrame.new(torso.Size.X * 0.5 + rightArm.Size.X * 0.35, 0.05, 0))
+	local leftHip = createLimbMotor("LeftHip", root, leftLeg, CFrame.new(-(root.Size.X * 0.18 + leftLeg.Size.X * 0.2), -(root.Size.Y * 0.52 + leftLeg.Size.Y * 0.5), 0))
+	local rightHip = createLimbMotor("RightHip", root, rightLeg, CFrame.new(root.Size.X * 0.18 + rightLeg.Size.X * 0.2, -(root.Size.Y * 0.52 + rightLeg.Size.Y * 0.5), 0))
 
 	local eyeGlow = Instance.new("Part")
 	eyeGlow.Name = "EyeGlow"
-	eyeGlow.Size = isBoss and Vector3.new(0.7, 0.16, 0.16) or (isBrute and Vector3.new(0.46, 0.12, 0.12) or Vector3.new(0.34, 0.1, 0.1))
+	eyeGlow.Size = isBoss and Vector3.new(0.7, 0.16, 0.16) or (isBruiser and Vector3.new(0.52, 0.13, 0.13) or (isArtillery and Vector3.new(0.54, 0.13, 0.13) or (isBrute and Vector3.new(0.46, 0.12, 0.12) or (isShieldCarrier and Vector3.new(0.42, 0.12, 0.12) or (isScreamer and Vector3.new(0.46, 0.12, 0.12) or Vector3.new(0.34, 0.1, 0.1))))))
 	eyeGlow.Anchored = false
 	eyeGlow.CanCollide = false
 	eyeGlow.CanQuery = false
 	eyeGlow.Material = Enum.Material.Neon
-	eyeGlow.Color = isBoss and Color3.fromRGB(255, 138, 118) or (isBrute and Color3.fromRGB(255, 196, 132) or (isRunner and Color3.fromRGB(198, 255, 142) or Color3.fromRGB(208, 228, 255)))
+	eyeGlow.Color = isBoss and Color3.fromRGB(255, 138, 118) or (isArtillery and Color3.fromRGB(255, 206, 132) or (isBruiser and Color3.fromRGB(255, 174, 132) or (isBrute and Color3.fromRGB(255, 196, 132) or (isShieldCarrier and Color3.fromRGB(196, 224, 255) or (isScreamer and Color3.fromRGB(214, 172, 255) or (isSpitter and Color3.fromRGB(168, 255, 198) or (isExploder and Color3.fromRGB(255, 204, 112) or (isRunner and Color3.fromRGB(198, 255, 142) or Color3.fromRGB(208, 228, 255)))))))))
 	eyeGlow.CFrame = head.CFrame * CFrame.new(0, 0.08, -(head.Size.Z * 0.48))
 	eyeGlow.Parent = zombie
 
@@ -2796,9 +4580,9 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 
 	local spinePlate = Instance.new("Part")
 	spinePlate.Name = "SpinePlate"
-	spinePlate.Size = isBoss and Vector3.new(0.42, 3.1, 0.32) or (isBrute and Vector3.new(0.32, 2.3, 0.24) or Vector3.new(0.18, 1.7, 0.18))
+	spinePlate.Size = isBoss and Vector3.new(0.42, 3.1, 0.32) or (isBruiser and Vector3.new(0.36, 2.6, 0.28) or (isArtillery and Vector3.new(0.24, 2.2, 0.2) or (isBrute and Vector3.new(0.32, 2.3, 0.24) or Vector3.new(0.18, 1.7, 0.18))))
 	spinePlate.Material = Enum.Material.Metal
-	spinePlate.Color = isBoss and Color3.fromRGB(144, 82, 82) or (isBrute and Color3.fromRGB(156, 128, 88) or (isRunner and Color3.fromRGB(158, 204, 112) or Color3.fromRGB(112, 126, 108)))
+	spinePlate.Color = isBoss and Color3.fromRGB(144, 82, 82) or (isArtillery and Color3.fromRGB(202, 152, 92) or (isBruiser and Color3.fromRGB(174, 142, 96) or (isBrute and Color3.fromRGB(156, 128, 88) or (isShieldCarrier and Color3.fromRGB(122, 148, 186) or (isScreamer and Color3.fromRGB(154, 122, 218) or (isSpitter and Color3.fromRGB(112, 188, 136) or (isExploder and Color3.fromRGB(216, 152, 88) or (isRunner and Color3.fromRGB(158, 204, 112) or Color3.fromRGB(112, 126, 108)))))))))
 	spinePlate.CFrame = torso.CFrame * CFrame.new(0, 0.1, torso.Size.Z * 0.5 + 0.08)
 	spinePlate.Parent = zombie
 	local spinePlateWeld = Instance.new("WeldConstraint")
@@ -2806,51 +4590,150 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 	spinePlateWeld.Part1 = spinePlate
 	spinePlateWeld.Parent = torso
 
+	local jaw = Instance.new("Part")
+	jaw.Name = "Jaw"
+	jaw.Size = isBoss and Vector3.new(1.3, 0.55, 0.82) or (isBruiser and Vector3.new(1.05, 0.42, 0.64) or (isBrute and Vector3.new(0.96, 0.4, 0.58) or Vector3.new(0.72, 0.3, 0.44)))
+	jaw.Material = Enum.Material.SmoothPlastic
+	jaw.Color = head.Color:Lerp(Color3.fromRGB(58, 42, 42), (isSpitter or isScreamer) and 0.26 or 0.18)
+	jaw.CFrame = head.CFrame * CFrame.new(0, -(head.Size.Y * 0.2), -(head.Size.Z * 0.22))
+	jaw.Parent = zombie
+	local jawWeld = Instance.new("WeldConstraint")
+	jawWeld.Part0 = head
+	jawWeld.Part1 = jaw
+	jawWeld.Parent = head
+
+	local shoulderSpine = Instance.new("Part")
+	shoulderSpine.Name = "ShoulderSpine"
+	shoulderSpine.Size = isBoss and Vector3.new(0.34, 2.8, 0.24) or (isBruiser and Vector3.new(0.28, 2.2, 0.2) or Vector3.new(0.18, 1.6, 0.16))
+	shoulderSpine.Material = Enum.Material.Metal
+	shoulderSpine.Color = spinePlate.Color
+	shoulderSpine.CFrame = torso.CFrame * CFrame.new(0, torso.Size.Y * 0.24, torso.Size.Z * 0.52)
+	shoulderSpine.Parent = zombie
+	local shoulderSpineWeld = Instance.new("WeldConstraint")
+	shoulderSpineWeld.Part0 = torso
+	shoulderSpineWeld.Part1 = shoulderSpine
+	shoulderSpineWeld.Parent = torso
+
 	local humanoid = Instance.new("Humanoid")
 	humanoid.Name = "Humanoid"
-	local zombieHealth = isBoss and math.floor(scaledStats.health * self._missionConfig.Mission.BossHealthScale) or (isElite and math.floor(scaledStats.health * 1.8) or scaledStats.health)
+	local zombieHealth = isBoss and math.floor(scaledStats.health * (bossProfile and bossProfile.healthScale or self._missionConfig.Mission.BossHealthScale)) or (isElite and math.floor(scaledStats.health * 1.8) or scaledStats.health)
+	if isBruiser then
+		zombieHealth = math.max(85, math.floor(scaledStats.health * self._missionConfig.Mission.BruiserHealthScale))
+	end
 	if isBrute then
 		zombieHealth = math.max(60, math.floor(scaledStats.health * self._missionConfig.Mission.BruteHealthScale))
+	end
+	if isShieldCarrier then
+		zombieHealth = math.max(72, math.floor(scaledStats.health * self._missionConfig.Mission.ShieldCarrierHealthScale))
+	end
+	if isScreamer then
+		zombieHealth = math.max(36, math.floor(zombieHealth * self._missionConfig.Mission.ScreamerHealthScale))
+	end
+	if isSpitter then
+		zombieHealth = math.max(32, math.floor(zombieHealth * self._missionConfig.Mission.SpitterHealthScale))
+	end
+	if isArtillery then
+		zombieHealth = math.max(78, math.floor((scaledStats.health or zombieHealth) * self._missionConfig.Mission.ArtilleryHealthScale))
+	end
+	if isExploder then
+		zombieHealth = math.max(26, math.floor(zombieHealth * self._missionConfig.Mission.ExploderHealthScale))
 	end
 	if isRunner then
 		zombieHealth = math.max(20, math.floor(zombieHealth * 0.72))
 	end
 	humanoid.MaxHealth = zombieHealth
 	humanoid.Health = zombieHealth
-	humanoid.WalkSpeed = isBoss and 9.8 or (isElite and 12.5 or (isBrute and 8.8 or (isRunner and 15.5 or 11)))
+	local baseWalkSpeed = isBoss and 9.8 or (isArtillery and 10.2 or (isElite and 12.5 or (isBruiser and 9.4 or (isBrute and 8.8 or (isShieldCarrier and 8.6 or (isScreamer and 10.6 or (isSpitter and 10.8 or (isExploder and 11.6 or (isRunner and 15.5 or 11)))))))))
+	local walkSpeedScale = 1
+	if isBruiser then
+		walkSpeedScale = modifierTraits.BruiserSpeedScale
+	elseif isArtillery then
+		walkSpeedScale = 1
+	elseif isBrute then
+		walkSpeedScale = modifierTraits.BruteSpeedScale
+	elseif isShieldCarrier then
+		walkSpeedScale = modifierTraits.ShieldCarrierSpeedScale
+	elseif isScreamer then
+		walkSpeedScale = modifierTraits.ScreamerSpeedScale
+	elseif isSpitter then
+		walkSpeedScale = modifierTraits.SpitterSpeedScale
+	elseif isExploder then
+		walkSpeedScale = modifierTraits.ExploderSpeedScale
+	elseif isRunner then
+		walkSpeedScale = modifierTraits.RunnerSpeedScale
+	end
+	humanoid.WalkSpeed = math.max(7, baseWalkSpeed * walkSpeedScale)
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	humanoid.HealthDisplayDistance = 0
 	humanoid.NameDisplayDistance = 0
 	humanoid.Parent = zombie
 
+	local stridePhase = (index % 9) * 0.66 + ((isRunner or isScreamer) and 0.28 or 0)
+	local postureBias = ((index % 5) - 2) * 0.028
+
 	root:SetNetworkOwner(nil)
 	zombie.PrimaryPart = root
-	local touchDamage = isBoss and math.max(12, math.floor(scaledStats.damage * self._missionConfig.Mission.BossDamageScale)) or (isElite and math.floor(scaledStats.damage * 1.4) or (isBrute and math.max(8, math.floor(scaledStats.damage * self._missionConfig.Mission.BruteDamageScale)) or (isRunner and math.max(4, math.floor(scaledStats.damage * 0.85)) or scaledStats.damage)))
+	local touchDamage = isBoss and math.max(12, math.floor(scaledStats.damage * (bossProfile and bossProfile.damageScale or self._missionConfig.Mission.BossDamageScale))) or (isArtillery and math.max(9, math.floor(scaledStats.damage * self._missionConfig.Mission.ArtilleryDamageScale)) or (isElite and math.floor(scaledStats.damage * 1.4) or (isBruiser and math.max(10, math.floor(scaledStats.damage * self._missionConfig.Mission.BruiserDamageScale)) or (isBrute and math.max(8, math.floor(scaledStats.damage * self._missionConfig.Mission.BruteDamageScale)) or (isShieldCarrier and math.max(5, math.floor(scaledStats.damage * self._missionConfig.Mission.ShieldCarrierDamageScale)) or (isScreamer and math.max(4, math.floor(scaledStats.damage * self._missionConfig.Mission.ScreamerDamageScale)) or (isSpitter and math.max(5, math.floor(scaledStats.damage * self._missionConfig.Mission.SpitterDamageScale)) or (isExploder and math.max(6, math.floor(scaledStats.damage * self._missionConfig.Mission.ExploderDamageScale)) or (isRunner and math.max(4, math.floor(scaledStats.damage * 0.85)) or scaledStats.damage)))))))))
 	zombie:SetAttribute("ZombieDamage", touchDamage)
+	zombie:SetAttribute("BaseZombieDamage", touchDamage)
 	zombie:SetAttribute("ObjectiveDamage", math.max(4, math.floor(touchDamage * (isBoss and 0.9 or 0.7))))
+	zombie:SetAttribute("BaseObjectiveDamage", zombie:GetAttribute("ObjectiveDamage"))
+	zombie:SetAttribute("BaseWalkSpeed", humanoid.WalkSpeed)
 	zombie:SetAttribute("Elite", isElite)
+	zombie:SetAttribute("Artillery", isArtillery)
+	zombie:SetAttribute("Bruiser", isBruiser)
+	zombie:SetAttribute("ShieldCarrier", isShieldCarrier)
+	zombie:SetAttribute("Screamer", isScreamer)
+	zombie:SetAttribute("Spitter", isSpitter)
+	zombie:SetAttribute("Exploder", isExploder)
 	zombie:SetAttribute("Brute", isBrute)
 	zombie:SetAttribute("Runner", isRunner)
 	zombie:SetAttribute("Boss", isBoss)
-	local modifierTraits = self:_getModifierRuntimeTraits()
-	local objectivePressure = isBoss or isBrute or (self._activeMission.wave >= 3 and index % 3 == 0) or (self._activeMission.wave >= 2 and index % 4 == 0)
+	zombie:SetAttribute("LaneRole", laneRole)
+	if laneOffset then
+		zombie:SetAttribute("LaneX", laneOffset.X)
+		zombie:SetAttribute("LaneZ", laneOffset.Z)
+	end
+	local objectivePressure = isBoss or isBruiser or isBrute or isExploder or (wave >= 3 and index % 3 == 0) or (wave >= 2 and index % 4 == 0)
+	if spawnContext.forceObjectivePressure == true then
+		objectivePressure = true
+	end
 	if self._activeMission.wave >= 2 and index % modifierTraits.ObjectivePressureInterval == 0 then
 		objectivePressure = true
 	end
 	if modifierTraits.ForceRunnerPressure and isRunner then
 		objectivePressure = true
 	end
+	if modifierTraits.ForceShieldCarrierPressure and isShieldCarrier then
+		objectivePressure = true
+	end
+	if modifierTraits.ForceScreamerPressure and isScreamer then
+		objectivePressure = true
+	end
+	if modifierTraits.ForceSpitterPressure and isSpitter then
+		objectivePressure = true
+	end
+	if modifierTraits.ForceArtilleryPressure and isArtillery then
+		objectivePressure = true
+	end
+	if modifierTraits.ForceExploderPressure and isExploder then
+		objectivePressure = true
+	end
 	if modifierTraits.ForceBrutePressure and isBrute then
+		objectivePressure = true
+	end
+	if modifierTraits.ForceBruiserPressure and isBruiser then
 		objectivePressure = true
 	end
 	zombie:SetAttribute("ObjectivePressure", objectivePressure)
 
 	if isBoss then
-		zombie.Name = ("SiegeTyrant_%d"):format(self._activeMission.wave)
+		zombie.Name = ("%s_%d"):format(bossProfile and bossProfile.displayName:gsub("%s+", "") or "Boss", self._activeMission.wave)
+		zombie:SetAttribute("BossType", bossProfile and bossProfile.key or "siege_tyrant")
 		local aura = Instance.new("Highlight")
 		aura.Name = "BossAura"
-		aura.FillColor = Color3.fromRGB(255, 88, 88)
-		aura.OutlineColor = Color3.fromRGB(255, 228, 196)
+		aura.FillColor = bossProfile and bossProfile.fillColor or Color3.fromRGB(255, 88, 88)
+		aura.OutlineColor = bossProfile and bossProfile.outlineColor or Color3.fromRGB(255, 228, 196)
 		aura.FillTransparency = 0.42
 		aura.OutlineTransparency = 0
 		aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -2869,8 +4752,8 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 		label.BackgroundTransparency = 1
 		label.Size = UDim2.fromScale(1, 1)
 		label.Font = Enum.Font.GothamBlack
-		label.Text = "SIEGE TYRANT"
-		label.TextColor3 = Color3.fromRGB(255, 212, 188)
+		label.Text = bossProfile and bossProfile.name or "SIEGE TYRANT"
+		label.TextColor3 = bossProfile and bossProfile.textColor or Color3.fromRGB(255, 212, 188)
 		label.TextStrokeTransparency = 0.35
 		label.TextScaled = false
 		label.TextSize = 22
@@ -2884,14 +4767,87 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 		aura.OutlineTransparency = 0
 		aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		aura.Parent = zombie
+		if isArtillery then
+			aura.Name = "ArtilleryAura"
+			aura.FillColor = Color3.fromRGB(242, 162, 96)
+			aura.OutlineColor = Color3.fromRGB(255, 228, 176)
+			aura.FillTransparency = 0.34
+			aura.OutlineTransparency = 0
+			local launcher = Instance.new("Part")
+			launcher.Name = "ArtilleryLauncher"
+			launcher.Size = Vector3.new(2.4, 0.42, 1)
+			launcher.Material = Enum.Material.Metal
+			launcher.Color = Color3.fromRGB(138, 96, 68)
+			launcher.CFrame = torso.CFrame * CFrame.new(0, torso.Size.Y * 0.34, -(torso.Size.Z * 0.08))
+			launcher.Parent = zombie
+			local launcherWeld = Instance.new("WeldConstraint")
+			launcherWeld.Part0 = torso
+			launcherWeld.Part1 = launcher
+			launcherWeld.Parent = torso
+			local artilleryCore = Instance.new("Part")
+			artilleryCore.Name = "ArtilleryCore"
+			artilleryCore.Shape = Enum.PartType.Ball
+			artilleryCore.Size = Vector3.new(0.82, 0.82, 0.82)
+			artilleryCore.Material = Enum.Material.Neon
+			artilleryCore.Color = Color3.fromRGB(255, 196, 118)
+			artilleryCore.Transparency = 0.1
+			artilleryCore.CFrame = torso.CFrame * CFrame.new(0, torso.Size.Y * 0.18, -(torso.Size.Z * 0.5 + 0.28))
+			artilleryCore.Parent = zombie
+			local artilleryCoreWeld = Instance.new("WeldConstraint")
+			artilleryCoreWeld.Part0 = torso
+			artilleryCoreWeld.Part1 = artilleryCore
+			artilleryCoreWeld.Parent = torso
+			local artilleryAntenna = Instance.new("Part")
+			artilleryAntenna.Name = "ArtilleryAntenna"
+			artilleryAntenna.Size = Vector3.new(0.16, 2.4, 0.16)
+			artilleryAntenna.Material = Enum.Material.Neon
+			artilleryAntenna.Color = Color3.fromRGB(255, 214, 142)
+			artilleryAntenna.CFrame = head.CFrame * CFrame.new(0, 1.6, 0)
+			artilleryAntenna.Parent = zombie
+			local artilleryAntennaWeld = Instance.new("WeldConstraint")
+			artilleryAntennaWeld.Part0 = head
+			artilleryAntennaWeld.Part1 = artilleryAntenna
+			artilleryAntennaWeld.Parent = head
+		end
+	elseif isBruiser then
+		local aura = Instance.new("Highlight")
+		aura.Name = "BruiserAura"
+		aura.FillColor = Color3.fromRGB(228, 162, 108)
+		aura.OutlineColor = Color3.fromRGB(255, 224, 182)
+		aura.FillTransparency = 0.42
+		aura.OutlineTransparency = 0
+		aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		aura.Parent = zombie
+		local chestPlate = Instance.new("Part")
+		chestPlate.Name = "BruiserChestPlate"
+		chestPlate.Size = Vector3.new(2.8, 1.45, 0.36)
+		chestPlate.Material = Enum.Material.Metal
+		chestPlate.Color = Color3.fromRGB(158, 124, 92)
+		chestPlate.CFrame = torso.CFrame * CFrame.new(0, 0.24, -(torso.Size.Z * 0.5 + 0.12))
+		chestPlate.Parent = zombie
+		local chestWeld = Instance.new("WeldConstraint")
+		chestWeld.Part0 = torso
+		chestWeld.Part1 = chestPlate
+		chestWeld.Parent = torso
+		local shoulderPad = Instance.new("Part")
+		shoulderPad.Name = "BruiserShoulderPad"
+		shoulderPad.Size = Vector3.new(3.5, 0.54, 0.95)
+		shoulderPad.Material = Enum.Material.Metal
+		shoulderPad.Color = Color3.fromRGB(178, 142, 98)
+		shoulderPad.CFrame = torso.CFrame * CFrame.new(0, torso.Size.Y * 0.39, -(torso.Size.Z * 0.16))
+		shoulderPad.Parent = zombie
+		local shoulderWeld = Instance.new("WeldConstraint")
+		shoulderWeld.Part0 = torso
+		shoulderWeld.Part1 = shoulderPad
+		shoulderWeld.Parent = torso
 	elseif isBrute then
 		local aura = Instance.new("Highlight")
 		aura.Name = "BruteAura"
 		aura.FillColor = Color3.fromRGB(214, 154, 96)
 		aura.OutlineColor = Color3.fromRGB(255, 221, 176)
-		aura.FillTransparency = 0.58
-		aura.OutlineTransparency = 0.04
-		aura.DepthMode = Enum.HighlightDepthMode.Occluded
+		aura.FillTransparency = 0.46
+		aura.OutlineTransparency = 0
+		aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		aura.Parent = zombie
 		local chestPlate = Instance.new("Part")
 		chestPlate.Name = "ChestPlate"
@@ -2915,14 +4871,57 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 		shoulderWeld.Part0 = torso
 		shoulderWeld.Part1 = shoulderPad
 		shoulderWeld.Parent = torso
+	elseif isShieldCarrier then
+		local aura = Instance.new("Highlight")
+		aura.Name = "ShieldCarrierAura"
+		aura.FillColor = Color3.fromRGB(154, 188, 236)
+		aura.OutlineColor = Color3.fromRGB(228, 240, 255)
+		aura.FillTransparency = 0.46
+		aura.OutlineTransparency = 0
+		aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		aura.Parent = zombie
+		local shield = Instance.new("Part")
+		shield.Name = "ShieldPlate"
+		shield.Size = Vector3.new(3.3, 4.2, 0.36)
+		shield.Material = Enum.Material.Metal
+		shield.Color = Color3.fromRGB(116, 132, 156)
+		shield.CFrame = torso.CFrame * CFrame.new(0, 0.1, -(torso.Size.Z * 0.5 + 0.42))
+		shield.Parent = zombie
+		local shieldWeld = Instance.new("WeldConstraint")
+		shieldWeld.Part0 = torso
+		shieldWeld.Part1 = shield
+		shieldWeld.Parent = torso
+		local shieldGlow = Instance.new("Part")
+		shieldGlow.Name = "ShieldGlow"
+		shieldGlow.Size = Vector3.new(2.5, 3.1, 0.08)
+		shieldGlow.Material = Enum.Material.Neon
+		shieldGlow.Color = Color3.fromRGB(176, 214, 255)
+		shieldGlow.Transparency = 0.12
+		shieldGlow.CFrame = shield.CFrame * CFrame.new(0, 0, -0.2)
+		shieldGlow.Parent = zombie
+		local shieldGlowWeld = Instance.new("WeldConstraint")
+		shieldGlowWeld.Part0 = shield
+		shieldGlowWeld.Part1 = shieldGlow
+		shieldGlowWeld.Parent = shield
+		local shoulderPlate = Instance.new("Part")
+		shoulderPlate.Name = "ShieldShoulderPlate"
+		shoulderPlate.Size = Vector3.new(3.6, 0.54, 0.9)
+		shoulderPlate.Material = Enum.Material.Metal
+		shoulderPlate.Color = Color3.fromRGB(132, 148, 176)
+		shoulderPlate.CFrame = torso.CFrame * CFrame.new(0, torso.Size.Y * 0.38, -(torso.Size.Z * 0.15))
+		shoulderPlate.Parent = zombie
+		local shoulderPlateWeld = Instance.new("WeldConstraint")
+		shoulderPlateWeld.Part0 = torso
+		shoulderPlateWeld.Part1 = shoulderPlate
+		shoulderPlateWeld.Parent = torso
 	elseif isRunner then
 		local aura = Instance.new("Highlight")
 		aura.Name = "RunnerAura"
 		aura.FillColor = Color3.fromRGB(178, 236, 118)
 		aura.OutlineColor = Color3.fromRGB(238, 255, 214)
-		aura.FillTransparency = 0.72
-		aura.OutlineTransparency = 0.16
-		aura.DepthMode = Enum.HighlightDepthMode.Occluded
+		aura.FillTransparency = 0.6
+		aura.OutlineTransparency = 0.04
+		aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		aura.Parent = zombie
 		local runnerSpine = Instance.new("Part")
 		runnerSpine.Name = "RunnerSpine"
@@ -2936,6 +4935,121 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 		spineWeld.Part0 = torso
 		spineWeld.Part1 = runnerSpine
 		spineWeld.Parent = torso
+		local runnerCrest = Instance.new("Part")
+		runnerCrest.Name = "RunnerCrest"
+		runnerCrest.Size = Vector3.new(0.12, 0.9, 0.9)
+		runnerCrest.Material = Enum.Material.Neon
+		runnerCrest.Color = Color3.fromRGB(206, 255, 142)
+		runnerCrest.Transparency = 0.12
+		runnerCrest.CFrame = head.CFrame * CFrame.new(0, 0.28, 0)
+		runnerCrest.Parent = zombie
+		local runnerCrestWeld = Instance.new("WeldConstraint")
+		runnerCrestWeld.Part0 = head
+		runnerCrestWeld.Part1 = runnerCrest
+		runnerCrestWeld.Parent = head
+	elseif isScreamer then
+		local aura = Instance.new("Highlight")
+		aura.Name = "ScreamerAura"
+		aura.FillColor = Color3.fromRGB(176, 118, 255)
+		aura.OutlineColor = Color3.fromRGB(238, 218, 255)
+		aura.FillTransparency = 0.44
+		aura.OutlineTransparency = 0.02
+		aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		aura.Parent = zombie
+		local throat = Instance.new("Part")
+		throat.Name = "ScreamerThroat"
+		throat.Shape = Enum.PartType.Ball
+		throat.Size = Vector3.new(0.72, 0.72, 0.72)
+		throat.Material = Enum.Material.Neon
+		throat.Color = Color3.fromRGB(214, 146, 255)
+		throat.Transparency = 0.06
+		throat.CFrame = head.CFrame * CFrame.new(0, -(head.Size.Y * 0.28), -(head.Size.Z * 0.2))
+		throat.Parent = zombie
+		local throatWeld = Instance.new("WeldConstraint")
+		throatWeld.Part0 = head
+		throatWeld.Part1 = throat
+		throatWeld.Parent = head
+		local screamerCrest = Instance.new("Part")
+		screamerCrest.Name = "ScreamerCrest"
+		screamerCrest.Size = Vector3.new(0.16, 1.1, 0.86)
+		screamerCrest.Material = Enum.Material.Neon
+		screamerCrest.Color = Color3.fromRGB(202, 156, 255)
+		screamerCrest.Transparency = 0.08
+		screamerCrest.CFrame = head.CFrame * CFrame.new(0, 0.42, 0)
+		screamerCrest.Parent = zombie
+		local screamerCrestWeld = Instance.new("WeldConstraint")
+		screamerCrestWeld.Part0 = head
+		screamerCrestWeld.Part1 = screamerCrest
+		screamerCrestWeld.Parent = head
+	elseif isSpitter then
+		local aura = Instance.new("Highlight")
+		aura.Name = "SpitterAura"
+		aura.FillColor = Color3.fromRGB(102, 224, 154)
+		aura.OutlineColor = Color3.fromRGB(220, 255, 228)
+		aura.FillTransparency = 0.54
+		aura.OutlineTransparency = 0.02
+		aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		aura.Parent = zombie
+		local gland = Instance.new("Part")
+		gland.Name = "SpitterGland"
+		gland.Shape = Enum.PartType.Ball
+		gland.Size = Vector3.new(0.78, 0.78, 0.78)
+		gland.Material = Enum.Material.Neon
+		gland.Color = Color3.fromRGB(124, 255, 184)
+		gland.Transparency = 0.08
+		gland.CFrame = torso.CFrame * CFrame.new(0, torso.Size.Y * 0.16, -(torso.Size.Z * 0.5 + 0.24))
+		gland.Parent = zombie
+		local glandWeld = Instance.new("WeldConstraint")
+		glandWeld.Part0 = torso
+		glandWeld.Part1 = gland
+		glandWeld.Parent = torso
+		local spitJaw = Instance.new("Part")
+		spitJaw.Name = "SpitterJawGlow"
+		spitJaw.Size = Vector3.new(1.2, 0.26, 0.52)
+		spitJaw.Material = Enum.Material.Neon
+		spitJaw.Color = Color3.fromRGB(152, 255, 194)
+		spitJaw.Transparency = 0.08
+		spitJaw.CFrame = head.CFrame * CFrame.new(0, -0.18, -(head.Size.Z * 0.42))
+		spitJaw.Parent = zombie
+		local spitJawWeld = Instance.new("WeldConstraint")
+		spitJawWeld.Part0 = head
+		spitJawWeld.Part1 = spitJaw
+		spitJawWeld.Parent = head
+	elseif isExploder then
+		local aura = Instance.new("Highlight")
+		aura.Name = "ExploderAura"
+		aura.FillColor = Color3.fromRGB(255, 172, 92)
+		aura.OutlineColor = Color3.fromRGB(255, 228, 176)
+		aura.FillTransparency = 0.46
+		aura.OutlineTransparency = 0
+		aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		aura.Parent = zombie
+		local canister = Instance.new("Part")
+		canister.Name = "ExploderCanister"
+		canister.Shape = Enum.PartType.Ball
+		canister.Size = Vector3.new(1.1, 1.1, 1.1)
+		canister.Material = Enum.Material.Neon
+		canister.Color = Color3.fromRGB(255, 188, 112)
+		canister.Transparency = 0.1
+		canister.CFrame = torso.CFrame * CFrame.new(0, 0.15, -(torso.Size.Z * 0.5 + 0.28))
+		canister.Parent = zombie
+		local canisterWeld = Instance.new("WeldConstraint")
+		canisterWeld.Part0 = torso
+		canisterWeld.Part1 = canister
+		canisterWeld.Parent = torso
+		local exploderBackCanister = Instance.new("Part")
+		exploderBackCanister.Name = "ExploderBackCanister"
+		exploderBackCanister.Shape = Enum.PartType.Ball
+		exploderBackCanister.Size = Vector3.new(0.92, 0.92, 0.92)
+		exploderBackCanister.Material = Enum.Material.Neon
+		exploderBackCanister.Color = Color3.fromRGB(255, 210, 132)
+		exploderBackCanister.Transparency = 0.12
+		exploderBackCanister.CFrame = torso.CFrame * CFrame.new(0, 0.28, torso.Size.Z * 0.52)
+		exploderBackCanister.Parent = zombie
+		local exploderBackCanisterWeld = Instance.new("WeldConstraint")
+		exploderBackCanisterWeld.Part0 = torso
+		exploderBackCanisterWeld.Part1 = exploderBackCanister
+		exploderBackCanisterWeld.Parent = torso
 	end
 
 	local hitCooldowns = {}
@@ -2943,6 +5057,10 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 	local bossSummonReadyAt = os.clock() + 4.5
 	local runnerBurstReadyAt = os.clock() + 1.5
 	local bruteImpactReadyAt = os.clock() + 2.8
+	local bruiserChargeReadyAt = os.clock() + 1.8
+	local screamerPulseReadyAt = os.clock() + 2.4
+	local spitterVolleyReadyAt = os.clock() + 2.1
+	local artilleryVolleyReadyAt = os.clock() + 2.6
 	local bossEnrageActive = false
 	local touchConnection = root.Touched:Connect(function(hit)
 		local character = hit and hit.Parent
@@ -2960,12 +5078,16 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 		local targetHumanoid = character:FindFirstChildOfClass("Humanoid")
 		if targetHumanoid and targetHumanoid.Health > 0 and not self:_isCharacterDowned(character) and not self:_isCharacterDashing(character) and not self:_isSpawnProtected(player, character) then
 			targetHumanoid:TakeDamage(zombie:GetAttribute("ZombieDamage") or scaledStats.damage)
-			self:_emitPlayerHitEffect(character, isBoss and Color3.fromRGB(255, 98, 98) or (isElite and Color3.fromRGB(255, 112, 112) or (isBrute and Color3.fromRGB(236, 174, 118) or (isRunner and Color3.fromRGB(196, 236, 124) or Color3.fromRGB(182, 214, 255)))))
+			self:_emitPlayerHitEffect(character, isBoss and Color3.fromRGB(255, 98, 98) or (isArtillery and Color3.fromRGB(255, 194, 126) or (isElite and Color3.fromRGB(255, 112, 112) or (isBruiser and Color3.fromRGB(244, 184, 124) or (isBrute and Color3.fromRGB(236, 174, 118) or (isScreamer and Color3.fromRGB(214, 164, 255) or (isSpitter and Color3.fromRGB(156, 244, 186) or (isExploder and Color3.fromRGB(255, 206, 126) or (isRunner and Color3.fromRGB(196, 236, 124) or Color3.fromRGB(182, 214, 255))))))))))
 		end
 	end)
 
 	local aiThread = task.spawn(function()
 		while humanoid.Health > 0 and self._activeMission and self._activeMission.zombiesFolder == runtime do
+			local currentMission = self._activeMission
+			if not currentMission then
+				break
+			end
 			local nearestRoot = nil
 			local nearestDistance = math.huge
 
@@ -2988,7 +5110,7 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 			if objective then
 				local objectiveDistance = (objective.Position - root.Position).Magnitude
 				local objectivePressure = zombie:GetAttribute("ObjectivePressure") == true
-				local disruptRange = isBoss and 20 or (isBrute and 14 or (isRunner and 10 or 12))
+				local disruptRange = isBoss and 20 or (isBruiser and 17 or (isArtillery and 24 or (isShieldCarrier and 12 or (isBrute and 14 or (isScreamer and 20 or (isSpitter and 18 or (isExploder and 11 or (isRunner and 10 or 12))))))))
 				if objectivePressure and (not nearestRoot or nearestDistance > disruptRange) then
 					targetRoot = objective
 					targetDistance = objectiveDistance
@@ -2997,17 +5119,134 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 					targetDistance = objectiveDistance
 				end
 			end
+			local moveTargetPosition = targetRoot and targetRoot.Position or nil
+			if laneFocusPosition and targetRoot and targetRoot ~= objective then
+				local laneDistance = (laneFocusPosition - root.Position).Magnitude
+				if laneRole == "Flank" and laneDistance > 8 and targetDistance > 14 then
+					moveTargetPosition = laneFocusPosition
+					targetDistance = laneDistance
+				elseif laneRole == "Ranged" and laneDistance < targetDistance and targetDistance > 18 then
+					moveTargetPosition = laneFocusPosition
+					targetDistance = laneDistance
+				elseif laneRole == "Objective" and objective and targetDistance > 12 then
+					targetRoot = objective
+					moveTargetPosition = objective.Position
+					targetDistance = (objective.Position - root.Position).Magnitude
+				end
+			elseif laneFocusPosition and not targetRoot then
+				moveTargetPosition = laneFocusPosition
+				targetDistance = (laneFocusPosition - root.Position).Magnitude
+			end
 
-			if targetRoot then
+			if moveTargetPosition then
 				local now = os.clock()
+				local moveAlpha = math.clamp(humanoid.MoveDirection.Magnitude * 1.2, 0, 1)
+				local gaitSpeed = isRunner and 10.8 or (isBoss and 5.8 or (isExploder and 7.8 or (isShieldCarrier and 4.9 or (isScreamer and 7.2 or (isSpitter and 6.8 or (isArtillery and 5.2 or 6.4))))))
+				local gaitTime = now * gaitSpeed + stridePhase
+				local gaitSwing = math.sin(gaitTime) * (isBoss and 0.38 or (isRunner and 0.64 or (isShieldCarrier and 0.26 or (isScreamer and 0.54 or (isBruiser and 0.42 or 0.48))))) * moveAlpha
+				local sway = math.sin(gaitTime * 0.5) * ((isRunner or isScreamer) and 0.08 or (isShieldCarrier and 0.03 or 0.05)) * moveAlpha
+				local torsoLean = math.clamp(targetDistance / 80, 0, 1) * (isBoss and 0.12 or ((isRunner or isScreamer) and 0.24 or (isShieldCarrier and 0.1 or 0.18)))
+				local torsoYaw = math.sin(gaitTime * 0.5) * (isBoss and 0.04 or 0.08) * moveAlpha + postureBias
+				local torsoBob = math.abs(math.sin(gaitTime)) * (isBoss and 0.18 or (isRunner and 0.24 or 0.12)) * moveAlpha
+				local headTilt = math.sin(gaitTime * 0.75) * ((isRunner or isScreamer) and 0.12 or (isShieldCarrier and 0.05 or 0.08)) * moveAlpha
+				local hipRoll = math.sin(gaitTime) * ((isRunner or isScreamer) and 0.12 or (isShieldCarrier and 0.04 or 0.08)) * moveAlpha
+				local armLead = isBoss and -0.18 or (isArtillery and -0.1 or 0.08)
+				local attackPoseAlpha = math.clamp(1 - (targetDistance / (isBoss and 24 or ((isRunner or isScreamer) and 12 or (isShieldCarrier and 14 or 16)))), 0, 1)
+				local hitReactUntil = tonumber(zombie:GetAttribute("HitReactUntil")) or 0
+				local hitReactAlpha = math.clamp((hitReactUntil - now) / 0.18, 0, 1)
+				local hitPitch = (tonumber(zombie:GetAttribute("HitReactPitch")) or 0) * hitReactAlpha
+				local hitYaw = (tonumber(zombie:GetAttribute("HitReactYaw")) or 0) * hitReactAlpha
+				local hitRoll = (tonumber(zombie:GetAttribute("HitReactRoll")) or 0) * hitReactAlpha
+				local attackLean = attackPoseAlpha * (isBoss and 0.18 or ((isRunner or isScreamer) and 0.16 or (isShieldCarrier and 0.08 or 0.12)))
+				local shoulderReach = attackPoseAlpha * (isBoss and 0.42 or (isBruiser and 0.32 or 0.22))
+				local neckSnap = attackPoseAlpha * (isRunner and 0.16 or 0.1)
+				local typeLean = 0
+				local typeYaw = 0
+				local typeRoll = 0
+				local shoulderBias = 0
+				local hipBias = 0
+				local headBias = 0
+				local eyePulse = 0
+				local spinePulse = 0
+				if isRunner then
+					typeLean -= 0.18 + attackPoseAlpha * 0.08
+					typeYaw += math.sin(gaitTime * 0.9) * 0.06
+					shoulderBias += 0.16 + math.abs(gaitSwing) * 0.12
+					hipBias += math.sin(gaitTime) * 0.06
+					headBias += math.sin(gaitTime * 1.8) * 0.08
+					eyePulse = 0.12
+				elseif isScreamer then
+					local screamWindup = math.clamp(1 - (math.max(0, screamerPulseReadyAt - now) / 1.2), 0, 1)
+					typeLean -= 0.12 + screamWindup * 0.16
+					typeYaw += math.sin(gaitTime * 0.8) * 0.08
+					shoulderBias -= 0.08 + screamWindup * 0.18
+					headBias += math.sin(gaitTime * 1.9) * 0.1 + screamWindup * 0.14
+					eyePulse = 0.1 + screamWindup * 0.22
+					spinePulse = screamWindup * 0.2
+				elseif isSpitter then
+					local spitWindup = math.clamp(1 - (math.max(0, spitterVolleyReadyAt - now) / 1.1), 0, 1)
+					typeLean -= 0.1 + spitWindup * 0.12
+					typeYaw += math.sin(gaitTime * 0.42) * 0.05
+					shoulderBias -= spitWindup * 0.12
+					headBias += spitWindup * 0.1
+					eyePulse = spitWindup * 0.16
+					spinePulse = spitWindup * 0.12
+				elseif isExploder then
+					local prime = math.clamp(1 - (targetDistance / math.max(1, self._missionConfig.Mission.ExploderTriggerDistance * 1.6)), 0, 1)
+					typeRoll += math.sin(gaitTime * 1.6) * (0.08 + prime * 0.1)
+					typeYaw += math.sin(gaitTime * 1.15) * 0.08
+					headBias += math.sin(gaitTime * 2.2) * 0.1
+					eyePulse = 0.1 + prime * 0.18
+					spinePulse = 0.1 + prime * 0.12
+				elseif isShieldCarrier then
+					typeLean -= 0.04
+					typeYaw += math.sin(gaitTime * 0.28) * 0.03
+					shoulderBias += 0.16
+					hipBias += math.sin(gaitTime * 0.45) * 0.02
+					spinePulse = math.abs(math.sin(gaitTime * 0.35)) * 0.05
+				elseif isBrute then
+					typeLean -= 0.08
+					shoulderBias += 0.08
+					hipBias += math.sin(gaitTime * 0.5) * 0.04
+					spinePulse = math.abs(math.sin(gaitTime * 0.5)) * 0.08
+				elseif isBruiser then
+					local chargeWindup = math.clamp(1 - (math.max(0, bruiserChargeReadyAt - now) / 1.25), 0, 1)
+					typeLean -= 0.12 + chargeWindup * 0.12
+					shoulderBias += 0.12 + chargeWindup * 0.18
+					headBias -= chargeWindup * 0.06
+					eyePulse = chargeWindup * 0.14
+					spinePulse = chargeWindup * 0.12
+				elseif isArtillery then
+					local artilleryWindup = math.clamp(1 - (math.max(0, artilleryVolleyReadyAt - now) / 1.5), 0, 1)
+					typeLean -= 0.05
+					typeYaw += math.sin(gaitTime * 0.35) * 0.04
+					shoulderBias -= 0.08
+					headBias += artilleryWindup * 0.1
+					eyePulse = artilleryWindup * 0.18
+					spinePulse = artilleryWindup * 0.16
+				end
+				torsoJoint.Transform = CFrame.new(0, torsoBob, 0) * CFrame.Angles(-(torsoLean + attackLean) + typeLean - hitPitch, torsoYaw + typeYaw + hitYaw, sway * 0.4 + typeRoll + hitRoll)
+				neckJoint.Transform = CFrame.Angles(torsoLean * 0.42 + neckSnap + headBias + hitPitch * 0.5, -torsoYaw * 1.65 - typeYaw * 0.65 - hitYaw * 1.15, headTilt - hitRoll * 0.4 + typeRoll * 0.3)
+				leftShoulder.Transform = CFrame.Angles(gaitSwing + armLead - shoulderReach - shoulderBias - hitPitch * 0.8, 0, sway * 1.2 + hitRoll + typeRoll * 0.5)
+				rightShoulder.Transform = CFrame.Angles(-gaitSwing + armLead - shoulderReach - shoulderBias - hitPitch * 0.8, 0, -sway * 1.2 - hitRoll - typeRoll * 0.5)
+				leftHip.Transform = CFrame.Angles(-gaitSwing * 0.82 + hitPitch * 0.22, 0, hipRoll + hipBias + hitRoll * 0.45)
+				rightHip.Transform = CFrame.Angles(gaitSwing * 0.82 + hitPitch * 0.22, 0, -hipRoll - hipBias - hitRoll * 0.45)
+				eyeGlow.Transparency = math.clamp((isBoss and 0.04 or 0.1) + (1 - moveAlpha) * 0.08 + math.abs(math.sin(now * (gaitSpeed * 0.5))) * 0.08 - eyePulse, 0.02, 0.28)
+				spinePlate.Transparency = math.clamp(0.04 + math.abs(gaitSwing) * 0.18 - spinePulse, 0.02, 0.22)
+
 				if isRunner and targetRoot ~= objective and targetDistance <= self._missionConfig.Mission.RunnerBurstDistance and now >= runnerBurstReadyAt then
 					runnerBurstReadyAt = now + self._missionConfig.Mission.RunnerBurstCooldown
-					local burstDirection = targetRoot.Position - root.Position
+					local burstDirection = moveTargetPosition - root.Position
 					if burstDirection.Magnitude > 0.01 then
 						self:_emitPulse(root.CFrame, Vector3.new(1.6, 1.6, 1.6), Color3.fromRGB(212, 248, 148), 0.38, 0.08)
 						root.AssemblyLinearVelocity = burstDirection.Unit * self._missionConfig.Mission.RunnerBurstSpeed + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
 						self:_emitPulse(root.CFrame, Vector3.new(2.4, 2.4, 2.4), Color3.fromRGB(192, 236, 124), 0.45, 0.1)
 					end
+				end
+
+				if isScreamer and targetDistance <= self._missionConfig.Mission.ScreamerPreferredDistance and now >= screamerPulseReadyAt then
+					screamerPulseReadyAt = now + self._missionConfig.Mission.ScreamerScreamCooldown
+					self:_screamerPulse(zombie, root)
 				end
 
 				if isBrute and targetDistance <= self._missionConfig.Mission.BruteImpactRadius and now >= bruteImpactReadyAt then
@@ -3016,39 +5255,115 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 					self:_bruteImpact(zombie, root, scaledStats)
 				end
 
+				if isBruiser and targetRoot ~= objective and targetDistance <= self._missionConfig.Mission.BruiserChargeDistance and now >= bruiserChargeReadyAt then
+					bruiserChargeReadyAt = now + self._missionConfig.Mission.BruiserChargeCooldown
+					self:_bruiseCharge(zombie, root, targetRoot)
+				end
+
+				if isSpitter and targetRoot ~= objective and targetDistance <= self._missionConfig.Mission.SpitterPreferredDistance and now >= spitterVolleyReadyAt then
+					spitterVolleyReadyAt = now + self._missionConfig.Mission.SpitterVolleyCooldown
+					self:_spitterVolley(zombie, root, scaledStats)
+				end
+
+				if isArtillery and targetDistance <= self._missionConfig.Mission.ArtilleryPreferredDistance and now >= artilleryVolleyReadyAt then
+					artilleryVolleyReadyAt = now + self._missionConfig.Mission.ArtilleryVolleyCooldown
+					self:_artilleryBarrage(zombie, root, scaledStats)
+				end
+
+				if isExploder and targetDistance <= self._missionConfig.Mission.ExploderTriggerDistance then
+					self:_exploderBurst(zombie, root, scaledStats)
+					break
+				end
+
 				if isBoss then
 					local healthRatio = humanoid.Health / math.max(1, humanoid.MaxHealth)
-					local shouldEnrage = healthRatio <= self._missionConfig.Mission.BossEnrageThreshold
+					local shouldEnrage = healthRatio <= (bossProfile and bossProfile.enrageThreshold or self._missionConfig.Mission.BossEnrageThreshold)
 					if shouldEnrage ~= bossEnrageActive then
 						bossEnrageActive = shouldEnrage
 						self:_setBossEnrageState(zombie, bossEnrageActive)
-						if bossEnrageActive then
-							self:_notifyParty(mission.party, "Siege Tyrant is enraged.")
-							self:_fireMissionState(mission.party, "Siege Tyrant enraged")
+						if bossEnrageActive and currentMission.party then
+							self:_notifyParty(currentMission.party, ("%s is enraged."):format(bossProfile and bossProfile.notifyName or "Boss"))
+							self:_fireMissionState(currentMission.party, ("%s enraged"):format(bossProfile and bossProfile.notifyName or "Boss"))
 						end
 					end
 
 					local bossCooldownScale = bossEnrageActive and self._missionConfig.Mission.BossEnrageCooldownScale or 1
-					if targetDistance <= self._missionConfig.Mission.BossSlamRadius and now >= bossSlamReadyAt then
+					if targetDistance <= (bossProfile and bossProfile.slamRadius or self._missionConfig.Mission.BossSlamRadius) and now >= bossSlamReadyAt then
 						bossSlamReadyAt = now + (self._missionConfig.Mission.BossSlamCooldown * bossCooldownScale)
 						self:_bossSlam(zombie, root, scaledStats)
 					elseif now >= bossSummonReadyAt then
-						bossSummonReadyAt = now + (self._missionConfig.Mission.BossSummonCooldown * bossCooldownScale)
+						bossSummonReadyAt = now + ((bossProfile and bossProfile.summonCooldown or self._missionConfig.Mission.BossSummonCooldown) * bossCooldownScale)
 						self:_bossSummonAdds(root, scaledStats)
 					end
 				end
 
-				humanoid:MoveTo(targetRoot.Position)
-				if targetDistance < (isBoss and 20 or 16) then
-					local lungeDirection = targetRoot.Position - root.Position
+				humanoid:MoveTo(moveTargetPosition)
+				if targetDistance < (isBoss and 20 or (isArtillery and 16 or (isShieldCarrier and 11 or (isScreamer and 14 or (isSpitter and 13 or (isExploder and 10 or 16)))))) then
+					local lungeDirection = moveTargetPosition - root.Position
 					if lungeDirection.Magnitude > 0.01 then
 						local bossLungeScale = bossEnrageActive and self._missionConfig.Mission.BossEnrageSpeedScale or 1
-						root.AssemblyLinearVelocity = lungeDirection.Unit * ((isBoss and 18 or (isRunner and 22 or (isBrute and 10 or (isElite and 16 or 13)))) * bossLungeScale) + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+						root.AssemblyLinearVelocity = lungeDirection.Unit * ((isBoss and 18 or (isRunner and 22 or (isArtillery and 12 or (isShieldCarrier and 9 or (isScreamer and 12 or (isSpitter and 11 or (isExploder and 14 or (isBruiser and self._missionConfig.Mission.BruiserChargeSpeed or (isBrute and 10 or (isElite and 16 or 13)))))))))) * bossLungeScale) + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
 					end
 				end
+			else
+				local idleTime = os.clock() + stridePhase
+				local hitReactUntil = tonumber(zombie:GetAttribute("HitReactUntil")) or 0
+				local hitReactAlpha = math.clamp((hitReactUntil - os.clock()) / 0.18, 0, 1)
+				local hitPitch = (tonumber(zombie:GetAttribute("HitReactPitch")) or 0) * hitReactAlpha
+				local hitYaw = (tonumber(zombie:GetAttribute("HitReactYaw")) or 0) * hitReactAlpha
+				local hitRoll = (tonumber(zombie:GetAttribute("HitReactRoll")) or 0) * hitReactAlpha
+				local idleBreath = math.abs(math.sin(idleTime * 1.2)) * 0.05
+				local idleHunch = (isBoss and 0.05 or ((isRunner or isScreamer) and 0.03 or (isShieldCarrier and 0.015 or 0.02))) + postureBias
+				local idleTypeLean = 0
+				local idleTypeYaw = 0
+				local idleTypeRoll = 0
+				local idleHeadBias = 0
+				local idleShoulderBias = 0
+				local idleGlowBias = 0
+				if isRunner then
+					idleTypeLean = -0.08
+					idleHeadBias = math.sin(idleTime * 2.2) * 0.07
+					idleGlowBias = 0.04
+				elseif isScreamer then
+					idleTypeLean = -0.1
+					idleTypeYaw = math.sin(idleTime * 1.4) * 0.07
+					idleHeadBias = math.sin(idleTime * 2.4) * 0.09
+					idleGlowBias = math.abs(math.sin(idleTime * 1.9)) * 0.1
+				elseif isSpitter then
+					idleTypeLean = -0.06
+					idleHeadBias = math.sin(idleTime * 1.6) * 0.06
+					idleGlowBias = math.abs(math.sin(idleTime * 1.3)) * 0.08
+				elseif isExploder then
+					idleTypeRoll = math.sin(idleTime * 1.8) * 0.08
+					idleTypeYaw = math.sin(idleTime * 1.05) * 0.06
+					idleGlowBias = math.abs(math.sin(idleTime * 2.6)) * 0.12
+				elseif isShieldCarrier then
+					idleTypeLean = -0.03
+					idleShoulderBias = 0.1
+					idleGlowBias = math.abs(math.sin(idleTime * 0.7)) * 0.04
+				elseif isBrute then
+					idleTypeLean = -0.04
+					idleShoulderBias = 0.04
+				elseif isBruiser then
+					idleTypeLean = -0.06
+					idleShoulderBias = 0.08
+					idleGlowBias = math.abs(math.sin(idleTime * 0.9)) * 0.08
+				elseif isArtillery then
+					idleTypeYaw = math.sin(idleTime * 0.55) * 0.05
+					idleHeadBias = math.abs(math.sin(idleTime * 0.8)) * 0.06
+					idleGlowBias = math.abs(math.sin(idleTime * 1.1)) * 0.1
+				end
+				torsoJoint.Transform = CFrame.new(0, idleBreath, 0) * CFrame.Angles(idleHunch + idleTypeLean - hitPitch, math.sin(idleTime * 0.75) * 0.03 + idleTypeYaw + hitYaw, idleTypeRoll + hitRoll)
+				neckJoint.Transform = CFrame.Angles(math.sin(idleTime * 1.8) * 0.03 + idleHeadBias + hitPitch * 0.45, -idleTypeYaw * 0.75 - hitYaw * 0.9, math.sin(idleTime * 0.9) * 0.04 - hitRoll * 0.35 + idleTypeRoll * 0.4)
+				leftShoulder.Transform = CFrame.Angles(math.sin(idleTime * 1.1) * 0.05 - idleShoulderBias - hitPitch * 0.4, 0, hitRoll * 0.8 + idleTypeRoll * 0.5)
+				rightShoulder.Transform = CFrame.Angles(-math.sin(idleTime * 1.1) * 0.05 - idleShoulderBias - hitPitch * 0.4, 0, -hitRoll * 0.8 - idleTypeRoll * 0.5)
+				leftHip.Transform = CFrame.Angles(hitPitch * 0.12, 0, 0.02 + hitRoll * 0.22 + idleTypeRoll * 0.2)
+				rightHip.Transform = CFrame.Angles(hitPitch * 0.12, 0, -0.02 - hitRoll * 0.22 - idleTypeRoll * 0.2)
+				eyeGlow.Transparency = math.clamp((isBoss and 0.08 or 0.14) - idleGlowBias, 0.02, 0.18)
+				spinePlate.Transparency = math.clamp(0.08 - idleGlowBias * 0.6, 0.02, 0.08)
 			end
 
-			task.wait(isBoss and 0.36 or (isRunner and 0.22 or (isBrute and 0.48 or (isElite and 0.42 or 0.3))))
+			task.wait(isBoss and 0.36 or (isRunner and 0.22 or (isShieldCarrier and 0.4 or (isScreamer and 0.26 or (isArtillery and 0.38 or (isSpitter and 0.34 or (isExploder and 0.26 or (isBruiser and 0.44 or (isBrute and 0.48 or (isElite and 0.42 or 0.3))))))))))
 		end
 	end)
 
@@ -3060,19 +5375,48 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 		end
 
 		if root and root.Parent then
-			self:_emitZombieDeathEffect(root.Position, isBoss or isElite or isBrute, isRunner)
+			self:_emitZombieDeathEffect(root.Position, isBoss or isElite or isBruiser or isBrute or isExploder or isShieldCarrier or isScreamer, isRunner or isSpitter)
 		end
 
 		local mission = self._activeMission
 		if mission then
 			local contributors = self:_getZombieContributors(zombie)
 			mission.remainingZombies = math.max(0, mission.remainingZombies - 1)
+			local bossType = zombie:GetAttribute("BossType")
+			local bossProfile = isBoss and self:_getBossProfile(mission, bossType) or nil
+			local bossRewardTokens = bossProfile and (bossProfile.rewardTokens or 0) or 0
+			local bossExperienceBonus = bossProfile and (bossProfile.experienceBonus or 0) or 0
+			local bossDisplayName = bossProfile and bossProfile.displayName or nil
 			if isBoss then
 				for _, player in ipairs(mission.party) do
 					if player and player.Parent then
-						self:_awardLootDrops(player, "BossKill", 0.75)
+						self:_awardLootDrops(player, "BossKill", bossProfile and bossProfile.lootChanceScale or 0.75)
+						if self._dailyOpsService then
+							self._dailyOpsService:IncrementProgress(player, "BossKill", 1)
+						end
 						self:_emitProgressionUpdate(player)
 					end
+				end
+				if bossRewardTokens > 0 then
+					self:_rewardParty(bossRewardTokens, bossType == "warden_hulk" and "warden_boss_kill" or "boss_kill")
+				end
+				local bossAmmoDropCount = math.max(0, math.floor(self._missionConfig.Mission.BossAmmoDropCount or 0))
+				for dropIndex = 1, bossAmmoDropCount do
+					if root and root.Parent then
+						local offset = Vector3.new((dropIndex - 1.5) * 2.4, 0, ((dropIndex % 2 == 0) and 1 or -1) * 1.2)
+						self:_createSupplyPickup(mission.runtime, "Ammo", root.Position + offset)
+					end
+				end
+				self:_notifyParty(mission.party, ("%s neutralized. Reward cache secured."):format(bossProfile and bossProfile.notifyName or "Boss"))
+				self:_fireMissionState(mission.party, ("%s down"):format(bossProfile and bossProfile.notifyName or "Boss"))
+			end
+
+			if root and root.Parent and mission.runtime then
+				local ammoDropChance = (isBoss or isElite or isBruiser or isBrute or isShieldCarrier or isScreamer or isSpitter or isExploder or isArtillery)
+					and (self._missionConfig.Mission.EliteAmmoDropChance or 0)
+					or (self._missionConfig.Mission.EnemyAmmoDropChance or 0)
+				if ammoDropChance > 0 and math.random() <= ammoDropChance then
+					self:_createSupplyPickup(mission.runtime, "Ammo", root.Position + Vector3.new(math.random(-2, 2), 0, math.random(-2, 2)))
 				end
 			end
 
@@ -3081,17 +5425,65 @@ function MissionService:_spawnZombie(spawnPosition, scaledStats, index)
 					self._persistenceService:IncrementStat(player, "zombiesDefeated", 1)
 					if self._dailyOpsService then
 						self._dailyOpsService:IncrementProgress(player, "ZombieKill", 1)
+						if isSpitter then
+							self._dailyOpsService:IncrementProgress(player, "SpitterKill", 1)
+						end
+						if isScreamer then
+							self._dailyOpsService:IncrementProgress(player, "SupportKill", 1)
+						end
+						if isShieldCarrier then
+							self._dailyOpsService:IncrementProgress(player, "TankKill", 1)
+						end
+						if isBruiser then
+							self._dailyOpsService:IncrementProgress(player, "BruiserKill", 1)
+						end
+						if isExploder then
+							self._dailyOpsService:IncrementProgress(player, "ExploderKill", 1)
+						end
+						if isArtillery then
+							self._dailyOpsService:IncrementProgress(player, "ArtilleryKill", 1)
+						end
 					end
 					local runStats = self:_getRunStats(player)
 					if runStats then
 						runStats.kills += 1
+						if isSpitter then
+							runStats.specialKills.Spitter = (runStats.specialKills.Spitter or 0) + 1
+						end
+						if isScreamer then
+							runStats.specialKills.Screamer = (runStats.specialKills.Screamer or 0) + 1
+						end
+						if isShieldCarrier then
+							runStats.specialKills.ShieldCarrier = (runStats.specialKills.ShieldCarrier or 0) + 1
+						end
+						if isBruiser then
+							runStats.specialKills.Bruiser = (runStats.specialKills.Bruiser or 0) + 1
+						end
+						if isExploder then
+							runStats.specialKills.Exploder = (runStats.specialKills.Exploder or 0) + 1
+						end
+						if isArtillery then
+							runStats.specialKills.Artillery = (runStats.specialKills.Artillery or 0) + 1
+						end
+						if isBoss then
+							runStats.bossesDefeated += 1
+							runStats.lastBossName = bossDisplayName or (bossType == "warden_hulk" and "Warden Hulk" or "Siege Tyrant")
+							runStats.bossRewardTokens = math.max(runStats.bossRewardTokens or 0, bossRewardTokens)
+							runStats.bossExperienceBonus = math.max(runStats.bossExperienceBonus or 0, bossExperienceBonus)
+						end
 					end
 					local weaponXp = self._missionConfig.WeaponProgression.ZombieKillExperience or 0
-					if isElite or isBrute then
+					if isElite or isBruiser or isBrute or isShieldCarrier or isScreamer or isSpitter or isExploder then
 						weaponXp += self._missionConfig.WeaponProgression.EliteKillBonus or 0
 					end
 					if isBoss then
 						weaponXp += self._missionConfig.WeaponProgression.BossKillBonus or 0
+						if zombie:GetAttribute("BossType") == "warden_hulk" then
+							weaponXp += self._missionConfig.WeaponProgression.WardenBossKillBonus or 0
+						end
+						if bossExperienceBonus > 0 then
+							self:_awardMissionExperience(player, "BossKill", bossExperienceBonus)
+						end
 					end
 					local equippedWeaponId = self._inventoryService and self._inventoryService:GetEquippedWeaponId(player) or nil
 					if equippedWeaponId and weaponXp > 0 then
@@ -3165,7 +5557,13 @@ function MissionService:_createObjective(runtime)
 	if objectiveGui then
 		objectiveGui.MaxDistance = 42
 	end
-	if self:_isPowerCellScenario() then
+	if self:_isCommanderHuntScenario() then
+		self:_spawnCommanderHuntObjective(runtime, core)
+	elseif self:_isEvacEscortScenario() then
+		self:_spawnEvacEscortObjective(runtime, core)
+	elseif self:_isPowerRelayScenario() then
+		self:_spawnPowerRelayObjective(runtime, core)
+	elseif self:_isPowerCellScenario() then
 		self:_spawnPowerCellObjective(runtime, core)
 	elseif self:_isNestScenario() then
 		self:_spawnNestObjective(runtime, core)
@@ -3205,8 +5603,8 @@ function MissionService:_createExtractionPad(runtime)
 	pad.Anchored = true
 	pad.CanCollide = true
 	pad.Material = Enum.Material.Neon
-	pad.Color = Color3.fromRGB(110, 223, 185)
-	pad.Transparency = 0.18
+	pad.Color = Color3.fromRGB(76, 112, 104)
+	pad.Transparency = 0.34
 	pad.CFrame = anchor * CFrame.new(layout.ExtractionOffset or Vector3.new(0, -0.3, -26))
 	pad.Parent = runtime
 
@@ -3216,18 +5614,39 @@ function MissionService:_createExtractionPad(runtime)
 	ring.CanCollide = false
 	ring.CanQuery = false
 	ring.Material = Enum.Material.Neon
-	ring.Color = Color3.fromRGB(167, 248, 215)
-	ring.Transparency = 0.58
+	ring.Color = Color3.fromRGB(96, 138, 130)
+	ring.Transparency = 0.74
 	ring.Size = Vector3.new(36, 0.12, 36)
 	ring.CFrame = pad.CFrame * CFrame.new(0, 0.1, 0)
 	ring.Parent = runtime
 
-	local labelPart, _ = self:_createWorldMarker(runtime, "ExtractionSign", "EXTRACT", Color3.fromRGB(195, 255, 236), Vector2.new(140, 34), 16)
+	local beacon = Instance.new("Part")
+	beacon.Name = "ExtractionBeacon"
+	beacon.Anchored = true
+	beacon.CanCollide = false
+	beacon.CanQuery = false
+	beacon.Material = Enum.Material.Neon
+	beacon.Color = Color3.fromRGB(112, 208, 176)
+	beacon.Transparency = 0.72
+	beacon.Size = Vector3.new(2.2, 16, 2.2)
+	beacon.CFrame = pad.CFrame * CFrame.new(0, 8, 0)
+	beacon.Parent = runtime
+
+	local beaconLight = Instance.new("PointLight")
+	beaconLight.Name = "ExtractionBeaconLight"
+	beaconLight.Color = Color3.fromRGB(162, 255, 220)
+	beaconLight.Range = 18
+	beaconLight.Brightness = 0.8
+	beaconLight.Parent = beacon
+
+	local labelPart, _ = self:_createWorldMarker(runtime, "ExtractionSign", "LOCKED", Color3.fromRGB(172, 196, 188), Vector2.new(160, 36), 16)
 	labelPart.CFrame = pad.CFrame * CFrame.new(0, 6, 0)
 	local labelGui = labelPart:FindFirstChildOfClass("BillboardGui")
 	if labelGui then
-		labelGui.MaxDistance = 64
+		labelGui.MaxDistance = 84
 	end
+
+	self:_setExtractionVisualState(0)
 
 	return pad
 end
@@ -3240,22 +5659,51 @@ function MissionService:_setExtractionVisualState(progress)
 
 	local runtime = pad.Parent
 	local ring = runtime and runtime:FindFirstChild("ExtractionRing")
+	local beacon = runtime and runtime:FindFirstChild("ExtractionBeacon")
 	local sign = runtime and runtime:FindFirstChild("ExtractionSign")
 	local label = sign and sign:FindFirstChildOfClass("BillboardGui")
 	local frame = label and label:FindFirstChildOfClass("Frame")
 	local text = frame and frame:FindFirstChild("Label")
 
 	local clamped = math.clamp(progress or 0, 0, 1)
-	pad.Color = Color3.fromRGB(110, 223, 185):Lerp(Color3.fromRGB(210, 255, 233), clamped)
-	pad.Transparency = 0.18 - (clamped * 0.08)
+	local extractionOpen = self._activeMission and self._activeMission.phase == "Extraction"
+	pad.Color = (extractionOpen and Color3.fromRGB(110, 223, 185) or Color3.fromRGB(76, 112, 104)):Lerp(Color3.fromRGB(210, 255, 233), clamped)
+	pad.Transparency = (extractionOpen and 0.18 or 0.34) - (clamped * 0.08)
 
 	if ring and ring:IsA("BasePart") then
-		ring.Color = Color3.fromRGB(167, 248, 215):Lerp(Color3.fromRGB(228, 255, 240), clamped)
-		ring.Transparency = 0.58 - (clamped * 0.22)
+		ring.Color = (extractionOpen and Color3.fromRGB(167, 248, 215) or Color3.fromRGB(96, 138, 130)):Lerp(Color3.fromRGB(228, 255, 240), clamped)
+		ring.Transparency = (extractionOpen and 0.58 or 0.74) - (clamped * 0.22)
+	end
+	if beacon and beacon:IsA("BasePart") then
+		beacon.Color = (extractionOpen and Color3.fromRGB(144, 255, 214) or Color3.fromRGB(112, 208, 176)):Lerp(Color3.fromRGB(232, 255, 246), clamped)
+		beacon.Transparency = (extractionOpen and 0.3 or 0.72) - (clamped * 0.12)
+		beacon.Size = Vector3.new(2.2 + (clamped * 0.9), extractionOpen and 22 or 16, 2.2 + (clamped * 0.9))
+		local beaconLight = beacon:FindFirstChild("ExtractionBeaconLight")
+		if beaconLight and beaconLight:IsA("PointLight") then
+			beaconLight.Brightness = extractionOpen and (1.8 + clamped * 1.4) or 0.8
+			beaconLight.Range = extractionOpen and 28 or 18
+			beaconLight.Color = beacon.Color
+		end
+	end
+	if extractionOpen and clamped <= 0.01 then
+		local openPulse = self:_emitPulse(pad.CFrame * CFrame.new(0, 1.2, 0), Vector3.new(18, 0.2, 18), Color3.fromRGB(172, 255, 218), 0.48, 0.22)
+		if openPulse then
+			openPulse.Material = Enum.Material.ForceField
+			openPulse.Parent = runtime or Workspace
+		end
+		local beaconBurst = self:_emitPulse(pad.CFrame * CFrame.new(0, 7, 0), Vector3.new(6, 18, 6), Color3.fromRGB(164, 255, 224), 0.7, 0.18)
+		if beaconBurst then
+			beaconBurst.Material = Enum.Material.Neon
+			beaconBurst.Parent = runtime or Workspace
+		end
 	end
 
 	if text and text:IsA("TextLabel") then
-		text.Text = clamped > 0 and ("EXTRACT %d%%"):format(math.floor(clamped * 100)) or "EXTRACT"
+		if extractionOpen then
+			text.Text = clamped > 0 and ("EXTRACT %d%%"):format(math.floor(clamped * 100)) or "OPEN EXTRACT"
+		else
+			text.Text = "LOCKED"
+		end
 	end
 end
 
@@ -3271,6 +5719,16 @@ function MissionService:_emitObjectiveHitEffect()
 		flash.Material = Enum.Material.ForceField
 		flash.Shape = Enum.PartType.Ball
 		flash.Parent = runtime or Workspace
+	end
+	local shockRing = self:_emitPulse(objective.CFrame, Vector3.new(14, 0.2, 14), Color3.fromRGB(255, 148, 132), 0.46, 0.16)
+	if shockRing then
+		shockRing.Material = Enum.Material.Neon
+		shockRing.Parent = runtime or Workspace
+	end
+	local warningBeam = self:_emitPulse(objective.CFrame * CFrame.new(0, 5.5, 0), Vector3.new(2.6, 13.5, 2.6), Color3.fromRGB(255, 132, 120), 0.72, 0.18)
+	if warningBeam then
+		warningBeam.Material = Enum.Material.ForceField
+		warningBeam.Parent = runtime or Workspace
 	end
 
 	local glow = runtime and runtime:FindFirstChild("ObjectiveGlow")
@@ -3309,7 +5767,11 @@ function MissionService:_damageObjective(amount)
 	end
 
 	if current <= 0 then
-		self:_failMission("The bunker core was destroyed.")
+		if self:_isPowerRelayScenario(mission) then
+			self:_failMission("The relay core collapsed.")
+		else
+			self:_failMission("The bunker core was destroyed.")
+		end
 	end
 end
 
@@ -3424,7 +5886,9 @@ function MissionService:_grantAmmoPickup(player)
 		return false
 	end
 
-	state.reserveAmmo += self._missionConfig.Mission.AmmoPickupAmount
+	local modifierTraits = self:_getModifierRuntimeTraits()
+	local ammoPickupAmount = math.max(1, math.floor((self._missionConfig.Mission.AmmoPickupAmount or 0) * modifierTraits.AmmoPickupScale + 0.5))
+	state.reserveAmmo += ammoPickupAmount
 	if self._skillTreeService then
 		state.reserveAmmo += math.max(0, self._skillTreeService:GetAmmoPickupAmount(player, self._missionConfig.Mission.AmmoPickupAmount) - self._missionConfig.Mission.AmmoPickupAmount)
 	end
@@ -3435,13 +5899,17 @@ end
 function MissionService:_createSupplyPickup(runtime, pickupType, position)
 	local pickup = Instance.new("Part")
 	pickup.Name = pickupType == "Ammo" and "AmmoCache" or (pickupType == "Medkit" and "MedkitBag" or "SalvageCrate")
-	pickup.Size = Vector3.new(4, 4, 4)
+	local pickupSize = pickupType == "Ammo" and Vector3.new(2.6, 1.8, 2.2)
+		or (pickupType == "Medkit" and Vector3.new(2.2, 1.4, 2.2) or Vector3.new(2.8, 2.2, 2.8))
+	pickup.Size = pickupSize
 	pickup.Anchored = true
 	pickup.CanCollide = true
-	pickup.Material = Enum.Material.Metal
-	pickup.Color = pickupType == "Ammo" and Color3.fromRGB(92, 170, 226) or (pickupType == "Medkit" and Color3.fromRGB(112, 198, 136) or Color3.fromRGB(226, 176, 92))
-	pickup.CFrame = CFrame.new(position + Vector3.new(0, 2, 0))
+	pickup.Material = pickupType == "Salvage" and Enum.Material.WoodPlanks or Enum.Material.Metal
+	pickup.Color = pickupType == "Ammo" and Color3.fromRGB(88, 126, 168) or (pickupType == "Medkit" and Color3.fromRGB(118, 162, 124) or Color3.fromRGB(146, 112, 74))
+	pickup.CFrame = CFrame.new(position + Vector3.new(0, (pickupSize.Y * 0.5) + 0.15, 0))
 	pickup.Parent = runtime
+	pickup.TopSurface = Enum.SurfaceType.Smooth
+	pickup.BottomSurface = Enum.SurfaceType.Smooth
 
 	local glow = Instance.new("Part")
 	glow.Name = pickup.Name .. "Glow"
@@ -3450,15 +5918,15 @@ function MissionService:_createSupplyPickup(runtime, pickupType, position)
 	glow.CanQuery = false
 	glow.Material = Enum.Material.Neon
 	glow.Color = pickup.Color
-	glow.Transparency = 0.2
-	glow.Size = Vector3.new(5.5, 0.25, 5.5)
-	glow.CFrame = pickup.CFrame * CFrame.new(0, -2.1, 0)
+	glow.Transparency = 0.35
+	glow.Size = Vector3.new(pickupSize.X + 1.4, 0.18, pickupSize.Z + 1.4)
+	glow.CFrame = pickup.CFrame * CFrame.new(0, -((pickupSize.Y * 0.5) + 0.08), 0)
 	glow.Parent = runtime
 
 	local markerText = pickupType == "Ammo" and "AMMO" or (pickupType == "Medkit" and "MEDKIT" or "SALVAGE")
 	local markerColor = pickupType == "Ammo" and Color3.fromRGB(184, 226, 255) or (pickupType == "Medkit" and Color3.fromRGB(196, 255, 210) or Color3.fromRGB(255, 222, 164))
 	local marker, _ = self:_createWorldMarker(runtime, pickup.Name .. "Marker", markerText, markerColor, Vector2.new(120, 30), 14)
-	marker.CFrame = pickup.CFrame * CFrame.new(0, 4.6, 0)
+	marker.CFrame = pickup.CFrame * CFrame.new(0, pickupSize.Y + 2.1, 0)
 	local markerGui = marker:FindFirstChildOfClass("BillboardGui")
 	if markerGui then
 		markerGui.MaxDistance = pickupType == "Salvage" and 20 or 26
@@ -3493,8 +5961,9 @@ function MissionService:_createSupplyPickup(runtime, pickupType, position)
 				marker:Destroy()
 			end
 		else
+			local modifierTraits = self:_getModifierRuntimeTraits()
 			local salvageAmount = self._skillTreeService and self._skillTreeService:GetSalvagePickupAmount(player, self._missionConfig.Mission.TokenPickupAmount) or self._missionConfig.Mission.TokenPickupAmount
-			local rewardAmount = salvageAmount
+			local rewardAmount = salvageAmount + modifierTraits.SalvagePickupBonus
 			if self._subscriptionService then
 				rewardAmount = self._subscriptionService:GetAdjustedTokenRewardAmount(player, rewardAmount)
 			end
@@ -3657,6 +6126,24 @@ function MissionService:AbortActiveMission(status)
 	return true
 end
 
+function MissionService:AbortMissionForPlayer(player, status)
+	local mission = self._activeMission
+	if not mission then
+		return false, "no_active_mission"
+	end
+	if not player or not player.Parent then
+		return false, "invalid_player"
+	end
+
+	for _, partyMember in ipairs(mission.party or {}) do
+		if partyMember == player then
+			return self:AbortActiveMission(status or "Returning to bunker.")
+		end
+	end
+
+	return false, "not_in_mission"
+end
+
 function MissionService:_failMission(reason)
 	local mission = self._activeMission
 	if not mission then
@@ -3682,6 +6169,7 @@ function MissionService:_spawnWave()
 	end
 
 	mission.wave += 1
+	local runtime = mission.runtime
 	local missionSpawn = self:_getMissionSpawn()
 	if not missionSpawn then
 		return
@@ -3702,16 +6190,39 @@ function MissionService:_spawnWave()
 
 	mission.remainingZombies = scaledStats.spawnCount
 	local runnerCount = 0
+	local shieldCarrierCount = 0
+	local screamerCount = 0
+	local artilleryCount = 0
+	local spitterCount = 0
+	local exploderCount = 0
 	local bruteCount = 0
+	local bruiserCount = 0
 	local bossCount = 0
-	local runnerStep = clampPositiveInteger(modifier and modifier.RunnerStep or 3, 3)
-	local bruteStep = clampPositiveInteger(modifier and modifier.BruteStep or 4, 4)
+	local modifierTraits = self:_getModifierRuntimeTraits()
 	for index = 1, scaledStats.spawnCount do
 		local willBeBoss = index == scaledStats.spawnCount and mission.wave >= self._missionConfig.Mission.WaveCount
-		local willBeBrute = not willBeBoss and mission.wave >= 3 and index % bruteStep == 0
-		local willBeRunner = not willBeBoss and not willBeBrute and mission.wave >= 2 and index % runnerStep == 0
+		local willBeBruiser = not willBeBoss and mission.wave >= 4 and index % modifierTraits.BruiserStep == 0
+		local willBeArtillery = not willBeBoss and not willBeBruiser and mission.wave >= 5 and index % modifierTraits.ArtilleryStep == 0
+		local willBeShieldCarrier = not willBeBoss and not willBeBruiser and not willBeArtillery and mission.wave >= 3 and index % modifierTraits.ShieldCarrierStep == 0
+		local willBeScreamer = not willBeBoss and not willBeBruiser and not willBeArtillery and not willBeShieldCarrier and mission.wave >= 3 and index % modifierTraits.ScreamerStep == 0
+		local willBeSpitter = not willBeBoss and not willBeBruiser and not willBeArtillery and not willBeShieldCarrier and not willBeScreamer and mission.wave >= 3 and index % modifierTraits.SpitterStep == 0
+		local willBeExploder = not willBeBoss and not willBeBruiser and not willBeArtillery and not willBeShieldCarrier and not willBeScreamer and not willBeSpitter and mission.wave >= 4 and index % modifierTraits.ExploderStep == 0
+		local willBeBrute = not willBeBoss and not willBeBruiser and not willBeArtillery and not willBeShieldCarrier and not willBeScreamer and not willBeSpitter and not willBeExploder and mission.wave >= 3 and index % modifierTraits.BruteStep == 0
+		local willBeRunner = not willBeBoss and not willBeBruiser and not willBeShieldCarrier and not willBeScreamer and not willBeSpitter and not willBeExploder and not willBeBrute and mission.wave >= 2 and index % modifierTraits.RunnerStep == 0
 		if willBeBoss then
 			bossCount += 1
+		elseif willBeBruiser then
+			bruiserCount += 1
+		elseif willBeArtillery then
+			artilleryCount += 1
+		elseif willBeShieldCarrier then
+			shieldCarrierCount += 1
+		elseif willBeScreamer then
+			screamerCount += 1
+		elseif willBeSpitter then
+			spitterCount += 1
+		elseif willBeExploder then
+			exploderCount += 1
 		elseif willBeBrute then
 			bruteCount += 1
 		elseif willBeRunner then
@@ -3723,8 +6234,26 @@ function MissionService:_spawnWave()
 	if runnerCount > 0 then
 		table.insert(mixParts, ("%d runners"):format(runnerCount))
 	end
+	if spitterCount > 0 then
+		table.insert(mixParts, ("%d spitters"):format(spitterCount))
+	end
+	if shieldCarrierCount > 0 then
+		table.insert(mixParts, ("%d shield carriers"):format(shieldCarrierCount))
+	end
+	if screamerCount > 0 then
+		table.insert(mixParts, ("%d screamers"):format(screamerCount))
+	end
+	if artilleryCount > 0 then
+		table.insert(mixParts, ("%d artillery fiends"):format(artilleryCount))
+	end
+	if exploderCount > 0 then
+		table.insert(mixParts, ("%d exploders"):format(exploderCount))
+	end
 	if bruteCount > 0 then
 		table.insert(mixParts, ("%d brutes"):format(bruteCount))
+	end
+	if bruiserCount > 0 then
+		table.insert(mixParts, ("%d bruisers"):format(bruiserCount))
 	end
 	if bossCount > 0 then
 		table.insert(mixParts, ("%d boss"):format(bossCount))
@@ -3732,28 +6261,57 @@ function MissionService:_spawnWave()
 
 	local mixSummary = #mixParts > 0 and (" Mix: " .. table.concat(mixParts, ", ") .. ".") or ""
 	local modifierSummary = modifier and modifier.DisplayName ~= "Standard Ops" and (" Condition: " .. modifier.DisplayName .. ".") or ""
-	self:_notifyParty(mission.party, ("%s: Wave %d incoming with %d infected.%s%s"):format(scenario.DisplayName, mission.wave, scaledStats.spawnCount, mixSummary, modifierSummary))
+	local spawnOffsets = layout and layout.SpawnOffsets or nil
+	local selectedSpawnOffsets, laneNames = self:_buildSpawnPlan(spawnOffsets, scaledStats.spawnCount, mission.wave)
+	local laneSummary = laneNames and #laneNames > 0 and (" Breaches: " .. table.concat(laneNames, ", ") .. ".") or ""
+	self:_notifyParty(mission.party, ("%s: Wave %d incoming with %d infected.%s%s Surge profile: %s."):format(
+		scenario.DisplayName,
+		mission.wave,
+		scaledStats.spawnCount,
+		mixSummary,
+		modifierSummary .. laneSummary,
+		modifierTraits.WaveSurgeLabel
+	))
 	self:_fireMissionState(mission.party, ("Wave %d/%d"):format(mission.wave, self._missionConfig.Mission.WaveCount))
 	if bossCount > 0 then
-		self:_notifyParty(mission.party, "Boss contact: Siege Tyrant detected.")
-		self:_fireMissionState(mission.party, "Boss wave: Siege Tyrant")
+		local bossProfile = self:_getBossProfile(mission)
+		self:_notifyParty(mission.party, ("Boss contact: %s detected."):format(bossProfile.notifyName))
+		self:_fireMissionState(mission.party, ("Boss wave: %s"):format(bossProfile.notifyName))
 	end
 
-	for index = 1, scaledStats.spawnCount do
-		local spawnOffsets = layout and layout.SpawnOffsets or nil
-		if spawnOffsets and #spawnOffsets > 0 then
-			local baseOffset = spawnOffsets[((index - 1) % #spawnOffsets) + 1]
-			local jitter = Vector3.new(math.random(-4, 4), 0, math.random(-4, 4))
-			self:_spawnZombie(self:_getLayoutWorldPosition(baseOffset + jitter), scaledStats, index)
-		else
-			local angle = (math.pi * 2 / scaledStats.spawnCount) * index
-			local radius = self._missionConfig.Mission.ZombieSpawnRadius + math.random(-6, 6)
-			local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
-			self:_spawnZombie(missionSpawn.Position + offset, scaledStats, index)
+	if selectedSpawnOffsets and #selectedSpawnOffsets > 0 then
+		for _, baseOffset in ipairs(selectedSpawnOffsets) do
+			self:_telegraphSpawnLane(runtime, self:_getLayoutWorldPosition(baseOffset), self:_describeSpawnLane(baseOffset), Color3.fromRGB(214, 174, 118))
 		end
 	end
 
+	task.spawn(function()
+		for index = 1, scaledStats.spawnCount do
+			if not self._activeMission or self._activeMission ~= mission or mission.phase ~= "Combat" then
+				return
+			end
+			if selectedSpawnOffsets and #selectedSpawnOffsets > 0 then
+				local baseOffset = selectedSpawnOffsets[((index - 1) % #selectedSpawnOffsets) + 1]
+				local jitter = Vector3.new(math.random(-6, 6), 0, math.random(-6, 6))
+				local spawnPosition = self:_getContainedSpawnPosition(self:_getLayoutWorldPosition(baseOffset + jitter), 8)
+				self:_spawnZombie(spawnPosition, scaledStats, index, {
+					laneOffset = baseOffset,
+				})
+			else
+				local angle = (math.pi * 2 / scaledStats.spawnCount) * index
+				local radius = self._missionConfig.Mission.ZombieSpawnRadius + math.random(-6, 6)
+				local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+				local spawnPosition = self:_getContainedSpawnPosition(missionSpawn.Position + offset, 8)
+				self:_spawnZombie(spawnPosition, scaledStats, index)
+			end
+			if index < scaledStats.spawnCount then
+				task.wait(index % math.max(2, math.floor(scaledStats.spawnCount / 3)) == 0 and 0.22 or 0.08)
+			end
+		end
+	end)
+
 	self:_scheduleWaveSurge(mission, scaledStats)
+	self:_scheduleObjectivePressure(mission, scaledStats)
 end
 
 function MissionService:_scheduleWaveSurge(mission, scaledStats)
@@ -3779,6 +6337,7 @@ function MissionService:_scheduleWaveSurge(mission, scaledStats)
 		end
 
 		local liveParty = self:_getLivePartyMembers()
+		local runtime = mission.runtime
 		local partyBonus = math.floor(math.max(0, #liveParty - 1) / 2)
 		local surgeCount = math.max(1, (self._missionConfig.Mission.WaveSurgeBaseCount or 2) + partyBonus + (modifier and modifier.WaveSurgeBonus or 0))
 		local layout = self:_getActiveLayout()
@@ -3795,29 +6354,42 @@ function MissionService:_scheduleWaveSurge(mission, scaledStats)
 
 		mission.remainingZombies += surgeCount
 
-		self:_notifyParty(mission.party, "Pressure spike: reinforcements inbound.")
-		self:_fireMissionState(mission.party, "Breach surge")
-
-		for index = 1, surgeCount do
-			if not self._activeMission or self._activeMission ~= mission or mission.phase ~= "Combat" or mission.remainingZombies <= 0 then
-				return
+		self:_notifyParty(mission.party, ("%s: reinforcements inbound."):format(modifierTraits.WaveSurgeLabel))
+		self:_fireMissionState(mission.party, modifierTraits.WaveSurgeLabel)
+		local spawnOffsets = layout and layout.SpawnOffsets or nil
+		local selectedSpawnOffsets = self:_buildSpawnPlan(spawnOffsets, surgeCount, mission.wave + 1)
+		if selectedSpawnOffsets and #selectedSpawnOffsets > 0 then
+			for _, baseOffset in ipairs(selectedSpawnOffsets) do
+				self:_telegraphSpawnLane(runtime, self:_getLayoutWorldPosition(baseOffset), self:_describeSpawnLane(baseOffset), Color3.fromRGB(255, 188, 132))
 			end
-
-			local spawnPosition
-			local spawnOffsets = layout and layout.SpawnOffsets or nil
-			if spawnOffsets and #spawnOffsets > 0 then
-				local baseOffset = spawnOffsets[((index + mission.wave - 1) % #spawnOffsets) + 1]
-				local jitter = Vector3.new(math.random(-3, 3), 0, math.random(-3, 3))
-				spawnPosition = self:_getLayoutWorldPosition(baseOffset + jitter)
-			else
-				local angle = (math.pi * 2 / surgeCount) * index
-				local radius = self._missionConfig.Mission.ZombieSpawnRadius + 8 + math.random(-4, 4)
-				local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
-				spawnPosition = anchor.Position + offset
-			end
-
-			self:_spawnZombie(spawnPosition, surgeStats, scaledStats.spawnCount + index)
 		end
+
+		task.spawn(function()
+			for index = 1, surgeCount do
+				if not self._activeMission or self._activeMission ~= mission or mission.phase ~= "Combat" or mission.remainingZombies <= 0 then
+					return
+				end
+
+				local spawnPosition
+				if selectedSpawnOffsets and #selectedSpawnOffsets > 0 then
+					local baseOffset = selectedSpawnOffsets[((index - 1) % #selectedSpawnOffsets) + 1]
+					local jitter = Vector3.new(math.random(-4, 4), 0, math.random(-4, 4))
+					spawnPosition = self:_getContainedSpawnPosition(self:_getLayoutWorldPosition(baseOffset + jitter), 8)
+				else
+					local angle = (math.pi * 2 / surgeCount) * index
+					local radius = self._missionConfig.Mission.ZombieSpawnRadius + 8 + math.random(-4, 4)
+					local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+					spawnPosition = self:_getContainedSpawnPosition(anchor.Position + offset, 8)
+				end
+
+				self:_spawnZombie(spawnPosition, surgeStats, scaledStats.spawnCount + index, selectedSpawnOffsets and #selectedSpawnOffsets > 0 and {
+					laneOffset = selectedSpawnOffsets[((index - 1) % #selectedSpawnOffsets) + 1],
+				} or nil)
+				if index < surgeCount then
+					task.wait(index % math.max(2, math.floor(surgeCount / 2)) == 0 and 0.18 or 0.07)
+				end
+			end
+		end)
 	end)
 end
 
@@ -3853,8 +6425,11 @@ function MissionService:_completeMission()
 
 	mission.phase = "Extraction"
 	mission.extractionStartedAt = nil
-	self:_notifyParty(mission.party, "All waves cleared. Regroup on the extraction pad.")
-	self:_fireMissionState(mission.party, "Objective: reach extraction")
+	self:_setExtractionVisualState(0)
+	local finalePlan = self:_getExtractionFinalePlan(mission)
+	self:_notifyParty(mission.party, ("All waves cleared. %s"):format(finalePlan.notifyText or "Regroup on the extraction pad."))
+	self:_fireMissionState(mission.party, finalePlan.stateText or "Objective: reach extraction")
+	self:_startExtractionPressure(mission)
 
 	task.spawn(function()
 		while self._activeMission == mission and mission.phase == "Extraction" do
@@ -3897,7 +6472,8 @@ function MissionService:_completeMission()
 				self:_setExtractionVisualState(progress)
 				self:_fireMissionState(mission.party, ("Extracting in %ds"):format(math.ceil(remaining)))
 				if remaining <= 0 then
-					local rewardBonus = (mission.scenario and mission.scenario.RewardBonus or 0) + (mission.modifier and mission.modifier.RewardBonus or 0)
+					local activeSeasonalEvent, seasonalRewardBonus, seasonalExperienceBonus = self:_getActiveSeasonalMissionBonus()
+					local rewardBonus = (mission.scenario and mission.scenario.RewardBonus or 0) + (mission.modifier and mission.modifier.RewardBonus or 0) + seasonalRewardBonus
 					local completionReward = self._missionConfig.Mission.CompletionReward + rewardBonus
 					self:_rewardParty(completionReward, "mission_complete")
 					for _, player in ipairs(mission.party) do
@@ -3908,14 +6484,37 @@ function MissionService:_completeMission()
 								if #mission.party > 1 then
 									self._dailyOpsService:IncrementProgress(player, "SquadMissionComplete", 1)
 								end
+								if self:_isPowerRelayScenario(mission) then
+									self._dailyOpsService:IncrementProgress(player, "PowerRelayComplete", 1)
+								elseif self:_isEvacEscortScenario(mission) then
+									self._dailyOpsService:IncrementProgress(player, "EvacTunnelComplete", 1)
+								elseif self:_isCommanderHuntScenario(mission) then
+									self._dailyOpsService:IncrementProgress(player, "BlacksiteSweepComplete", 1)
+								end
 							end
 							self:_awardMissionExperience(player, "MissionComplete", 40)
+							if seasonalExperienceBonus > 0 then
+								self:_awardMissionExperience(player, "SeasonalEvent", seasonalExperienceBonus)
+							end
 							self:_awardLootDrops(player, "MissionComplete", 1)
 							self:_emitProgressionUpdate(player)
 						end
 					end
-					self:_notifyResults(mission, true, "Extraction complete. Squad returned to bunker.", completionReward)
-					self:_notifyParty(mission.party, "Extraction complete. Returning to the bunker.")
+					local extractionSummary = "Extraction complete. Squad returned to bunker."
+					if activeSeasonalEvent and (seasonalRewardBonus > 0 or seasonalExperienceBonus > 0) then
+						extractionSummary ..= (" %s bonus applied."):format(activeSeasonalEvent.DisplayName)
+					end
+					local extractionNotify = "Extraction complete. Returning to the bunker."
+					if activeSeasonalEvent and (seasonalRewardBonus > 0 or seasonalExperienceBonus > 0) then
+						extractionNotify = ("%s %s bonus secured: +%dT and +%d XP."):format(
+							extractionNotify,
+							activeSeasonalEvent.DisplayName,
+							seasonalRewardBonus,
+							seasonalExperienceBonus
+						)
+					end
+					self:_notifyResults(mission, true, extractionSummary, completionReward)
+					self:_notifyParty(mission.party, extractionNotify)
 					self:_fireMissionState(mission.party, "Extraction complete")
 					self:_finishAndReturnToLobby(mission, "Back in the bunker.")
 					return
@@ -3947,7 +6546,33 @@ function MissionService:_completeWave()
 	end
 
 	if mission.wave >= self._missionConfig.Mission.WaveCount then
-		if self:_isPowerCellScenario(mission) then
+		if self:_isCommanderHuntScenario(mission) then
+			local objective = self:_getMissionObjective()
+			local eliminated = objective and objective:GetAttribute("CommanderEliminated") == true
+			if not eliminated then
+				self:_notifyParty(mission.party, "Waves cleared. Eliminate the blacksite commander to unlock extraction.")
+				self:_fireMissionState(mission.party, "Objective: eliminate commander")
+				return
+			end
+		elseif self:_isEvacEscortScenario(mission) then
+			local objective = self:_getMissionObjective()
+			local reached = objective and objective:GetAttribute("ReachedEvacCheckpoint") or 0
+			local required = objective and objective:GetAttribute("RequiredEvacCheckpoints") or 3
+			if reached < required then
+				self:_notifyParty(mission.party, ("Waves cleared. Advance the convoy through the remaining checkpoints (%d/%d) to unlock extraction."):format(reached, required))
+				self:_fireMissionState(mission.party, ("Objective: escort convoy %d/%d"):format(reached, required))
+				return
+			end
+		elseif self:_isPowerRelayScenario(mission) then
+			local objective = self:_getMissionObjective()
+			local stabilized = objective and objective:GetAttribute("StabilizedRelayNodes") or 0
+			local required = objective and objective:GetAttribute("RequiredRelayNodes") or 3
+			if stabilized < required then
+				self:_notifyParty(mission.party, ("Waves cleared. Stabilize the remaining relay nodes (%d/%d) to unlock extraction."):format(stabilized, required))
+				self:_fireMissionState(mission.party, ("Objective: stabilize relay nodes %d/%d"):format(stabilized, required))
+				return
+			end
+		elseif self:_isPowerCellScenario(mission) then
 			local objective = self:_getMissionObjective()
 			local delivered = objective and objective:GetAttribute("DeliveredPowerCells") or 0
 			local required = objective and objective:GetAttribute("RequiredPowerCells") or self._missionConfig.Mission.PowerCellRequiredCount
@@ -3983,6 +6608,7 @@ function MissionService:StartMission(request)
 
 	local runtime = self:_createRuntimeFolder()
 	if not runtime then
+		warn("[MissionService] StartMission failed: missing_runtime")
 		return false, "missing_runtime"
 	end
 
@@ -4029,14 +6655,28 @@ function MissionService:StartMission(request)
 
 	local modifierText = self._activeMission.modifier and self._activeMission.modifier.DisplayName or "Standard Ops"
 	local modifierDescription = self._activeMission.modifier and self._activeMission.modifier.Description or ""
-	if self:_isPowerCellScenario(self._activeMission) then
-		self:_notifyParty(request.party, ("Mission started in %s [%s]. Defend the relay, recover power cells, and survive the waves. %s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription))
+	local activeSeasonalEvent, seasonalRewardBonus, seasonalExperienceBonus = self:_getActiveSeasonalMissionBonus()
+	local seasonalMissionText = ""
+	if activeSeasonalEvent and (seasonalRewardBonus > 0 or seasonalExperienceBonus > 0) then
+		seasonalMissionText = (" %s live bonus: +%dT and +%d XP on full extraction."):format(activeSeasonalEvent.DisplayName, seasonalRewardBonus, seasonalExperienceBonus)
+	end
+	if self:_isCommanderHuntScenario(self._activeMission) then
+		self:_notifyParty(request.party, ("Mission started in %s [%s]. Sweep the blacksite, survive the waves, and finish the commander target. %s%s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription, seasonalMissionText))
+		self:_fireMissionState(request.party, self:_getObjectiveStateText(self._activeMission))
+	elseif self:_isEvacEscortScenario(self._activeMission) then
+		self:_notifyParty(request.party, ("Mission started in %s [%s]. Advance the evac convoy through each checkpoint and survive the waves. %s%s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription, seasonalMissionText))
+		self:_fireMissionState(request.party, self:_getObjectiveStateText(self._activeMission))
+	elseif self:_isPowerRelayScenario(self._activeMission) then
+		self:_notifyParty(request.party, ("Mission started in %s [%s]. Stabilize the relay nodes, hold the chain together, and survive the waves. %s%s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription, seasonalMissionText))
+		self:_fireMissionState(request.party, self:_getObjectiveStateText(self._activeMission))
+	elseif self:_isPowerCellScenario(self._activeMission) then
+		self:_notifyParty(request.party, ("Mission started in %s [%s]. Defend the relay, recover power cells, and survive the waves. %s%s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription, seasonalMissionText))
 		self:_fireMissionState(request.party, self:_getObjectiveStateText(self._activeMission))
 	elseif self:_isNestScenario(self._activeMission) then
-		self:_notifyParty(request.party, ("Mission started in %s [%s]. Defend the relay, hunt infected nests, and survive the waves. %s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription))
+		self:_notifyParty(request.party, ("Mission started in %s [%s]. Defend the relay, hunt infected nests, and survive the waves. %s%s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription, seasonalMissionText))
 		self:_fireMissionState(request.party, self:_getObjectiveStateText(self._activeMission))
 	else
-		self:_notifyParty(request.party, ("Mission started in %s [%s]. Defend the bunker core and survive the waves. %s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription))
+		self:_notifyParty(request.party, ("Mission started in %s [%s]. Defend the bunker core and survive the waves. %s%s"):format(self._activeMission.layout.DisplayName, modifierText, modifierDescription, seasonalMissionText))
 		self:_fireMissionState(request.party, self:_getObjectiveStateText(self._activeMission))
 	end
 	task.delay(2, function()

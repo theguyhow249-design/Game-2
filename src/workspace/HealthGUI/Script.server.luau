@@ -1,2 +1,0 @@
--- Legacy imported health GUI. The game now uses the source-managed lobby/mission HUD,
--- so this old workspace-injected bar must stay disabled.

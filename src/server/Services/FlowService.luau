@@ -1,10 +1,61 @@
 local CollectionService = game:GetService("CollectionService")
-local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local FlowService = {}
 FlowService.__index = FlowService
+
+local function getLobbyPlaza(lobbyName)
+	local lobbyRoot = Workspace:FindFirstChild(lobbyName)
+	if not lobbyRoot then
+		for _, child in ipairs(Workspace:GetChildren()) do
+			if child:GetAttribute("WorldType") == "LobbyHub" then
+				lobbyRoot = child
+				break
+			end
+		end
+	end
+	if not lobbyRoot then
+		return nil
+	end
+	if lobbyRoot:IsA("Model") then
+		return lobbyRoot
+	end
+	return lobbyRoot:FindFirstChildWhichIsA("Model")
+end
+
+local function findMissionEntryById(entries, entryId)
+	if type(entryId) ~= "string" or entryId == "" then
+		return nil
+	end
+	for _, entry in ipairs(entries or {}) do
+		if entry.Id == entryId then
+			return entry
+		end
+	end
+	return nil
+end
+
+local function resolveMissionRuntimeParts(lobbyName)
+	local lobbyRoot = Workspace:FindFirstChild(lobbyName)
+	if not lobbyRoot then
+		return nil, nil, nil
+	end
+
+	local missionStaging = lobbyRoot:FindFirstChild("MissionStaging", true)
+	if not missionStaging then
+		return nil, nil, nil
+	end
+
+	local missionSpawn = missionStaging:FindFirstChild("MissionSpawn", true)
+		or missionStaging:FindFirstChild("DropMarker", true)
+		or missionStaging:FindFirstChild("Base", true)
+	local cameraStart = missionStaging:FindFirstChild("MissionCameraStart", true)
+	local cameraEnd = missionStaging:FindFirstChild("MissionCameraEnd", true)
+		or missionStaging:FindFirstChild("MissionCameraStop", true)
+
+	return missionSpawn, cameraStart, cameraEnd
+end
 
 local MAP_VOTE_OPTION_COUNT = 3
 local RECENT_MISSION_HISTORY = 4
@@ -13,6 +64,9 @@ local LAYOUT_PREVIEW_COPY = {
 	arena_service_tunnel = "Tight tunnel pressure with narrow fallback routes.",
 	arena_crossroads = "Four approach lanes colliding at a central depot hold.",
 	arena_reactor_fields = "Split reactor decks with elevated tower pressure.",
+	arena_power_relay = "Chained relay nodes across split platforms with pressure on every flank.",
+	arena_evac_tunnel = "Long evac corridor with staged checkpoints and very little cover once pressure spikes.",
+	arena_blacksite_sweep = "Blacksite labs and command decks built for a final commander takedown.",
 }
 
 function FlowService.new(context)
@@ -36,6 +90,7 @@ function FlowService.new(context)
 	self._registeredPads = {}
 	self._registeredVotePads = {}
 	self._voteTouchDebounce = {}
+	self._deployPadDebounce = {}
 	self._deployPadLocked = false
 	self._nextMissionPreview = nil
 	self._mapVote = nil
@@ -49,6 +104,27 @@ function FlowService.new(context)
 	self.DeploymentResolved = context.Signal.new()
 	self.PhaseChanged = context.Signal.new()
 	return self
+end
+
+function FlowService:_isMissionRuntimeReady()
+	local missionSpawnPath = Workspace:GetAttribute("MissionSpawnPath")
+	local missionCameraStartPath = Workspace:GetAttribute("MissionCameraStartPath")
+	local missionCameraEndPath = Workspace:GetAttribute("MissionCameraEndPath")
+	if type(missionSpawnPath) == "string" and missionSpawnPath ~= ""
+		and type(missionCameraStartPath) == "string" and missionCameraStartPath ~= ""
+		and type(missionCameraEndPath) == "string" and missionCameraEndPath ~= "" then
+		return true
+	end
+
+	local missionSpawn, cameraStart, cameraEnd = resolveMissionRuntimeParts(self._gameFlowConfig.LobbyName)
+	if missionSpawn and cameraStart and cameraEnd then
+		Workspace:SetAttribute("MissionSpawnPath", missionSpawn:GetFullName())
+		Workspace:SetAttribute("MissionCameraStartPath", cameraStart:GetFullName())
+		Workspace:SetAttribute("MissionCameraEndPath", cameraEnd:GetFullName())
+		return true
+	end
+
+	return false
 end
 
 function FlowService:SetInstanceDeploymentService(service)
@@ -103,6 +179,14 @@ function FlowService:_buildPreviewPayload(preview)
 		return nil
 	end
 
+	local scenario = findMissionEntryById(self._missionConfig and self._missionConfig.Scenarios, preview.scenarioId)
+	local modifier = findMissionEntryById(self._missionConfig and self._missionConfig.MissionModifiers, preview.modifierId)
+	local scenarioBonus = tonumber(scenario and scenario.RewardBonus) or 0
+	local modifierBonus = tonumber(modifier and modifier.RewardBonus) or 0
+	local totalRewardBonus = scenarioBonus + modifierBonus
+	local threatScore = (tonumber(scenario and scenario.HealthScale) or 1) + (tonumber(scenario and scenario.DamageScale) or 1) + (tonumber(modifier and modifier.HealthScale) or 1) + (tonumber(modifier and modifier.DamageScale) or 1)
+	local threatLabel = threatScore >= 4.25 and "HIGH" or (threatScore >= 4.1 and "ELEVATED" or "STANDARD")
+
 	return {
 		optionId = tostring(preview.optionId or ""),
 		scenarioId = tostring(preview.scenarioId or ""),
@@ -114,10 +198,17 @@ function FlowService:_buildPreviewPayload(preview)
 		modifierId = tostring(preview.modifierId or "modifier_standard_ops"),
 		modifierName = tostring(preview.modifierName or "Standard Ops"),
 		modifierDescription = tostring(preview.modifierDescription or "Baseline bunker deployment."),
+		rewardBonus = totalRewardBonus,
+		threatLabel = threatLabel,
 	}
 end
 
 function FlowService:_buildVoteOption(optionId, scenario, layout, modifier)
+	local scenarioBonus = tonumber(scenario and scenario.RewardBonus) or 0
+	local modifierBonus = tonumber(modifier and modifier.RewardBonus) or 0
+	local totalRewardBonus = scenarioBonus + modifierBonus
+	local threatScore = (tonumber(scenario and scenario.HealthScale) or 1) + (tonumber(scenario and scenario.DamageScale) or 1) + (tonumber(modifier and modifier.HealthScale) or 1) + (tonumber(modifier and modifier.DamageScale) or 1)
+	local threatLabel = threatScore >= 4.25 and "HIGH" or (threatScore >= 4.1 and "ELEVATED" or "STANDARD")
 	return {
 		optionId = tostring(optionId),
 		scenarioId = scenario and scenario.Id or "directive_hold",
@@ -129,6 +220,8 @@ function FlowService:_buildVoteOption(optionId, scenario, layout, modifier)
 		modifierId = modifier and modifier.Id or "modifier_standard_ops",
 		modifierName = modifier and modifier.DisplayName or "Standard Ops",
 		modifierDescription = modifier and modifier.Description or "Baseline bunker deployment.",
+		rewardBonus = totalRewardBonus,
+		threatLabel = threatLabel,
 		voteCount = 0,
 	}
 end
@@ -344,47 +437,233 @@ function FlowService:_rollNextMissionVote(previousPreview)
 	self:_refreshVoteResults()
 end
 
+function FlowService:ForceMissionPreview(scenarioId, layoutId, modifierId)
+	local missionConfig = self._missionConfig
+	if not missionConfig then
+		return false, "missing_config"
+	end
+
+	local scenario = findMissionEntryById(missionConfig.Scenarios, scenarioId)
+	local layout = findMissionEntryById(missionConfig.Layouts, layoutId)
+	local modifier = findMissionEntryById(missionConfig.MissionModifiers, modifierId or "modifier_standard_ops")
+	if not scenario or not layout or not modifier then
+		return false, "invalid_preview"
+	end
+
+	local forcedOption = self:_buildVoteOption("map_1", scenario, layout, modifier)
+	local options = { forcedOption }
+	local forcedKey = self:_buildMissionKey(scenario.Id, layout.Id, modifier.Id)
+
+	for _, option in ipairs((self._mapVote and self._mapVote.options) or {}) do
+		if #options >= MAP_VOTE_OPTION_COUNT then
+			break
+		end
+		local optionKey = self:_buildMissionKey(option.scenarioId, option.layoutId, option.modifierId)
+		if optionKey ~= forcedKey then
+			table.insert(options, self:_buildVoteOption(
+				("map_%d"):format(#options + 1),
+				findMissionEntryById(missionConfig.Scenarios, option.scenarioId),
+				findMissionEntryById(missionConfig.Layouts, option.layoutId),
+				findMissionEntryById(missionConfig.MissionModifiers, option.modifierId)
+			))
+		end
+	end
+
+	if #options < MAP_VOTE_OPTION_COUNT then
+		local combos = {}
+		for _, candidateLayout in ipairs(missionConfig.Layouts or {}) do
+			for _, candidateScenario in ipairs(missionConfig.Scenarios or {}) do
+				for _, candidateModifier in ipairs(missionConfig.MissionModifiers or {}) do
+					local missionKey = self:_buildMissionKey(candidateScenario.Id, candidateLayout.Id, candidateModifier.Id)
+					if missionKey ~= forcedKey then
+						table.insert(combos, {
+							missionKey = missionKey,
+							layout = candidateLayout,
+							scenario = candidateScenario,
+							modifier = candidateModifier,
+						})
+					end
+				end
+			end
+		end
+
+		self:_shuffleList(combos)
+		local usedKeys = {
+			[forcedKey] = true,
+		}
+		for _, option in ipairs(options) do
+			usedKeys[self:_buildMissionKey(option.scenarioId, option.layoutId, option.modifierId)] = true
+		end
+		for _, combo in ipairs(combos) do
+			if #options >= MAP_VOTE_OPTION_COUNT then
+				break
+			end
+			if not usedKeys[combo.missionKey] then
+				table.insert(options, self:_buildVoteOption(("map_%d"):format(#options + 1), combo.scenario, combo.layout, combo.modifier))
+				usedKeys[combo.missionKey] = true
+			end
+		end
+	end
+
+	self._mapVote = {
+		sessionId = self._mapVoteSessionId + 1,
+		options = options,
+		votesByUserId = {},
+		leadingOptionId = forcedOption.optionId,
+	}
+	self._mapVoteSessionId = self._mapVote.sessionId
+	self._nextMissionPreview = self:_buildPreviewPayload(forcedOption)
+	self:_broadcastLobbyState()
+	return true, self._nextMissionPreview
+end
+
 function FlowService:_getLobbySpawn()
 	local lobby = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
-	return lobby and lobby:FindFirstChild("LobbySpawn")
+	if not lobby then
+		for _, child in ipairs(Workspace:GetChildren()) do
+			if child:GetAttribute("WorldType") == "LobbyHub" then
+				lobby = child
+				break
+			end
+		end
+	end
+	if not lobby then
+		return nil
+	end
+
+	local arrivalAnchor = lobby:FindFirstChild("LobbyArrivalAnchor", true)
+	if arrivalAnchor and arrivalAnchor:IsA("BasePart") then
+		return arrivalAnchor
+	end
+
+	for _, spawn in ipairs(CollectionService:GetTagged("LobbySpawn")) do
+		if spawn:IsDescendantOf(lobby) and spawn:IsA("BasePart") and spawn:FindFirstAncestor("MissionStaging") == nil then
+			if spawn.Name == "LobbyArrivalAnchor" then
+				return spawn
+			end
+			return spawn
+		end
+	end
+
+	local nestedSpawn = lobby:FindFirstChild("LobbySpawn", true)
+	if nestedSpawn and nestedSpawn:IsA("BasePart") and nestedSpawn:FindFirstAncestor("MissionStaging") == nil then
+		return nestedSpawn
+	end
+
+	for _, descendant in ipairs(lobby:GetDescendants()) do
+		if descendant:IsA("SpawnLocation") and descendant:FindFirstAncestor("MissionStaging") == nil then
+			return descendant
+		end
+	end
+
+	return nil
+end
+
+function FlowService:_shouldUseLobbySpawn(player)
+	local deploymentState = tostring(player:GetAttribute("DeploymentState") or "Lobby")
+	return not (
+		player:GetAttribute("InMission") == true
+		or player:GetAttribute("MissionInstancePending") == true
+		or deploymentState == "Mission"
+		or deploymentState == "Deployment"
+		or deploymentState == "Intermission"
+		or deploymentState == "Returning"
+		or deploymentState == "ReturnFailed"
+		or self._state.phase == "Deployment"
+		or self._state.phase == "Intermission"
+	)
+end
+
+function FlowService:_movePlayerToLobbySpawn(player, character)
+	if not (player and character and character.Parent) then
+		return false
+	end
+	if not self:_shouldUseLobbySpawn(player) then
+		return false
+	end
+
+	local rootPart = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 3)
+	if not rootPart then
+		return false
+	end
+
+	local lobbySpawn = nil
+	for _ = 1, 40 do
+		lobbySpawn = self:_getLobbySpawn()
+		if lobbySpawn then
+			break
+		end
+		task.wait(0.1)
+	end
+	if not lobbySpawn then
+		return false
+	end
+	if lobbySpawn:IsA("SpawnLocation") then
+		player.RespawnLocation = lobbySpawn
+	end
+
+	local targetCFrame = lobbySpawn.CFrame + Vector3.new(0, 4, 0)
+	for _ = 1, 8 do
+		if not (character.Parent and rootPart.Parent) then
+			return false
+		end
+		rootPart.AssemblyLinearVelocity = Vector3.zero
+		rootPart.AssemblyAngularVelocity = Vector3.zero
+		character:PivotTo(targetCFrame)
+		task.wait(0.1)
+	end
+
+	player:SetAttribute("DeploymentState", "Lobby")
+	player:SetAttribute("InMission", false)
+	return true
+end
+
+function FlowService:_maintainLobbySpawn(player)
+	task.spawn(function()
+		local attempts = 0
+		while player and player.Parent == Players and attempts < 60 do
+			attempts += 1
+			if self:_shouldUseLobbySpawn(player) then
+				local character = player.Character
+				local lobbySpawn = self:_getLobbySpawn()
+				local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+				if character and rootPart and lobbySpawn then
+					if lobbySpawn:IsA("SpawnLocation") then
+						player.RespawnLocation = lobbySpawn
+					end
+					local distance = (rootPart.Position - lobbySpawn.Position).Magnitude
+					if distance > 24 then
+						self:_movePlayerToLobbySpawn(player, character)
+					end
+				end
+			end
+			task.wait(0.5)
+		end
+	end)
 end
 
 function FlowService:_bindPlayerSpawn(player)
 	player.CharacterAdded:Connect(function(character)
 		task.wait(0.1)
-		if not character or not character.Parent then
-			return
-		end
-
-		local rootPart = character:FindFirstChild("HumanoidRootPart")
-		if not rootPart then
-			rootPart = character:WaitForChild("HumanoidRootPart", 3)
-		end
-		if not rootPart then
-			return
-		end
-
-		local deploymentState = tostring(player:GetAttribute("DeploymentState") or "Lobby")
-		if player:GetAttribute("InMission") == true
-			or player:GetAttribute("MissionInstancePending") == true
-			or deploymentState == "Mission"
-			or deploymentState == "Deployment"
-			or deploymentState == "Intermission"
-			or deploymentState == "Returning"
-			or deploymentState == "ReturnFailed"
-			or self._state.phase == "Deployment"
-			or self._state.phase == "Intermission"
-		then
-			return
-		end
-
-		local lobbySpawn = self:_getLobbySpawn()
-		if lobbySpawn then
-			character:PivotTo(lobbySpawn.CFrame + Vector3.new(0, 4, 0))
-			player:SetAttribute("DeploymentState", "Lobby")
-			player:SetAttribute("InMission", false)
-		end
+		self:_movePlayerToLobbySpawn(player, character)
+		self:_maintainLobbySpawn(player)
 	end)
+	if player.Character then
+		task.defer(function()
+			self:_movePlayerToLobbySpawn(player, player.Character)
+			self:_maintainLobbySpawn(player)
+		end)
+	end
+end
+
+function FlowService:ForceLobbySpawnSync()
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then
+			task.defer(function()
+				self:_movePlayerToLobbySpawn(player, player.Character)
+			end)
+		end
+	end
 end
 
 function FlowService:_broadcastLobbyState()
@@ -411,10 +690,18 @@ function FlowService:_broadcastLobbyState()
 end
 
 function FlowService:_getDeployVoteBoards()
-	local lobbyRoot = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
-	local plaza = lobbyRoot and lobbyRoot:FindFirstChild("OpenSkyLobby")
-	local deployDeck = plaza and plaza:FindFirstChild("DeployVoteDeck")
-	local board = deployDeck and deployDeck:FindFirstChild("VoteBoard")
+	local plaza = getLobbyPlaza(self._gameFlowConfig.LobbyName)
+	local board = plaza and (
+		plaza:FindFirstChild("VoteBoard", true)
+		or plaza:FindFirstChild("Vote Model", true)
+		or plaza:FindFirstChild("DeployVoteDeck", true)
+	)
+	if board and board.Name == "DeployVoteDeck" then
+		board = board:FindFirstChild("VoteBoard") or board:FindFirstChild("VoteBoard", true)
+	end
+	if board and not board:IsA("BasePart") then
+		board = board:FindFirstChildWhichIsA("BasePart", true)
+	end
 	local frames = {}
 	if board then
 		for _, child in ipairs(board:GetChildren()) do
@@ -728,21 +1015,37 @@ function FlowService:RegisterDeployPad(instance)
 		prompt.Parent = pad
 	end
 
-	prompt.Triggered:Connect(function(player)
-		self:RequestDeployment(player, pad)
-	end)
-
-	pad.Touched:Connect(function(hit)
-		local character = hit and hit.Parent
-		if not character then
+	local function requestFromPad(player)
+		if not player or player.Parent ~= Players then
 			return
 		end
 
-		local player = Players:GetPlayerFromCharacter(character)
-		if player then
-			self:RequestDeployment(player, pad)
+		local debounceKey = tostring(player.UserId) .. ":" .. tostring(pad:GetFullName())
+		local now = os.clock()
+		if self._deployPadDebounce[debounceKey] and (now - self._deployPadDebounce[debounceKey]) < 1.5 then
+			return
 		end
+		self._deployPadDebounce[debounceKey] = now
+		self:RequestDeployment(player, pad)
+	end
+
+	prompt.Triggered:Connect(function(player)
+		requestFromPad(player)
 	end)
+
+	if pad:GetAttribute("AutoDeployOnTouch") == true then
+		pad.Touched:Connect(function(hit)
+			local character = hit and hit.Parent
+			if not character then
+				return
+			end
+
+			local player = Players:GetPlayerFromCharacter(character)
+			if player then
+				requestFromPad(player)
+			end
+		end)
+	end
 end
 
 function FlowService:RegisterMapVotePad(instance)
@@ -796,9 +1099,11 @@ end
 
 function FlowService:RequestDeployment(requestingPlayer, pad)
 	if self._antiExploitService and not self._antiExploitService:AllowRequest(requestingPlayer, "DeployWorldAction", 3, 2.5) then
+		warn("[FlowService] RequestDeployment denied: rate_limited")
 		return false, "rate_limited", nil
 	end
 	if pad and self._antiExploitService and not self._antiExploitService:RequireProximity(requestingPlayer, pad, 18, "deploy_pad_distance") then
+		warn("[FlowService] RequestDeployment denied: too_far")
 		return false, "too_far", nil
 	end
 
@@ -845,7 +1150,16 @@ function FlowService:RequestDeployment(requestingPlayer, pad)
 	end
 
 	if self._state.phase ~= "Lobby" then
+		warn(("[FlowService] RequestDeployment denied: busy | phase=%s"):format(tostring(self._state.phase)))
 		return false, "busy", self._state
+	end
+	if not self:_isMissionRuntimeReady() then
+		warn(("[FlowService] Deployment blocked because mission staging paths are unavailable | spawn=%s | cameraStart=%s | cameraEnd=%s"):format(
+			tostring(Workspace:GetAttribute("MissionSpawnPath")),
+			tostring(Workspace:GetAttribute("MissionCameraStartPath")),
+			tostring(Workspace:GetAttribute("MissionCameraEndPath"))
+		))
+		return false, "mission_unavailable", nil
 	end
 
 	local squad, party = self:_buildParty(requestingPlayer)
@@ -935,6 +1249,7 @@ end
 function FlowService:_beginDeployment()
 	local request = self._state.activeRequest
 	if not request then
+		warn("[FlowService] _beginDeployment aborted: no active request")
 		return
 	end
 
@@ -961,6 +1276,12 @@ function FlowService:_beginDeployment()
 		difficultyMultiplier = request.profile.difficultyMultiplier,
 		lootMultiplier = request.profile.lootMultiplier,
 	}
+	-- Validate camera paths are available before deployment
+	if not payload.cameraStart or not payload.cameraEnd then
+		warn("[FlowService] Camera paths not available for deployment cinematic. Skipping cinematic.")
+		payload.cameraStart = nil
+		payload.cameraEnd = nil
+	end
 
 	self.DeploymentStarted:Fire(payload)
 	self:_broadcastDeployState(party, payload)

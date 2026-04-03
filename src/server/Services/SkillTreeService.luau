@@ -94,6 +94,22 @@ function SkillTreeService:GetReserveAmmoMultiplier(player)
 	return 1 + self:_getScaledBonus(player, "skill_tactical_reserves")
 end
 
+function SkillTreeService:GetReloadDuration(player, baseDuration)
+	return math.max(0.35, (baseDuration or 0) * (1 - self:_getScaledBonus(player, "skill_quick_hands")))
+end
+
+function SkillTreeService:GetSpawnProtectionSeconds(player, baseDuration)
+	return math.max(0, (baseDuration or 0) + self:_getScaledBonus(player, "skill_breach_plating"))
+end
+
+function SkillTreeService:GetWeaponSpreadMultiplier(player)
+	return math.max(0.6, 1 - self:_getScaledBonus(player, "skill_steady_grip"))
+end
+
+function SkillTreeService:GetPromptDistance(player, baseDistance)
+	return math.max(0, (baseDistance or 0) * (1 + self:_getScaledBonus(player, "skill_field_routing")))
+end
+
 function SkillTreeService:GetReviveHoldDuration(player, baseDuration)
 	return math.max(0.75, (baseDuration or 0) - self:_getScaledBonus(player, "skill_emergency_response"))
 end

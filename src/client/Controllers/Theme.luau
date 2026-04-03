@@ -41,10 +41,10 @@ Theme.ShopCategoryToTab = {
 }
 
 Theme.ShopCopy = {
-	["Deploy Tokens"] = "Use deploy tokens for drops, daily claims, group rewards, and premium packs.",
-	Upgrades = "Tune armor, stamina, and field utility before harder runs.",
-	Weapons = "Arm sidearms, control tools, and bunker-ready hardware.",
-	Cosmetics = "Apply bunker colors, field tags, and hub-facing flex gear.",
+	["Deploy Tokens"] = "Premium packs, supporter access, and token products. Locker gear stays separate.",
+	Upgrades = "Permanent bunker upgrades and field boosts. Buy once, then keep them active.",
+	Weapons = "Quartermaster weapon stock. Buy it here, then equip it from the locker or directly from stock.",
+	Cosmetics = "Weapon skins and style pieces. Unlock here, then assign them from the locker.",
 }
 
 Theme.SkillTreeBranches = {
@@ -90,6 +90,11 @@ Theme.Colors = {
 	AccentSoft = Color3.fromRGB(173, 216, 137),
 	AccentWarm = Color3.fromRGB(232, 173, 78),
 	BunkerAccent = Color3.fromRGB(126, 146, 168),
+	CommandBlue = Color3.fromRGB(96, 136, 196),
+	CommandBlueDark = Color3.fromRGB(58, 82, 118),
+	CommandTeal = Color3.fromRGB(82, 164, 146),
+	CommandAmber = Color3.fromRGB(214, 158, 84),
+	CommandOlive = Color3.fromRGB(124, 176, 102),
 	Text = Color3.fromRGB(245, 247, 248),
 	Muted = Color3.fromRGB(212, 220, 226),
 	Shadow = Color3.fromRGB(0, 0, 0),

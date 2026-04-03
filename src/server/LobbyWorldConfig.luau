@@ -7,14 +7,14 @@ local TokenEconomy = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChi
 local Config = {}
 
 Config.RootName = GameFlowConfig.LobbyName
-Config.Origin = Vector3.new(2000, 40, 2000)
+Config.Origin = Vector3.new(0, 40, 0)
 Config.SpawnOffset = Vector3.new(0, 0, 0)
 Config.MissionOffset = Vector3.new(0, 0, 640)
 Config.AreaRadius = 56
 
 Config.LobbyLayout = {
 	CentralHubOffset = Vector3.new(0, 0, 0),
-	LeaderboardOffset = Vector3.new(-92, 0, 90),
+	LeaderboardOffset = Vector3.new(-168, 0, 156),
 	CargoStacks = {
 		West = Vector3.new(-86, 0, -22),
 		East = Vector3.new(82, 0, -24),
@@ -157,42 +157,42 @@ Config.LobbyNpcs = {
 
 Config.LeaderboardLayout = {
 	Podium = {
-		Size = UDim2.new(1, -48, 0, 134),
+		Size = UDim2.new(1, -48, 0, 108),
 		Cards = {
 			FirstCard = {
-				x = 136,
+				x = 84,
 				y = 0,
-				width = 248,
-				height = 72,
+				width = 200,
+				height = 58,
 				accent = Color3.fromRGB(172, 110, 255),
 				glow = Color3.fromRGB(88, 220, 255),
 			},
 			SecondCard = {
-				x = 44,
-				y = 82,
-				width = 148,
-				height = 46,
+				x = 12,
+				y = 68,
+				width = 122,
+				height = 34,
 				accent = Color3.fromRGB(255, 194, 94),
 				glow = Color3.fromRGB(255, 120, 72),
 			},
 			ThirdCard = {
-				x = 328,
-				y = 82,
-				width = 148,
-				height = 46,
+				x = 234,
+				y = 68,
+				width = 122,
+				height = 34,
 				accent = Color3.fromRGB(108, 242, 214),
 				glow = Color3.fromRGB(94, 164, 255),
 			},
 		},
 	},
 	List = {
-		HeaderY = 236,
+		HeaderY = 254,
 		HeaderHeight = 22,
-		SlotStartY = 268,
+		SlotStartY = 286,
 		SlotSpacing = 50,
 		SlotCount = 12,
-		ScrollY = 266,
-		ScrollBottomPadding = 276,
+		ScrollY = 284,
+		ScrollBottomPadding = 294,
 	},
 }
 

@@ -5,14 +5,147 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(script.Parent:WaitForChild("LobbyWorldConfig"))
+local DonationConfig = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("DonationConfig"))
 
 local LobbyWorld = {}
+local clearNamedChildren
+
+local REQUIRED_LOBBY_TEMPLATE_PARTS = {
+	"OuterGround",
+	"VoteBoard",
+	"VotePad1",
+	"VotePad2",
+	"VotePad3",
+}
+
+local OPTIONAL_LOBBY_FEATURES = {
+	{ label = "deploy pad", names = { "LaunchPad", "DeployPad" } },
+	{ label = "leaderboard monument", names = { "LeaderboardMonument", "MasterBoard", "LeaderboardBoard" } },
+	{ label = "duel ring", names = { "DuelRing" } },
+	{ label = "parkour course", names = { "ParkourCourse" } },
+	{ label = "training yard", names = { "TrainingYard" } },
+	{ label = "target range", names = { "TargetRange" } },
+	{ label = "salvage run", names = { "SalvageRun" } },
+	{ label = "supporter lounge", names = { "SupporterLounge", "Supporter" } },
+	{ label = "vip lounge", names = { "VipLounge", "Vip" } },
+}
+local REQUIRED_ACTIVITY_PARTS = {
+	TrainingYard = { "EntryPad", "TargetFace1", "TargetFace2", "TargetFace3", "Hurdle1", "Hurdle2", "Hurdle3" },
+	ParkourCourse = { "StartPad", "Platform1", "Platform2", "Platform3", "Platform4", "Platform5", "FinishPad" },
+	TargetRange = { "FiringLine", "TargetFace1", "TargetFace2", "TargetFace3" },
+	SalvageRun = { "StartPad", "Cache1", "Cache2", "Cache3", "FinishPad" },
+}
 
 local function clearExisting(rootName: string)
 	local existing = Workspace:FindFirstChild(rootName)
 	if existing then
 		existing:Destroy()
 	end
+end
+
+local function isConfiguredLobbyRootReady(candidate: Instance?): boolean
+	if not (candidate and (candidate:IsA("Model") or candidate:IsA("Folder"))) then
+		return false
+	end
+	if candidate:FindFirstChildWhichIsA("BasePart", true) then
+		return true
+	end
+	return #getLobbyTemplateIssues(candidate) == 0
+end
+
+local function waitForConfiguredLobbyRoot(timeoutSeconds: number): Instance?
+	if timeoutSeconds == nil then
+		while true do
+			local candidate = Workspace:FindFirstChild(Config.RootName)
+			if isConfiguredLobbyRootReady(candidate) then
+				return candidate
+			end
+			task.wait(0.1)
+		end
+	end
+	local deadline = os.clock() + math.max(0, timeoutSeconds or 0)
+	repeat
+		local candidate = Workspace:FindFirstChild(Config.RootName)
+		if isConfiguredLobbyRootReady(candidate) then
+			return candidate
+		end
+		task.wait(0.1)
+	until os.clock() >= deadline
+	return nil
+end
+
+local function clearLegacyLobbyDuplicates()
+	local currentRootName = string.lower((tostring(Config.RootName or ""):gsub("[%s%p_]+", "")))
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if child:IsA("Model") or child:IsA("Folder") then
+			local childName = child.Name
+			local normalizedName = string.lower((childName:gsub("[%s%p_]+", "")))
+			if normalizedName ~= ""
+				and normalizedName ~= currentRootName
+				and (normalizedName == "mainlobby"
+					or normalizedName == "wronglobby"
+					or string.find(normalizedName, "lobby", 1, true) ~= nil)
+			then
+				child:Destroy()
+			end
+		end
+	end
+end
+
+local function findFirstNamedDescendant(root: Instance, names: { string }): Instance?
+	for _, name in ipairs(names) do
+		local found = root:FindFirstChild(name, true)
+		if found then
+			return found
+		end
+	end
+	return nil
+end
+
+local function getLobbyTemplateIssues(template: Instance): { string }
+	local issues = {}
+	for _, name in ipairs(REQUIRED_LOBBY_TEMPLATE_PARTS) do
+		if not template:FindFirstChild(name, true) then
+			table.insert(issues, name)
+		end
+	end
+
+	if not findFirstNamedDescendant(template, { "LaunchPad", "DeployPad" }) then
+		table.insert(issues, "LaunchPad/DeployPad")
+	end
+
+	return issues
+end
+
+local function validateLobbyFeatures(lobbyModel: Instance)
+	for _, feature in ipairs(OPTIONAL_LOBBY_FEATURES) do
+		if not findFirstNamedDescendant(lobbyModel, feature.names) then
+			warn(("[LobbyWorld] Lobby is missing %s. Related systems will stay inactive until that content is added."):format(feature.label))
+		end
+	end
+end
+
+local function hasRequiredActivityParts(activityRoot: Instance?, requiredNames: { string }): boolean
+	if not activityRoot then
+		return false
+	end
+	for _, name in ipairs(requiredNames) do
+		if not activityRoot:FindFirstChild(name, true) then
+			return false
+		end
+	end
+	return true
+end
+
+local function ensureCompleteActivityModel(lobbyModel: Instance, activityName: string, requiredNames: { string }, buildFn)
+	local existing = lobbyModel:FindFirstChild(activityName, true)
+	if existing and hasRequiredActivityParts(existing, requiredNames) then
+		return existing
+	end
+	if existing then
+		existing:Destroy()
+	end
+	return buildFn()
 end
 
 local function makePart(parent: Instance, className: string, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material)
@@ -31,48 +164,75 @@ local function makePart(parent: Instance, className: string, name: string, size:
 end
 
 local function attachLabel(part: BasePart, title: string, subtitle: string, accent: Color3)
+	if clearNamedChildren then
+		clearNamedChildren(part, { "Sign" })
+	end
+
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Sign"
-	gui.Size = UDim2.fromOffset(164, 52)
-	gui.StudsOffset = Vector3.new(0, 1.6, 0)
+	gui.Size = UDim2.fromOffset(204, 66)
+	gui.StudsOffset = Vector3.new(0, 1.9, 0)
 	gui.AlwaysOnTop = false
-	gui.MaxDistance = 60
+	gui.MaxDistance = 90
+	gui.LightInfluence = 0
 	gui.Parent = part
 
 	local frame = Instance.new("Frame")
-	frame.BackgroundColor3 = Color3.fromRGB(28, 32, 38)
-	frame.BackgroundTransparency = 0.1
+	frame.BackgroundColor3 = Color3.fromRGB(20, 24, 30)
+	frame.BackgroundTransparency = 0.04
 	frame.BorderSizePixel = 0
 	frame.Size = UDim2.fromScale(1, 1)
 	frame.Parent = gui
 
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = frame
+
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = accent
-	stroke.Thickness = 1
-	stroke.Transparency = 0.22
+	stroke.Thickness = 1.6
+	stroke.Transparency = 0.08
 	stroke.Parent = frame
+
+	local accentBar = Instance.new("Frame")
+	accentBar.BackgroundColor3 = accent
+	accentBar.BackgroundTransparency = 0.08
+	accentBar.BorderSizePixel = 0
+	accentBar.Position = UDim2.fromOffset(10, 10)
+	accentBar.Size = UDim2.new(0, 4, 1, -20)
+	accentBar.Parent = frame
+
+	local accentGlow = Instance.new("Frame")
+	accentGlow.BackgroundColor3 = accent
+	accentGlow.BackgroundTransparency = 0.7
+	accentGlow.BorderSizePixel = 0
+	accentGlow.Position = UDim2.fromOffset(18, 10)
+	accentGlow.Size = UDim2.new(0, 18, 1, -20)
+	accentGlow.Parent = frame
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.BackgroundTransparency = 1
-	titleLabel.Size = UDim2.new(1, -16, 0.5, -6)
-	titleLabel.Position = UDim2.fromOffset(8, 4)
+	titleLabel.Size = UDim2.new(1, -44, 0, 24)
+	titleLabel.Position = UDim2.fromOffset(30, 8)
 	titleLabel.Font = Enum.Font.GothamBlack
 	titleLabel.Text = title
 	titleLabel.TextColor3 = Color3.new(1, 1, 1)
 	titleLabel.TextScaled = false
-	titleLabel.TextSize = 15
+	titleLabel.TextSize = 17
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.Parent = frame
 
 	local subtitleLabel = Instance.new("TextLabel")
 	subtitleLabel.BackgroundTransparency = 1
-	subtitleLabel.Position = UDim2.new(0, 8, 0.5, 0)
-	subtitleLabel.Size = UDim2.new(1, -16, 0.5, -6)
+	subtitleLabel.Position = UDim2.fromOffset(30, 32)
+	subtitleLabel.Size = UDim2.new(1, -42, 0, 24)
 	subtitleLabel.Font = Enum.Font.GothamMedium
 	subtitleLabel.Text = subtitle
-	subtitleLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+	subtitleLabel.TextColor3 = Color3.fromRGB(222, 228, 236)
 	subtitleLabel.TextScaled = false
-	subtitleLabel.TextSize = 10
+	subtitleLabel.TextSize = 11
 	subtitleLabel.TextWrapped = true
+	subtitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	subtitleLabel.Parent = frame
 end
 
@@ -85,12 +245,17 @@ local function makeGlowPart(parent: Instance, name: string, size: Vector3, cfram
 end
 
 local function attachWorldText(part: BasePart, text: string, offset: Vector3, accent: Color3, size: Vector2?)
+	if clearNamedChildren then
+		clearNamedChildren(part, { "WorldText" })
+	end
+
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "WorldText"
 	gui.Size = UDim2.fromOffset((size and size.X) or 160, (size and size.Y) or 38)
 	gui.StudsOffset = offset
 	gui.AlwaysOnTop = false
-	gui.MaxDistance = 78
+	gui.MaxDistance = 110
+	gui.LightInfluence = 0
 	gui.Parent = part
 
 	local label = Instance.new("TextLabel")
@@ -100,11 +265,230 @@ local function attachWorldText(part: BasePart, text: string, offset: Vector3, ac
 	label.Text = text
 	label.TextColor3 = accent
 	label.TextScaled = false
-	label.TextSize = 14
+	label.TextSize = 16
+	label.TextStrokeTransparency = 0.72
 	label.Parent = gui
 end
 
+local function attachDonationShowcase(part: BasePart)
+	if clearNamedChildren then
+		clearNamedChildren(part, { "DonationBoard" })
+	end
+
+	local board = Instance.new("BillboardGui")
+	board.Name = "DonationBoard"
+	board.Size = UDim2.fromOffset(244, 158)
+	board.StudsOffset = Vector3.new(0, 5.1, 0)
+	board.AlwaysOnTop = false
+	board.MaxDistance = 100
+	board.LightInfluence = 0
+	board.Parent = part
+
+	local frame = Instance.new("Frame")
+	frame.Name = "Frame"
+	frame.BackgroundColor3 = Color3.fromRGB(18, 16, 12)
+	frame.BackgroundTransparency = 0.08
+	frame.BorderSizePixel = 0
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.Parent = board
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 14)
+	corner.Parent = frame
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(244, 206, 126)
+	stroke.Thickness = 1.6
+	stroke.Transparency = 0.08
+	stroke.Parent = frame
+
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(42, 30, 14)),
+		ColorSequenceKeypoint.new(0.55, Color3.fromRGB(70, 48, 20)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(28, 20, 10)),
+	})
+	gradient.Rotation = 18
+	gradient.Parent = frame
+
+	local shimmer = Instance.new("Frame")
+	shimmer.Name = "Shimmer"
+	shimmer.BackgroundColor3 = Color3.fromRGB(255, 230, 170)
+	shimmer.BackgroundTransparency = 0.86
+	shimmer.BorderSizePixel = 0
+	shimmer.Position = UDim2.new(0, -80, 0, 0)
+	shimmer.Size = UDim2.new(0, 70, 1, 0)
+	shimmer.Rotation = 18
+	shimmer.Parent = frame
+
+	local shimmerCorner = Instance.new("UICorner")
+	shimmerCorner.CornerRadius = UDim.new(0, 14)
+	shimmerCorner.Parent = shimmer
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.BackgroundTransparency = 1
+	title.Position = UDim2.fromOffset(16, 14)
+	title.Size = UDim2.new(1, -32, 0, 20)
+	title.Font = Enum.Font.GothamBlack
+	title.Text = "BUNKER SUPPORT"
+	title.TextColor3 = Color3.fromRGB(255, 240, 198)
+	title.TextSize = 16
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = frame
+
+	local subtitle = Instance.new("TextLabel")
+	subtitle.Name = "Subtitle"
+	subtitle.BackgroundTransparency = 1
+	subtitle.Position = UDim2.fromOffset(16, 34)
+	subtitle.Size = UDim2.new(1, -32, 0, 28)
+	subtitle.Font = Enum.Font.GothamMedium
+	subtitle.Text = "Support new ops, visual polish, and bunker upgrades."
+	subtitle.TextColor3 = Color3.fromRGB(234, 224, 198)
+	subtitle.TextSize = 11
+	subtitle.TextWrapped = true
+	subtitle.TextXAlignment = Enum.TextXAlignment.Left
+	subtitle.TextYAlignment = Enum.TextYAlignment.Top
+	subtitle.Parent = frame
+
+	local rule = Instance.new("Frame")
+	rule.Name = "Rule"
+	rule.BackgroundColor3 = Color3.fromRGB(244, 206, 126)
+	rule.BackgroundTransparency = 0.16
+	rule.BorderSizePixel = 0
+	rule.Position = UDim2.fromOffset(16, 66)
+	rule.Size = UDim2.fromOffset(94, 3)
+	rule.Parent = frame
+
+	local pulse = Instance.new("Frame")
+	pulse.Name = "Pulse"
+	pulse.BackgroundColor3 = Color3.fromRGB(255, 220, 152)
+	pulse.BackgroundTransparency = 0.8
+	pulse.BorderSizePixel = 0
+	pulse.Position = UDim2.fromOffset(16, 66)
+	pulse.Size = UDim2.fromOffset(94, 3)
+	pulse.Parent = frame
+
+	local tiers = Instance.new("Frame")
+	tiers.Name = "Tiers"
+	tiers.BackgroundTransparency = 1
+	tiers.Position = UDim2.fromOffset(14, 78)
+	tiers.Size = UDim2.new(1, -28, 0, 52)
+	tiers.Parent = frame
+
+	local tierLayout = Instance.new("UIListLayout")
+	tierLayout.FillDirection = Enum.FillDirection.Horizontal
+	tierLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	tierLayout.Padding = UDim.new(0, 8)
+	tierLayout.Parent = tiers
+
+	local tierBars = {}
+	for index, tier in ipairs(DonationConfig.Tiers) do
+		if index > 3 then
+			break
+		end
+		local tierCard = Instance.new("Frame")
+		tierCard.Name = ("Tier%d"):format(index)
+		tierCard.BackgroundColor3 = Color3.fromRGB(36, 28, 18)
+		tierCard.BackgroundTransparency = 0.08
+		tierCard.BorderSizePixel = 0
+		tierCard.Size = UDim2.fromOffset(66, 52)
+		tierCard.Parent = tiers
+
+		local tierCorner = Instance.new("UICorner")
+		tierCorner.CornerRadius = UDim.new(0, 12)
+		tierCorner.Parent = tierCard
+
+		local tierStroke = Instance.new("UIStroke")
+		tierStroke.Color = Color3.fromRGB(214, 182, 116)
+		tierStroke.Transparency = 0.18
+		tierStroke.Parent = tierCard
+
+		local amount = Instance.new("TextLabel")
+		amount.Name = "Amount"
+		amount.BackgroundTransparency = 1
+		amount.Position = UDim2.fromOffset(8, 8)
+		amount.Size = UDim2.new(1, -16, 0, 16)
+		amount.Font = Enum.Font.GothamBlack
+		amount.Text = ("%sT"):format(tostring(math.max(0, math.floor(tonumber(tier.Amount) or 0))))
+		amount.TextColor3 = Color3.fromRGB(255, 232, 176)
+		amount.TextSize = 15
+		amount.TextXAlignment = Enum.TextXAlignment.Left
+		amount.Parent = tierCard
+
+		local name = Instance.new("TextLabel")
+		name.Name = "Name"
+		name.BackgroundTransparency = 1
+		name.Position = UDim2.fromOffset(8, 24)
+		name.Size = UDim2.new(1, -16, 0, 12)
+		name.Font = Enum.Font.GothamBold
+		name.Text = tostring(tier.Label or ("Tier " .. tostring(index)))
+		name.TextColor3 = Color3.fromRGB(226, 220, 202)
+		name.TextSize = 10
+		name.TextWrapped = true
+		name.TextXAlignment = Enum.TextXAlignment.Left
+		name.Parent = tierCard
+
+		local bar = Instance.new("Frame")
+		bar.Name = "Bar"
+		bar.BackgroundColor3 = Color3.fromRGB(244, 206, 126)
+		bar.BackgroundTransparency = 0.2
+		bar.BorderSizePixel = 0
+		bar.Position = UDim2.fromOffset(8, 40)
+		bar.Size = UDim2.fromOffset(24 + (index * 8), 4)
+		bar.Parent = tierCard
+
+		local barCorner = Instance.new("UICorner")
+		barCorner.CornerRadius = UDim.new(0, 4)
+		barCorner.Parent = bar
+
+		table.insert(tierBars, {
+			card = tierCard,
+			stroke = tierStroke,
+			bar = bar,
+			phase = index * 0.8,
+		})
+	end
+
+	local footer = Instance.new("TextLabel")
+	footer.Name = "Footer"
+	footer.BackgroundTransparency = 1
+	footer.Position = UDim2.fromOffset(16, 132)
+	footer.Size = UDim2.new(1, -32, 0, 14)
+	footer.Font = Enum.Font.GothamMedium
+	footer.Text = "Use 1 / 2 / 3 or the prompt to support"
+	footer.TextColor3 = Color3.fromRGB(236, 224, 188)
+	footer.TextSize = 10
+	footer.TextXAlignment = Enum.TextXAlignment.Left
+	footer.Parent = frame
+
+	task.spawn(function()
+		while board.Parent and part.Parent do
+			local t = os.clock()
+			local wave = (math.sin(t * 1.8) + 1) * 0.5
+			local shimmerWave = (math.sin(t * 1.2) + 1) * 0.5
+			stroke.Color = Color3.fromRGB(244, 206, 126):Lerp(Color3.fromRGB(255, 234, 176), wave * 0.45)
+			frame.BackgroundColor3 = Color3.fromRGB(18, 16, 12):Lerp(Color3.fromRGB(34, 26, 16), wave * 0.22)
+			title.TextColor3 = Color3.fromRGB(255, 240, 198):Lerp(Color3.fromRGB(255, 248, 220), wave * 0.4)
+			rule.Size = UDim2.fromOffset(94 + math.floor(wave * 44), 3)
+			pulse.Size = UDim2.fromOffset(110 + math.floor(wave * 74), 3)
+			pulse.BackgroundTransparency = 0.88 - (wave * 0.28)
+			shimmer.Position = UDim2.new(0, -60 + (shimmerWave * 250), 0, 0)
+			shimmer.BackgroundTransparency = 0.92 - (wave * 0.12)
+			board.StudsOffset = Vector3.new(0, 5.1 + (math.sin(t * 1.4) * 0.08), 0)
+			for _, entry in ipairs(tierBars) do
+				local tierWave = (math.sin((t * 2.2) + entry.phase) + 1) * 0.5
+				entry.bar.BackgroundTransparency = 0.38 - (tierWave * 0.24)
+				entry.card.BackgroundColor3 = Color3.fromRGB(36, 28, 18):Lerp(Color3.fromRGB(54, 40, 20), tierWave * 0.25)
+				entry.stroke.Color = Color3.fromRGB(214, 182, 116):Lerp(Color3.fromRGB(255, 224, 158), tierWave * 0.5)
+			end
+			RunService.Heartbeat:Wait()
+		end
+	end)
+end
+
 local function attachSurfaceBoard(part: BasePart, title: string, accent: Color3, animatedBoardEffects)
+	clearNamedChildren(part, { "BoardGui", "BoardGuiMirror" })
 	local gui = Instance.new("SurfaceGui")
 	gui.Name = "BoardGui"
 	gui.Face = Enum.NormalId.Front
@@ -322,6 +706,80 @@ local function attachSurfaceBoard(part: BasePart, title: string, accent: Color3,
 	return gui
 end
 
+local function attachCategoryLeaderboardBoard(part: BasePart, title: string, accent: Color3)
+	clearNamedChildren(part, { "BoardGui", "BoardGuiMirror" })
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "BoardGui"
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 24
+	gui.LightInfluence = 1
+	gui.AlwaysOnTop = false
+	gui.Parent = part
+
+	local frame = Instance.new("Frame")
+	frame.Name = "Frame"
+	frame.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
+	frame.BackgroundTransparency = 0.06
+	frame.BorderSizePixel = 0
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.Parent = gui
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = accent
+	stroke.Thickness = 2
+	stroke.Transparency = 0.14
+	stroke.Parent = frame
+
+	local header = Instance.new("TextLabel")
+	header.Name = "Header"
+	header.BackgroundTransparency = 1
+	header.Position = UDim2.fromOffset(20, 18)
+	header.Size = UDim2.new(1, -40, 0, 28)
+	header.Font = Enum.Font.GothamBlack
+	header.Text = title
+	header.TextColor3 = Color3.fromRGB(238, 242, 248)
+	header.TextSize = 24
+	header.TextXAlignment = Enum.TextXAlignment.Left
+	header.Parent = frame
+
+	local subheader = Instance.new("TextLabel")
+	subheader.Name = "Subheader"
+	subheader.BackgroundTransparency = 1
+	subheader.Position = UDim2.fromOffset(20, 48)
+	subheader.Size = UDim2.new(1, -40, 0, 18)
+	subheader.Font = Enum.Font.GothamBold
+	subheader.Text = "TOP OPERATORS"
+	subheader.TextColor3 = accent
+	subheader.TextSize = 12
+	subheader.TextXAlignment = Enum.TextXAlignment.Left
+	subheader.Parent = frame
+
+	local rule = Instance.new("Frame")
+	rule.Name = "Rule"
+	rule.BackgroundColor3 = accent
+	rule.BackgroundTransparency = 0.14
+	rule.BorderSizePixel = 0
+	rule.Position = UDim2.fromOffset(20, 74)
+	rule.Size = UDim2.new(1, -40, 0, 2)
+	rule.Parent = frame
+
+	local body = Instance.new("TextLabel")
+	body.Name = "Body"
+	body.BackgroundTransparency = 1
+	body.Position = UDim2.fromOffset(20, 86)
+	body.Size = UDim2.new(1, -40, 1, -104)
+	body.Font = Enum.Font.GothamMedium
+	body.Text = "Waiting for players..."
+	body.TextColor3 = Color3.fromRGB(226, 232, 240)
+	body.TextSize = 18
+	body.RichText = true
+	body.TextWrapped = true
+	body.TextXAlignment = Enum.TextXAlignment.Left
+	body.TextYAlignment = Enum.TextYAlignment.Top
+	body.Parent = frame
+end
+
 local LEADERBOARD_MASTER_PPS = 16
 local LEADERBOARD_MASTER_WINDOW_BUTTONS = {
 	{ name = "AllTimeWindow", controlName = "AllTimeButton", text = "All Time", x = 24, y = 70, width = 86, height = 22 },
@@ -340,6 +798,7 @@ local LEADERBOARD_MASTER_SCROLL_BUTTONS = {
 }
 
 local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects)
+	clearNamedChildren(part, { "BoardGui", "BoardGuiMirror" })
 	local gui = Instance.new("SurfaceGui")
 	gui.Name = "BoardGui"
 	gui.Face = Enum.NormalId.Front
@@ -587,8 +1046,8 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 		crest.BackgroundColor3 = layout.accent
 		crest.BackgroundTransparency = 0.9
 		crest.BorderSizePixel = 0
-		crest.Position = UDim2.fromOffset(compact and 8 or 12, compact and (ultraCompact and 7 or 10) or 12)
-		crest.Size = UDim2.fromOffset(compact and (ultraCompact and 30 or 38) or 54, compact and (ultraCompact and 30 or 38) or 54)
+		crest.Position = UDim2.fromOffset(compact and 8 or 12, compact and (ultraCompact and 6 or 10) or 12)
+		crest.Size = UDim2.fromOffset(compact and (ultraCompact and 24 or 38) or 54, compact and (ultraCompact and 24 or 38) or 54)
 		crest.Parent = card
 
 		local crestCorner = Instance.new("UICorner")
@@ -617,36 +1076,37 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 		local title = Instance.new("TextLabel")
 		title.Name = "Title"
 		title.BackgroundTransparency = 1
-		title.Position = UDim2.fromOffset(compact and (ultraCompact and 46 or 56) or 78, compact and (ultraCompact and 7 or 10) or 14)
-		title.Size = UDim2.new(1, compact and (ultraCompact and -92 or -114) or -132, 0, compact and 18 or 24)
+		title.Position = UDim2.fromOffset(compact and (ultraCompact and 38 or 56) or 78, compact and (ultraCompact and 4 or 10) or 14)
+		title.Size = UDim2.new(1, compact and (ultraCompact and -76 or -114) or -132, 0, compact and (ultraCompact and 14 or 18) or 24)
 		title.Font = Enum.Font.GothamBlack
 		title.Text = "Awaiting Operator"
 		title.TextColor3 = Color3.fromRGB(54, 42, 26)
-		title.TextSize = compact and (ultraCompact and 10 or 12) or (layout.width > 240 and 18 or 15)
+		title.TextSize = compact and (ultraCompact and 8 or 12) or (layout.width > 240 and 18 or 15)
 		title.TextXAlignment = Enum.TextXAlignment.Left
 		title.Parent = card
 
 		local subtitle = Instance.new("TextLabel")
 		subtitle.Name = "Subtitle"
 		subtitle.BackgroundTransparency = 1
-		subtitle.Position = UDim2.fromOffset(compact and (ultraCompact and 46 or 56) or 78, compact and (ultraCompact and 22 or 28) or 42)
-		subtitle.Size = UDim2.new(1, compact and (ultraCompact and -92 or -114) or -132, 0, compact and (ultraCompact and 12 or 14) or 18)
+		subtitle.Position = UDim2.fromOffset(compact and (ultraCompact and 38 or 56) or 78, compact and (ultraCompact and 15 or 28) or 42)
+		subtitle.Size = UDim2.new(1, compact and (ultraCompact and -76 or -114) or -132, 0, compact and (ultraCompact and 9 or 14) or 18)
 		subtitle.Font = Enum.Font.GothamBold
 		subtitle.Text = "No record yet"
 		subtitle.TextColor3 = Color3.fromRGB(112, 96, 72)
-		subtitle.TextSize = compact and (ultraCompact and 8 or 9) or (layout.width > 240 and 11 or 10)
+		subtitle.TextSize = compact and (ultraCompact and 6 or 9) or (layout.width > 240 and 11 or 10)
 		subtitle.TextXAlignment = Enum.TextXAlignment.Left
+		subtitle.Visible = not ultraCompact
 		subtitle.Parent = card
 
 		local value = Instance.new("TextLabel")
 		value.Name = "Value"
 		value.BackgroundTransparency = 1
-		value.Position = UDim2.fromOffset(14, compact and (ultraCompact and 30 or 40) or 68)
-		value.Size = UDim2.new(1, -28, 0, 28)
+		value.Position = UDim2.fromOffset(compact and (ultraCompact and 38 or 14) or 14, compact and (ultraCompact and 15 or 40) or 68)
+		value.Size = UDim2.new(1, compact and (ultraCompact and -48 or -28) or -28, 0, compact and (ultraCompact and 12 or 28) or 28)
 		value.Font = Enum.Font.GothamBlack
 		value.Text = "-"
 		value.TextColor3 = Color3.fromRGB(44, 34, 18)
-		value.TextSize = compact and (ultraCompact and 9 or 11) or (layout.width > 240 and 20 or 17)
+		value.TextSize = compact and (ultraCompact and 8 or 11) or (layout.width > 240 and 20 or 17)
 		value.TextXAlignment = Enum.TextXAlignment.Left
 		value.Parent = card
 
@@ -660,6 +1120,7 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 		valueLabel.TextColor3 = Color3.fromRGB(118, 102, 76)
 		valueLabel.TextSize = compact and (ultraCompact and 7 or 8) or 9
 		valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+		valueLabel.Visible = not ultraCompact
 		valueLabel.Parent = card
 
 		local rankChip = Instance.new("Frame")
@@ -667,8 +1128,8 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 		rankChip.BackgroundColor3 = layout.accent
 		rankChip.BackgroundTransparency = compact and 0.94 or 0.91
 		rankChip.BorderSizePixel = 0
-		rankChip.Position = UDim2.new(1, compact and (ultraCompact and -48 or -62) or -88, 0, compact and (ultraCompact and 8 or 10) or 12)
-		rankChip.Size = UDim2.fromOffset(compact and (ultraCompact and 38 or 50) or 74, compact and (ultraCompact and 16 or 18) or 24)
+		rankChip.Position = UDim2.new(1, compact and (ultraCompact and -34 or -62) or -88, 0, compact and (ultraCompact and 5 or 10) or 12)
+		rankChip.Size = UDim2.fromOffset(compact and (ultraCompact and 26 or 50) or 74, compact and (ultraCompact and 14 or 18) or 24)
 		rankChip.Parent = card
 
 		local rankChipCorner = Instance.new("UICorner")
@@ -684,12 +1145,12 @@ local function attachLeaderboardMasterBoard(part: BasePart, animatedBoardEffects
 		local rank = Instance.new("TextLabel")
 		rank.Name = "Rank"
 		rank.BackgroundTransparency = 1
-		rank.Position = UDim2.new(1, compact and (ultraCompact and -44 or -58) or -84, 0, compact and (ultraCompact and 7 or 9) or 13)
-		rank.Size = UDim2.fromOffset(compact and (ultraCompact and 34 or 42) or 66, compact and (ultraCompact and 16 or 18) or 22)
+		rank.Position = UDim2.new(1, compact and (ultraCompact and -32 or -58) or -84, 0, compact and (ultraCompact and 4 or 9) or 13)
+		rank.Size = UDim2.fromOffset(compact and (ultraCompact and 24 or 42) or 66, compact and (ultraCompact and 14 or 18) or 22)
 		rank.Font = Enum.Font.GothamBlack
 		rank.Text = "#" .. tostring(info.rank)
 		rank.TextColor3 = layout.accent
-		rank.TextSize = compact and (ultraCompact and 9 or 11) or 15
+		rank.TextSize = compact and (ultraCompact and 7 or 11) or 15
 		rank.TextXAlignment = Enum.TextXAlignment.Center
 		rank.Parent = card
 
@@ -1916,15 +2377,144 @@ local function buildDeployVoteBoardGui(part: BasePart, guiName: string, face: En
 end
 
 local function attachDeployVoteBoard(part: BasePart)
+	clearNamedChildren(part, { "BoardGui", "BoardGuiMirror" })
 	buildDeployVoteBoardGui(part, "BoardGui", Enum.NormalId.Front)
-	buildDeployVoteBoardGui(part, "BoardGuiMirror", Enum.NormalId.Back)
 end
 
-local function clearNamedChildren(parent: Instance, childNames: { string })
+clearNamedChildren = function(parent: Instance, childNames: { string })
 	for _, childName in ipairs(childNames) do
 		local child = parent:FindFirstChild(childName)
 		if child then
 			child:Destroy()
+		end
+	end
+end
+
+local function clearBoardPresentation(part: BasePart)
+	for _, child in ipairs(part:GetChildren()) do
+		if child:IsA("SurfaceGui") or child:IsA("BillboardGui") then
+			child:Destroy()
+		end
+	end
+end
+
+local function normalizeLobbySpawnPoints(lobbyModel: Instance)
+	local outerGround = lobbyModel:FindFirstChild("OuterGround", true)
+	local worldOrigin = Config.Origin
+	if outerGround and outerGround:IsA("BasePart") then
+		worldOrigin = outerGround.Position - Vector3.new(0, -1.2, 0)
+	else
+		local primary = lobbyModel:IsA("Model") and lobbyModel.PrimaryPart or lobbyModel:FindFirstChildWhichIsA("BasePart", true)
+		if primary and primary:IsA("BasePart") then
+			worldOrigin = primary.Position
+		end
+	end
+
+	local preferredSpawn = lobbyModel:FindFirstChild("LobbySpawn", true)
+	if not (preferredSpawn and preferredSpawn:IsA("SpawnLocation")) then
+		preferredSpawn = nil
+	end
+
+	if not preferredSpawn then
+		for _, descendant in ipairs(lobbyModel:GetDescendants()) do
+			if descendant:IsA("SpawnLocation") and descendant:FindFirstAncestor("MissionStaging") == nil then
+				preferredSpawn = descendant
+				preferredSpawn.Name = "LobbySpawn"
+				break
+			end
+		end
+	end
+
+	if not preferredSpawn then
+		preferredSpawn = Instance.new("SpawnLocation")
+		preferredSpawn.Name = "LobbySpawn"
+		preferredSpawn.Parent = lobbyModel
+		preferredSpawn.CFrame = CFrame.new(worldOrigin + Config.SpawnOffset + Config.SpawnLayout.SpawnLocation.Offset)
+	end
+
+	preferredSpawn.Size = Config.SpawnLayout.SpawnLocation.Size
+	preferredSpawn.Anchored = true
+	preferredSpawn.CanCollide = true
+	preferredSpawn.Neutral = true
+	preferredSpawn.Enabled = true
+	preferredSpawn.Duration = 0
+	preferredSpawn.Material = Enum.Material.Concrete
+	preferredSpawn.Color = Config.SpawnLayout.SpawnLocation.Color
+	CollectionService:AddTag(preferredSpawn, "LobbySpawn")
+
+	for _, descendant in ipairs(Workspace:GetDescendants()) do
+		if descendant:IsA("SpawnLocation") and descendant ~= preferredSpawn then
+			descendant.Enabled = false
+			if CollectionService:HasTag(descendant, "LobbySpawn") then
+				CollectionService:RemoveTag(descendant, "LobbySpawn")
+			end
+		end
+	end
+
+	return preferredSpawn
+end
+
+local function ensureLobbyArrivalAnchor(lobbyModel: Instance): BasePart?
+	local existing = lobbyModel:FindFirstChild("LobbyArrivalAnchor", true)
+	if existing and existing:IsA("BasePart") then
+		CollectionService:AddTag(existing, "LobbySpawn")
+		existing.Anchored = true
+		existing.CanCollide = false
+		existing.CanQuery = false
+		existing.Transparency = 1
+		return existing
+	end
+
+	local preferredSpawn = lobbyModel:FindFirstChild("LobbySpawn", true)
+	local anchorCFrame
+	if preferredSpawn and preferredSpawn:IsA("BasePart") then
+		anchorCFrame = preferredSpawn.CFrame + Vector3.new(0, 4, 0)
+	elseif lobbyModel:IsA("Model") then
+		local boundsCFrame, boundsSize = lobbyModel:GetBoundingBox()
+		anchorCFrame = boundsCFrame + Vector3.new(0, math.max(6, boundsSize.Y * 0.1), 0)
+	else
+		local primary = lobbyModel:FindFirstChildWhichIsA("BasePart", true)
+		if primary then
+			anchorCFrame = primary.CFrame + Vector3.new(0, 6, 0)
+		end
+	end
+
+	if not anchorCFrame then
+		return nil
+	end
+
+	local anchor = Instance.new("Part")
+	anchor.Name = "LobbyArrivalAnchor"
+	anchor.Size = Vector3.new(4, 1, 4)
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.Transparency = 1
+	anchor.CFrame = anchorCFrame
+	anchor.Parent = lobbyModel
+	CollectionService:AddTag(anchor, "LobbySpawn")
+	return anchor
+end
+
+local function clearLegacyLeaderboardRigs(lobbyModel: Instance)
+	local monument = lobbyModel:FindFirstChild("LeaderboardMonument", true)
+	if not monument then
+		return
+	end
+
+	for _, child in ipairs(monument:GetChildren()) do
+		if child:IsA("Model") then
+			local humanoid = child:FindFirstChildWhichIsA("Humanoid", true)
+			local normalizedName = string.lower((child.Name:gsub("[%s%p_]+", "")))
+			if humanoid
+				or string.find(normalizedName, "podium", 1, true)
+				or string.find(normalizedName, "top1", 1, true)
+				or string.find(normalizedName, "top2", 1, true)
+				or string.find(normalizedName, "top3", 1, true)
+				or string.find(normalizedName, "rig", 1, true)
+			then
+				child:Destroy()
+			end
 		end
 	end
 end
@@ -1946,49 +2536,1580 @@ local function ensurePrompt(part: BasePart, promptName: string, actionText: stri
 	return prompt
 end
 
-local function cloneDesignerLobbyTemplate(root: Instance)
-	local template = Workspace:FindFirstChild("DesignerLobby")
-	if not template then
-		return nil
-	end
+local makeMissionStaging
+local makeOpenSkyLobby
 
-	local clone = template:Clone()
-	clone.Name = "OpenSkyLobby"
-	clone.Parent = root
-	return clone
+local function publishLobbyExport(lobbyModel: Instance)
+	return
 end
 
-local function publishDesignerLobbyExport(lobbyModel: Instance)
-	if not RunService:IsStudio() or not lobbyModel or not lobbyModel:IsA("Model") then
+local function ensureLobbyActivityContent(lobbyModel: Instance)
+	if not lobbyModel then
 		return
 	end
 
-	local existing = Workspace:FindFirstChild("DesignerLobby_Export")
-	if existing then
-		existing:Destroy()
+	local spawn = lobbyModel:FindFirstChild("LobbySpawn", true)
+	local worldOrigin
+	if spawn and spawn:IsA("BasePart") then
+		worldOrigin = spawn.Position - Config.SpawnOffset
+	else
+		local primary = lobbyModel:IsA("Model") and lobbyModel.PrimaryPart or lobbyModel:FindFirstChildWhichIsA("BasePart", true)
+		if primary and primary:IsA("BasePart") then
+			worldOrigin = primary.Position
+		else
+			worldOrigin = Config.Origin
+		end
 	end
 
-	local clone = lobbyModel:Clone()
-	clone.Name = "DesignerLobby_Export"
-	clone.Parent = Workspace
-	clone:SetAttribute("ExportHint", "Save this model as your editable DesignerLobby source.")
+	local lobbyReturnAnchor = lobbyModel:FindFirstChild("LobbyReturnAnchor", true)
+	if not (lobbyReturnAnchor and lobbyReturnAnchor:IsA("BasePart")) then
+		lobbyReturnAnchor = spawn
+	end
+
+	if Config.Areas.Training then
+		ensureCompleteActivityModel(lobbyModel, "TrainingYard", REQUIRED_ACTIVITY_PARTS.TrainingYard, function()
+			return makeTrainingYard(lobbyModel, worldOrigin + Config.Areas.Training.Offset, Config.Areas.Training, lobbyReturnAnchor)
+		end)
+	end
+	if Config.Areas.Parkour then
+		ensureCompleteActivityModel(lobbyModel, "ParkourCourse", REQUIRED_ACTIVITY_PARTS.ParkourCourse, function()
+			return makeParkourCourse(lobbyModel, worldOrigin + Config.Areas.Parkour.Offset, Config.Areas.Parkour, lobbyReturnAnchor)
+		end)
+	end
+	if Config.Areas.TargetRange then
+		ensureCompleteActivityModel(lobbyModel, "TargetRange", REQUIRED_ACTIVITY_PARTS.TargetRange, function()
+			return makeTargetRange(lobbyModel, worldOrigin + Config.Areas.TargetRange.Offset, Config.Areas.TargetRange, lobbyReturnAnchor)
+		end)
+	end
+	if Config.Areas.Salvage then
+		ensureCompleteActivityModel(lobbyModel, "SalvageRun", REQUIRED_ACTIVITY_PARTS.SalvageRun, function()
+			return makeSalvageRun(lobbyModel, worldOrigin + Config.Areas.Salvage.Offset, Config.Areas.Salvage, lobbyReturnAnchor)
+		end)
+	end
 end
 
-local function wireDesignerLobby(root: Instance, lobbyModel: Instance)
+local function getActiveLobbyCompositionRoot(): Instance?
+	local root = Workspace:FindFirstChild(Config.RootName)
+	if not root then
+		for _, child in ipairs(Workspace:GetChildren()) do
+			if child:GetAttribute("WorldType") == "LobbyHub" then
+				root = child
+				break
+			end
+		end
+	end
+	if not root then
+		return nil
+	end
+	if root:IsA("Model") then
+		return root
+	end
+	return root:FindFirstChildWhichIsA("Model")
+end
+
+local function getLobbyWorldOrigin(lobbyRoot: Instance): Vector3
+	if not lobbyRoot then
+		return Config.Origin
+	end
+
+	local spawn = lobbyRoot:FindFirstChild("LobbySpawn", true)
+	if spawn and spawn:IsA("BasePart") then
+		return spawn.Position - Config.SpawnOffset
+	end
+
+	local anchor = lobbyRoot:FindFirstChild("OuterGround", true)
+	if anchor and anchor:IsA("BasePart") then
+		return anchor.Position - Vector3.new(0, -1.2, 0)
+	end
+
+	local primary = lobbyRoot:IsA("Model") and lobbyRoot.PrimaryPart or lobbyRoot:FindFirstChildWhichIsA("BasePart", true)
+	if primary and primary:IsA("BasePart") then
+		return primary.Position
+	end
+
+	return Config.Origin
+end
+
+local function isSystemAnchorDescendant(instance: Instance): boolean
+	return instance:FindFirstAncestor("MissionStaging") ~= nil
+		or instance:FindFirstAncestor("LeaderboardMonument") ~= nil
+		or instance:FindFirstAncestor("Vote Model") ~= nil
+		or instance:FindFirstAncestor("map vote") ~= nil
+		or instance:FindFirstAncestor("donation") ~= nil
+		or instance:FindFirstAncestor("TrainingYard") ~= nil
+		or instance:FindFirstAncestor("ParkourCourse") ~= nil
+		or instance:FindFirstAncestor("TargetRange") ~= nil
+		or instance:FindFirstAncestor("SalvageRun") ~= nil
+		or instance:FindFirstAncestor("CentralHub") ~= nil
+		or instance:FindFirstAncestor("DuelRing") ~= nil
+		or instance:FindFirstAncestor("SpawnZone") ~= nil
+		or instance:FindFirstAncestor("NorthPatrol") ~= nil
+		or instance:FindFirstAncestor("OpsCoordinator") ~= nil
+		or instance:FindFirstAncestor("LobbyMetadata") ~= nil
+end
+
+local function hasPlayableLobbyGeometry(lobbyModel: Instance): boolean
+	if lobbyModel:FindFirstChild("PlayableShell") then
+		return true
+	end
+
+	local largeFloorCount = 0
+	local structuralCount = 0
+	for _, descendant in ipairs(lobbyModel:GetDescendants()) do
+		if descendant:IsA("BasePart") and not isSystemAnchorDescendant(descendant) then
+			local size = descendant.Size
+			local isLargeFloor = size.X >= 80 and size.Z >= 80 and size.Y <= 8
+			local isMajorStructure = (size.X >= 40 and size.Z >= 40) or (size.Y >= 16 and (size.X >= 4 or size.Z >= 4))
+			if isLargeFloor then
+				largeFloorCount += 1
+			end
+			if isMajorStructure then
+				structuralCount += 1
+			end
+		end
+	end
+
+	return largeFloorCount >= 1 and structuralCount >= 6
+end
+
+local function findAnchorPosition(root: Instance, names: { string }, fallback: Vector3): Vector3
+	for _, name in ipairs(names) do
+		local instance = root:FindFirstChild(name, true)
+		if instance then
+			if instance:IsA("BasePart") then
+				return instance.Position
+			end
+			if instance:IsA("Model") then
+				local primary = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart", true)
+				if primary then
+					return primary.Position
+				end
+			end
+		end
+	end
+	return fallback
+end
+
+local function buildPlayableLobbyShell(lobbyModel: Instance, worldOrigin: Vector3)
+	local shell = Instance.new("Model")
+	shell.Name = "PlayableShell"
+	shell.Parent = lobbyModel
+
+	local shellFloorColor = Color3.fromRGB(28, 32, 40)
+	local shellTrimColor = Color3.fromRGB(116, 132, 156)
+	local wallColor = Color3.fromRGB(46, 52, 62)
+	local ceilingColor = Color3.fromRGB(34, 38, 46)
+
+	local floor = makePart(
+		shell,
+		"Part",
+		"OuterGround",
+		Vector3.new(300, 2, 276),
+		CFrame.new(worldOrigin + Vector3.new(0, -1, 0)),
+		shellFloorColor,
+		Enum.Material.SmoothPlastic
+	)
+	floor.CanQuery = false
+
+	local concourse = makePart(
+		shell,
+		"Part",
+		"MainConcourse",
+		Vector3.new(232, 1.2, 188),
+		CFrame.new(worldOrigin + Vector3.new(0, -0.4, 4)),
+		Color3.fromRGB(34, 38, 46),
+		Enum.Material.DiamondPlate
+	)
+	concourse.CanQuery = false
+	makeGlowPart(shell, "MainConcourseTrim", Vector3.new(236, 0.08, 192), concourse.CFrame * CFrame.new(0, 0.66, 0), shellTrimColor, 0.9).CanQuery = false
+
+	for _, deckInfo in ipairs({
+		{ "WestGalleryDeck", Vector3.new(86, 1, 116), Vector3.new(-92, -0.46, 14), Color3.fromRGB(40, 42, 36) },
+		{ "EastGalleryDeck", Vector3.new(86, 1, 116), Vector3.new(92, -0.46, 14), Color3.fromRGB(36, 40, 46) },
+		{ "SouthArchiveDeck", Vector3.new(124, 1, 56), Vector3.new(0, -0.46, 98), Color3.fromRGB(42, 40, 36) },
+		{ "NorthDeployDeck", Vector3.new(108, 1, 52), Vector3.new(0, -0.46, -98), Color3.fromRGB(46, 38, 36) },
+	}) do
+		local deck = makePart(
+			shell,
+			"Part",
+			deckInfo[1],
+			deckInfo[2],
+			CFrame.new(worldOrigin + deckInfo[3]),
+			deckInfo[4],
+			Enum.Material.Metal
+		)
+		deck.CanQuery = false
+		makeGlowPart(shell, deckInfo[1] .. "Glow", Vector3.new(deckInfo[2].X - 6, 0.06, deckInfo[2].Z - 6), deck.CFrame * CFrame.new(0, 0.56, 0), shellTrimColor, 0.92).CanQuery = false
+	end
+
+	local ceiling = makePart(
+		shell,
+		"Part",
+		"Ceiling",
+		Vector3.new(300, 2, 276),
+		CFrame.new(worldOrigin + Vector3.new(0, 26, 0)),
+		ceilingColor,
+		Enum.Material.Metal
+	)
+	ceiling.CanQuery = false
+
+	local wallData = {
+		{ "NorthWall", Vector3.new(300, 24, 4), Vector3.new(0, 11, -138) },
+		{ "SouthWall", Vector3.new(300, 24, 4), Vector3.new(0, 11, 138) },
+		{ "WestWall", Vector3.new(4, 24, 268), Vector3.new(-148, 11, 0) },
+		{ "EastWall", Vector3.new(4, 24, 268), Vector3.new(148, 11, 0) },
+	}
+	for _, info in ipairs(wallData) do
+		local wall = makePart(
+			shell,
+			"Part",
+			info[1],
+			info[2],
+			CFrame.new(worldOrigin + info[3]),
+			wallColor,
+			Enum.Material.Metal
+		)
+		wall.CanQuery = false
+	end
+
+	for _, trimInfo in ipairs({
+		{ "NorthTrim", Vector3.new(286, 0.24, 1.2), Vector3.new(0, 21.6, -135.8) },
+		{ "SouthTrim", Vector3.new(286, 0.24, 1.2), Vector3.new(0, 21.6, 135.8) },
+		{ "WestTrim", Vector3.new(1.2, 0.24, 254), Vector3.new(-145.8, 21.6, 0) },
+		{ "EastTrim", Vector3.new(1.2, 0.24, 254), Vector3.new(145.8, 21.6, 0) },
+	}) do
+		makeGlowPart(shell, trimInfo[1], trimInfo[2], CFrame.new(worldOrigin + trimInfo[3]), shellTrimColor, 0.24).CanQuery = false
+	end
+
+	for _, offset in ipairs({
+		Vector3.new(-132, 12, -122),
+		Vector3.new(132, 12, -122),
+		Vector3.new(-132, 12, 122),
+		Vector3.new(132, 12, 122),
+	}) do
+		local pillar = makePart(
+			shell,
+			"Part",
+			"CornerPillar",
+			Vector3.new(8, 24, 8),
+			CFrame.new(worldOrigin + offset),
+			Color3.fromRGB(58, 66, 80),
+			Enum.Material.Metal
+		)
+		pillar.CanQuery = false
+	end
+
+	local centerPlatform = makePart(
+		shell,
+		"Part",
+		"CenterPlatform",
+		Vector3.new(64, 3, 64),
+		CFrame.new(worldOrigin + Vector3.new(0, 1.5, 0)),
+		Color3.fromRGB(54, 62, 74),
+		Enum.Material.DiamondPlate
+	)
+	centerPlatform.CanQuery = false
+	makeGlowPart(shell, "CenterPlatformTrim", Vector3.new(68, 0.1, 68), centerPlatform.CFrame * CFrame.new(0, 1.56, 0), shellTrimColor, 0.82).CanQuery = false
+
+	for _, rampInfo in ipairs({
+		{ "NorthRamp", Vector3.new(14, 1.2, 18), Vector3.new(0, 0.62, -40) },
+		{ "SouthRamp", Vector3.new(14, 1.2, 18), Vector3.new(0, 0.62, 40) },
+		{ "WestRamp", Vector3.new(18, 1.2, 14), Vector3.new(-40, 0.62, 0) },
+		{ "EastRamp", Vector3.new(18, 1.2, 14), Vector3.new(40, 0.62, 0) },
+	}) do
+		local ramp = makePart(
+			shell,
+			"Part",
+			rampInfo[1],
+			rampInfo[2],
+			CFrame.new(worldOrigin + rampInfo[3]),
+			Color3.fromRGB(62, 68, 80),
+			Enum.Material.Metal
+		)
+		ramp.CanQuery = false
+		makeGlowPart(shell, rampInfo[1] .. "Glow", Vector3.new(math.max(rampInfo[2].X - 3, 8), 0.06, math.max(rampInfo[2].Z - 3, 8)), ramp.CFrame * CFrame.new(0, 0.66, 0), shellTrimColor, 0.88).CanQuery = false
+	end
+
+	local lanes = {
+		{ "NorthSpine", Vector3.new(26, 1.2, 94), Vector3.new(0, 0.6, -72), Color3.fromRGB(82, 66, 62), Color3.fromRGB(244, 184, 156) },
+		{ "SouthSpine", Vector3.new(26, 1.2, 88), Vector3.new(0, 0.6, 74), Color3.fromRGB(64, 62, 58), Color3.fromRGB(240, 224, 182) },
+		{ "WestWingLane", Vector3.new(98, 1.2, 28), Vector3.new(-82, 0.6, 8), Color3.fromRGB(64, 66, 58), Color3.fromRGB(234, 214, 146) },
+		{ "EastWingLane", Vector3.new(98, 1.2, 28), Vector3.new(82, 0.6, 8), Color3.fromRGB(58, 64, 68), Color3.fromRGB(156, 194, 244) },
+	}
+	for _, lane in ipairs(lanes) do
+		local plate = makePart(
+			shell,
+			"Part",
+			lane[1],
+			lane[2],
+			CFrame.new(worldOrigin + lane[3]),
+			lane[4],
+			Enum.Material.Metal
+		)
+		plate.CanQuery = false
+		makeGlowPart(shell, lane[1] .. "Glow", Vector3.new(lane[2].X - 4, 0.08, math.max(lane[2].Z - 4, 8)), plate.CFrame * CFrame.new(0, lane[2].Y * 0.5 + 0.08, 0), lane[5], 0.88).CanQuery = false
+	end
+
+	for _, divider in ipairs({
+		{ "NorthDeployFrame", Vector3.new(58, 12, 3), Vector3.new(0, 6, -98), Color3.fromRGB(84, 58, 54), Color3.fromRGB(244, 186, 164), "DEPLOY" },
+		{ "SouthArchiveFrame", Vector3.new(56, 12, 3), Vector3.new(0, 6, 104), Color3.fromRGB(74, 70, 58), Color3.fromRGB(236, 224, 182), "ARCHIVE" },
+		{ "WestTrainingFrame", Vector3.new(3, 12, 58), Vector3.new(-92, 6, 8), Color3.fromRGB(78, 74, 56), Color3.fromRGB(234, 214, 146), "TRAINING" },
+		{ "EastOpsFrame", Vector3.new(3, 12, 58), Vector3.new(92, 6, 8), Color3.fromRGB(60, 70, 82), Color3.fromRGB(156, 194, 244), "OPERATIONS" },
+	}) do
+		local frame = makePart(
+			shell,
+			"Part",
+			divider[1],
+			divider[2],
+			CFrame.new(worldOrigin + divider[3]),
+			divider[4],
+			Enum.Material.Metal
+		)
+		frame.CanQuery = false
+		makeGlowPart(shell, divider[1] .. "Accent", Vector3.new(math.max(divider[2].X - 1, 1), 0.14, math.max(divider[2].Z - 1, 1)), frame.CFrame * CFrame.new(0, divider[2].Y * 0.45, 0), divider[5], 0.72).CanQuery = false
+		attachWorldText(frame, divider[6], Vector3.new(0, divider[2].Y * 0.45 + 0.8, 0), divider[5], Vector2.new(112, 18))
+		local signGlow = makeGlowPart(
+			shell,
+			divider[1] .. "SignGlow",
+			Vector3.new(math.max(divider[2].X - 10, 10), 0.08, math.max(divider[2].Z - 1.6, 1)),
+			frame.CFrame * CFrame.new(0, divider[2].Y * 0.45 - 0.18, 0),
+			divider[5],
+			0.82
+		)
+		signGlow.CanQuery = false
+	end
+
+	local boardZones = {
+		{
+			"VoteZone",
+			findAnchorPosition(lobbyModel, { "Vote Model", "map vote", "VoteBoard", "DeployVoteDeck" }, worldOrigin + Vector3.new(0, 0, -104)),
+			Vector3.new(60, 10, 28),
+			Color3.fromRGB(96, 62, 56),
+			Color3.fromRGB(244, 186, 164),
+		},
+		{
+			"DonationZone",
+			findAnchorPosition(lobbyModel, { "donation", "SupportTerminal" }, worldOrigin + Vector3.new(92, 0, 18)),
+			Vector3.new(28, 8, 24),
+			Color3.fromRGB(82, 72, 48),
+			Color3.fromRGB(244, 214, 132),
+		},
+		{
+			"LeaderboardZone",
+			findAnchorPosition(lobbyModel, { "LeaderboardMonument", "MasterBoard", "LeaderboardBoard", "BoardFace", "Leaderboard (Levels)" }, worldOrigin + Vector3.new(-116, 0, 92)),
+			Vector3.new(58, 12, 28),
+			Color3.fromRGB(72, 68, 60),
+			Color3.fromRGB(236, 224, 182),
+		},
+	}
+	for _, zone in ipairs(boardZones) do
+		local pos = zone[2]
+		local platform = makePart(
+			shell,
+			"Part",
+			zone[1] .. "Platform",
+			Vector3.new(zone[3].X, 1.2, zone[3].Z),
+			CFrame.new(Vector3.new(pos.X, worldOrigin.Y + 0.6, pos.Z)),
+			zone[4],
+			Enum.Material.Metal
+		)
+		platform.CanQuery = false
+		local backplate = makePart(
+			shell,
+			"Part",
+			zone[1] .. "Backplate",
+			zone[3],
+			CFrame.new(Vector3.new(pos.X, worldOrigin.Y + zone[3].Y * 0.5, pos.Z - zone[3].Z * 0.5 - 1.6)),
+			wallColor,
+			Enum.Material.Metal
+		)
+		backplate.CanQuery = false
+		makeGlowPart(shell, zone[1] .. "Accent", Vector3.new(zone[3].X - 8, 0.12, 1), backplate.CFrame * CFrame.new(0, zone[3].Y * 0.35, 2.1), zone[5], 0.62).CanQuery = false
+		local threshold = makePart(
+			shell,
+			"Part",
+			zone[1] .. "Threshold",
+			Vector3.new(math.max(zone[3].X * 0.34, 12), 0.16, 2.2),
+			CFrame.new(Vector3.new(pos.X, worldOrigin.Y + 0.18, pos.Z + zone[3].Z * 0.5 - 1.8)),
+			Color3.fromRGB(74, 80, 92),
+			Enum.Material.Metal
+		)
+		threshold.CanQuery = false
+		makeGlowPart(shell, zone[1] .. "ThresholdGlow", Vector3.new(math.max(zone[3].X * 0.34 - 2, 10), 0.06, 0.8), threshold.CFrame * CFrame.new(0, 0.14, 0), zone[5], 0.76).CanQuery = false
+		attachWorldText(backplate, string.upper(string.gsub(zone[1], "Zone", "")), Vector3.new(0, zone[3].Y * 0.32 + 0.8, 0), zone[5], Vector2.new(108, 18))
+	end
+
+	local leaderboardCore = findAnchorPosition(lobbyModel, { "LeaderboardMonument", "MasterBoard", "LeaderboardBoard", "BoardFace", "Leaderboard (Levels)" }, worldOrigin + Vector3.new(-116, 0, 92))
+	local leaderboardDeck = makePart(
+		shell,
+		"Part",
+		"LeaderboardDeck",
+		Vector3.new(68, 1.2, 34),
+		CFrame.new(Vector3.new(leaderboardCore.X, worldOrigin.Y + 0.6, leaderboardCore.Z + 8)),
+		Color3.fromRGB(78, 72, 60),
+		Enum.Material.DiamondPlate
+	)
+	leaderboardDeck.CanQuery = false
+	makeGlowPart(shell, "LeaderboardDeckGlow", Vector3.new(60, 0.08, 24), leaderboardDeck.CFrame * CFrame.new(0, 0.66, -1.2), Color3.fromRGB(236, 224, 182), 0.84).CanQuery = false
+	local leaderboardHeader = makePart(
+		shell,
+		"Part",
+		"LeaderboardHeader",
+		Vector3.new(46, 1.1, 2.6),
+		CFrame.new(Vector3.new(leaderboardCore.X, worldOrigin.Y + 9.8, leaderboardCore.Z - 8.6)),
+		Color3.fromRGB(86, 78, 60),
+		Enum.Material.Metal
+	)
+	leaderboardHeader.CanQuery = false
+	makeGlowPart(shell, "LeaderboardHeaderGlow", Vector3.new(36, 0.12, 0.8), leaderboardHeader.CFrame * CFrame.new(0, 0.28, 0.8), Color3.fromRGB(236, 224, 182), 0.62).CanQuery = false
+	attachWorldText(leaderboardHeader, "ARCHIVE RANKING", Vector3.new(0, 1.1, 0), Color3.fromRGB(240, 228, 192), Vector2.new(132, 18))
+	for _, bollardOffset in ipairs({
+		Vector3.new(-24, 1.1, 18),
+		Vector3.new(-10, 1.1, 18),
+		Vector3.new(10, 1.1, 18),
+		Vector3.new(24, 1.1, 18),
+	}) do
+		local bollard = makePart(
+			shell,
+			"Part",
+			"LeaderboardBollard",
+			Vector3.new(1.2, 2.2, 1.2),
+			CFrame.new(Vector3.new(leaderboardCore.X, worldOrigin.Y, leaderboardCore.Z) + bollardOffset),
+			Color3.fromRGB(112, 100, 76),
+			Enum.Material.Metal
+		)
+		bollard.CanQuery = false
+		makeGlowPart(shell, "LeaderboardBollardGlow", Vector3.new(1.4, 0.1, 1.4), bollard.CFrame * CFrame.new(0, 1.14, 0), Color3.fromRGB(250, 236, 196), 0.42).CanQuery = false
+	end
+
+	local donationCore = findAnchorPosition(lobbyModel, { "donation", "SupportTerminal" }, worldOrigin + Vector3.new(92, 0, 18))
+	local donationDeck = makePart(
+		shell,
+		"Part",
+		"DonationDeck",
+		Vector3.new(34, 1.1, 28),
+		CFrame.new(Vector3.new(donationCore.X, worldOrigin.Y + 0.55, donationCore.Z + 4)),
+		Color3.fromRGB(92, 80, 52),
+		Enum.Material.DiamondPlate
+	)
+	donationDeck.CanQuery = false
+	makeGlowPart(shell, "DonationDeckGlow", Vector3.new(26, 0.08, 18), donationDeck.CFrame * CFrame.new(0, 0.62, -0.6), Color3.fromRGB(244, 214, 132), 0.82).CanQuery = false
+	local donationHeader = makePart(
+		shell,
+		"Part",
+		"DonationHeader",
+		Vector3.new(22, 1.1, 2.2),
+		CFrame.new(Vector3.new(donationCore.X, worldOrigin.Y + 8.4, donationCore.Z - 7.4)),
+		Color3.fromRGB(98, 82, 52),
+		Enum.Material.Metal
+	)
+	donationHeader.CanQuery = false
+	makeGlowPart(shell, "DonationHeaderGlow", Vector3.new(18, 0.12, 0.8), donationHeader.CFrame * CFrame.new(0, 0.28, 0.8), Color3.fromRGB(244, 214, 132), 0.62).CanQuery = false
+	attachWorldText(donationHeader, "SUPPORT NODE", Vector3.new(0, 1.1, 0), Color3.fromRGB(252, 228, 160), Vector2.new(120, 18))
+	for _, side in ipairs({ -1, 1 }) do
+		local post = makePart(
+			shell,
+			"Part",
+			"DonationPost",
+			Vector3.new(1.8, 6.8, 1.8),
+			CFrame.new(Vector3.new(donationCore.X + side * 14, worldOrigin.Y + 3.4, donationCore.Z + 2)),
+			Color3.fromRGB(106, 90, 58),
+			Enum.Material.Metal
+		)
+		post.CanQuery = false
+		makeGlowPart(shell, "DonationPostGlow", Vector3.new(1.6, 0.12, 1.6), post.CFrame * CFrame.new(0, 3.42, 0), Color3.fromRGB(244, 214, 132), 0.38).CanQuery = false
+	end
+	local donorBench = makePart(
+		shell,
+		"Part",
+		"DonationBench",
+		Vector3.new(9, 1, 2.8),
+		CFrame.new(Vector3.new(donationCore.X - 12, worldOrigin.Y + 0.5, donationCore.Z + 13)),
+		Color3.fromRGB(114, 98, 70),
+		Enum.Material.WoodPlanks
+	)
+	donorBench.CanQuery = false
+
+	local contractCore = findAnchorPosition(lobbyModel, { "QuestBoard", "ContractBoard", "Contracts" }, worldOrigin + Vector3.new(-48, 0, -102))
+	local contractDeck = makePart(
+		shell,
+		"Part",
+		"ContractDeck",
+		Vector3.new(42, 1.1, 24),
+		CFrame.new(Vector3.new(contractCore.X, worldOrigin.Y + 0.55, contractCore.Z + 6)),
+		Color3.fromRGB(88, 64, 54),
+		Enum.Material.DiamondPlate
+	)
+	contractDeck.CanQuery = false
+	makeGlowPart(shell, "ContractDeckGlow", Vector3.new(34, 0.08, 16), contractDeck.CFrame * CFrame.new(0, 0.62, -0.6), Color3.fromRGB(244, 186, 164), 0.84).CanQuery = false
+	local contractHeader = makePart(
+		shell,
+		"Part",
+		"ContractHeader",
+		Vector3.new(28, 1.1, 2.2),
+		CFrame.new(Vector3.new(contractCore.X, worldOrigin.Y + 8.8, contractCore.Z - 6.4)),
+		Color3.fromRGB(98, 64, 56),
+		Enum.Material.Metal
+	)
+	contractHeader.CanQuery = false
+	makeGlowPart(shell, "ContractHeaderGlow", Vector3.new(22, 0.12, 0.8), contractHeader.CFrame * CFrame.new(0, 0.28, 0.8), Color3.fromRGB(244, 186, 164), 0.62).CanQuery = false
+	attachWorldText(contractHeader, "CONTRACT BOARD", Vector3.new(0, 1.08, 0), Color3.fromRGB(255, 214, 190), Vector2.new(124, 18))
+
+	local challengeCore = findAnchorPosition(lobbyModel, { "DailyBoard", "WeeklyBoard", "ChallengeBoard", "QuestBoard" }, worldOrigin + Vector3.new(46, 0, 102))
+	local challengeDeck = makePart(
+		shell,
+		"Part",
+		"ChallengeDeck",
+		Vector3.new(44, 1.1, 24),
+		CFrame.new(Vector3.new(challengeCore.X, worldOrigin.Y + 0.55, challengeCore.Z + 4)),
+		Color3.fromRGB(84, 78, 56),
+		Enum.Material.DiamondPlate
+	)
+	challengeDeck.CanQuery = false
+	makeGlowPart(shell, "ChallengeDeckGlow", Vector3.new(36, 0.08, 16), challengeDeck.CFrame * CFrame.new(0, 0.62, -0.4), Color3.fromRGB(236, 224, 182), 0.84).CanQuery = false
+	local challengeHeader = makePart(
+		shell,
+		"Part",
+		"ChallengeHeader",
+		Vector3.new(30, 1.1, 2.2),
+		CFrame.new(Vector3.new(challengeCore.X, worldOrigin.Y + 8.8, challengeCore.Z - 6.4)),
+		Color3.fromRGB(92, 84, 60),
+		Enum.Material.Metal
+	)
+	challengeHeader.CanQuery = false
+	makeGlowPart(shell, "ChallengeHeaderGlow", Vector3.new(24, 0.12, 0.8), challengeHeader.CFrame * CFrame.new(0, 0.28, 0.8), Color3.fromRGB(236, 224, 182), 0.62).CanQuery = false
+	attachWorldText(challengeHeader, "DAILY OPS", Vector3.new(0, 1.08, 0), Color3.fromRGB(240, 228, 192), Vector2.new(118, 18))
+
+	local quartermasterCore = findAnchorPosition(lobbyModel, { "Shop", "Inventory", "SkillTree" }, worldOrigin + Vector3.new(112, 0, 4))
+	local quartermasterDeck = makePart(
+		shell,
+		"Part",
+		"QuartermasterDeck",
+		Vector3.new(56, 1.1, 34),
+		CFrame.new(Vector3.new(quartermasterCore.X, worldOrigin.Y + 0.55, quartermasterCore.Z)),
+		Color3.fromRGB(62, 76, 96),
+		Enum.Material.DiamondPlate
+	)
+	quartermasterDeck.CanQuery = false
+	makeGlowPart(shell, "QuartermasterDeckGlow", Vector3.new(48, 0.08, 24), quartermasterDeck.CFrame * CFrame.new(0, 0.62, 0), Color3.fromRGB(156, 194, 244), 0.84).CanQuery = false
+	local quartermasterHeader = makePart(
+		shell,
+		"Part",
+		"QuartermasterHeader",
+		Vector3.new(34, 1.1, 2.4),
+		CFrame.new(Vector3.new(quartermasterCore.X, worldOrigin.Y + 8.8, quartermasterCore.Z - 10.8)),
+		Color3.fromRGB(70, 84, 106),
+		Enum.Material.Metal
+	)
+	quartermasterHeader.CanQuery = false
+	makeGlowPart(shell, "QuartermasterHeaderGlow", Vector3.new(28, 0.12, 0.8), quartermasterHeader.CFrame * CFrame.new(0, 0.28, 0.8), Color3.fromRGB(156, 194, 244), 0.62).CanQuery = false
+	attachWorldText(quartermasterHeader, "QUARTERMASTER", Vector3.new(0, 1.08, 0), Color3.fromRGB(192, 220, 255), Vector2.new(132, 18))
+	for _, kioskOffset in ipairs({
+		Vector3.new(-16, 1.05, -6),
+		Vector3.new(0, 1.05, -6),
+		Vector3.new(16, 1.05, -6),
+	}) do
+		local kiosk = makePart(
+			shell,
+			"Part",
+			"QuartermasterKiosk",
+			Vector3.new(10, 2.1, 10),
+			CFrame.new(Vector3.new(quartermasterCore.X, worldOrigin.Y, quartermasterCore.Z) + kioskOffset),
+			Color3.fromRGB(76, 88, 110),
+			Enum.Material.Metal
+		)
+		kiosk.CanQuery = false
+		makeGlowPart(shell, "QuartermasterKioskGlow", Vector3.new(7.2, 0.08, 7.2), kiosk.CFrame * CFrame.new(0, 1.08, 0), Color3.fromRGB(156, 194, 244), 0.68).CanQuery = false
+	end
+
+	local socialCore = findAnchorPosition(lobbyModel, { "Social", "Squad" }, worldOrigin + Vector3.new(88, 0, 94))
+	local socialDeck = makePart(
+		shell,
+		"Part",
+		"SocialDeck",
+		Vector3.new(52, 1.1, 28),
+		CFrame.new(Vector3.new(socialCore.X, worldOrigin.Y + 0.55, socialCore.Z)),
+		Color3.fromRGB(58, 74, 68),
+		Enum.Material.DiamondPlate
+	)
+	socialDeck.CanQuery = false
+	makeGlowPart(shell, "SocialDeckGlow", Vector3.new(44, 0.08, 18), socialDeck.CFrame * CFrame.new(0, 0.62, 0), Color3.fromRGB(134, 228, 188), 0.82).CanQuery = false
+	local socialHeader = makePart(
+		shell,
+		"Part",
+		"SocialHeader",
+		Vector3.new(30, 1.1, 2.2),
+		CFrame.new(Vector3.new(socialCore.X, worldOrigin.Y + 8.2, socialCore.Z - 8.4)),
+		Color3.fromRGB(66, 88, 78),
+		Enum.Material.Metal
+	)
+	socialHeader.CanQuery = false
+	makeGlowPart(shell, "SocialHeaderGlow", Vector3.new(24, 0.12, 0.8), socialHeader.CFrame * CFrame.new(0, 0.28, 0.8), Color3.fromRGB(134, 228, 188), 0.62).CanQuery = false
+	attachWorldText(socialHeader, "SQUAD CORNER", Vector3.new(0, 1.08, 0), Color3.fromRGB(188, 246, 220), Vector2.new(122, 18))
+	for _, seatOffset in ipairs({
+		Vector3.new(-14, 0.6, 8),
+		Vector3.new(0, 0.6, 8),
+		Vector3.new(14, 0.6, 8),
+	}) do
+		local seatBase = makePart(
+			shell,
+			"Part",
+			"SocialSeatBase",
+			Vector3.new(8, 1.1, 3),
+			CFrame.new(Vector3.new(socialCore.X, worldOrigin.Y, socialCore.Z) + seatOffset),
+			Color3.fromRGB(92, 108, 96),
+			Enum.Material.WoodPlanks
+		)
+		seatBase.CanQuery = false
+	end
+
+	local archiveWall = makePart(
+		shell,
+		"Part",
+		"ResultsArchiveWall",
+		Vector3.new(86, 10, 3),
+		CFrame.new(worldOrigin + Vector3.new(0, 5.2, 118)),
+		Color3.fromRGB(66, 64, 54),
+		Enum.Material.Metal
+	)
+	archiveWall.CanQuery = false
+	makeGlowPart(shell, "ResultsArchiveWallGlow", Vector3.new(72, 0.12, 0.8), archiveWall.CFrame * CFrame.new(0, 2.8, 1), Color3.fromRGB(236, 224, 182), 0.58).CanQuery = false
+	attachWorldText(archiveWall, "RESULTS ARCHIVE", Vector3.new(0, 3.6, 0), Color3.fromRGB(240, 228, 192), Vector2.new(138, 18))
+	for _, panelOffset in ipairs({ -24, 0, 24 }) do
+		local panel = makePart(
+			shell,
+			"Part",
+			"ArchivePanel",
+			Vector3.new(18, 5.8, 0.6),
+			archiveWall.CFrame * CFrame.new(panelOffset, -0.2, 1.4),
+			Color3.fromRGB(44, 48, 56),
+			Enum.Material.SmoothPlastic
+		)
+		panel.CanQuery = false
+		makeGlowPart(shell, "ArchivePanelGlow", Vector3.new(14, 0.06, 0.2), panel.CFrame * CFrame.new(0, 2.2, 0.22), Color3.fromRGB(236, 224, 182), 0.74).CanQuery = false
+	end
+
+	local activityZones = {
+		{
+			name = "TrainingLane",
+			position = findAnchorPosition(lobbyModel, { "TrainingYard", "EntryPad" }, worldOrigin + Vector3.new(-108, 0, -26)),
+			size = Vector3.new(54, 1.1, 28),
+			color = Color3.fromRGB(90, 82, 58),
+			accent = Color3.fromRGB(234, 214, 146),
+			label = "DRILL LANE",
+		},
+		{
+			name = "RangeLane",
+			position = findAnchorPosition(lobbyModel, { "TargetRange", "FiringLine" }, worldOrigin + Vector3.new(108, 0, -26)),
+			size = Vector3.new(54, 1.1, 28),
+			color = Color3.fromRGB(64, 74, 92),
+			accent = Color3.fromRGB(156, 194, 244),
+			label = "TARGET RANGE",
+		},
+		{
+			name = "ParkourLane",
+			position = findAnchorPosition(lobbyModel, { "ParkourCourse", "StartPad" }, worldOrigin + Vector3.new(-108, 0, 54)),
+			size = Vector3.new(54, 1.1, 28),
+			color = Color3.fromRGB(72, 84, 62),
+			accent = Color3.fromRGB(182, 228, 136),
+			label = "PARKOUR LINE",
+		},
+		{
+			name = "SalvageLane",
+			position = findAnchorPosition(lobbyModel, { "SalvageRun", "StartPad" }, worldOrigin + Vector3.new(108, 0, 54)),
+			size = Vector3.new(54, 1.1, 28),
+			color = Color3.fromRGB(92, 80, 58),
+			accent = Color3.fromRGB(240, 212, 154),
+			label = "SALVAGE RUN",
+		},
+	}
+	for _, zone in ipairs(activityZones) do
+		local plate = makePart(
+			shell,
+			"Part",
+			zone.name .. "Deck",
+			zone.size,
+			CFrame.new(Vector3.new(zone.position.X, worldOrigin.Y + 0.55, zone.position.Z)),
+			zone.color,
+			Enum.Material.Metal
+		)
+		plate.CanQuery = false
+		makeGlowPart(shell, zone.name .. "DeckGlow", Vector3.new(zone.size.X - 8, 0.08, zone.size.Z - 8), plate.CFrame * CFrame.new(0, 0.62, 0), zone.accent, 0.84).CanQuery = false
+		local frame = makePart(
+			shell,
+			"Part",
+			zone.name .. "Header",
+			Vector3.new(zone.size.X - 12, 1, 2.2),
+			CFrame.new(Vector3.new(zone.position.X, worldOrigin.Y + 7.6, zone.position.Z - zone.size.Z * 0.5 + 3.2)),
+			zone.color:Lerp(Color3.fromRGB(208, 208, 208), 0.1),
+			Enum.Material.Metal
+		)
+		frame.CanQuery = false
+		makeGlowPart(shell, zone.name .. "HeaderGlow", Vector3.new(zone.size.X - 18, 0.12, 0.8), frame.CFrame * CFrame.new(0, 0.24, 0.8), zone.accent, 0.68).CanQuery = false
+		attachWorldText(frame, zone.label, Vector3.new(0, 1.02, 0), zone.accent, Vector2.new(118, 18))
+		local threshold = makePart(
+			shell,
+			"Part",
+			zone.name .. "Threshold",
+			Vector3.new(16, 0.16, 2.2),
+			CFrame.new(Vector3.new(zone.position.X, worldOrigin.Y + 0.18, zone.position.Z + zone.size.Z * 0.5 - 2)),
+			Color3.fromRGB(74, 82, 94),
+			Enum.Material.Metal
+		)
+		threshold.CanQuery = false
+		makeGlowPart(shell, zone.name .. "ThresholdGlow", Vector3.new(12.8, 0.06, 0.8), threshold.CFrame * CFrame.new(0, 0.14, 0), zone.accent, 0.76).CanQuery = false
+	end
+
+	local deployCore = findAnchorPosition(lobbyModel, { "DeployPad", "LaunchPad", "Vote Model", "map vote", "VoteBoard", "DeployVoteDeck" }, worldOrigin + Vector3.new(0, 0, -98))
+	local deployDeck = makePart(
+		shell,
+		"Part",
+		"DeployDeck",
+		Vector3.new(44, 1.4, 34),
+		CFrame.new(Vector3.new(deployCore.X, worldOrigin.Y + 0.7, deployCore.Z + 8)),
+		Color3.fromRGB(88, 56, 50),
+		Enum.Material.DiamondPlate
+	)
+	deployDeck.CanQuery = false
+	makeGlowPart(shell, "DeployDeckGlow", Vector3.new(38, 0.08, 26), deployDeck.CFrame * CFrame.new(0, 0.76, -2), Color3.fromRGB(244, 186, 164), 0.84).CanQuery = false
+
+	for _, supportOffset in ipairs({
+		Vector3.new(-18, 4.6, -8),
+		Vector3.new(18, 4.6, -8),
+		Vector3.new(-18, 4.6, 12),
+		Vector3.new(18, 4.6, 12),
+	}) do
+		local pylon = makePart(
+			shell,
+			"Part",
+			"DeployPylon",
+			Vector3.new(2.4, 9.2, 2.4),
+			CFrame.new(Vector3.new(deployCore.X, worldOrigin.Y, deployCore.Z) + supportOffset),
+			Color3.fromRGB(86, 64, 60),
+			Enum.Material.Metal
+		)
+		pylon.CanQuery = false
+		makeGlowPart(shell, "DeployPylonGlow", Vector3.new(1.8, 0.12, 1.8), pylon.CFrame * CFrame.new(0, 4.7, 0), Color3.fromRGB(255, 210, 182), 0.34).CanQuery = false
+	end
+
+	local deployHeader = makePart(
+		shell,
+		"Part",
+		"DeployHeaderBridge",
+		Vector3.new(40, 1.2, 3),
+		CFrame.new(Vector3.new(deployCore.X, worldOrigin.Y + 10.2, deployCore.Z - 8)),
+		Color3.fromRGB(94, 60, 54),
+		Enum.Material.Metal
+	)
+	deployHeader.CanQuery = false
+	makeGlowPart(shell, "DeployHeaderBridgeGlow", Vector3.new(32, 0.12, 0.8), deployHeader.CFrame * CFrame.new(0, 0.28, 0.9), Color3.fromRGB(255, 208, 176), 0.62).CanQuery = false
+	attachWorldText(deployHeader, "LAUNCH CORRIDOR", Vector3.new(0, 1.2, 0), Color3.fromRGB(255, 214, 190), Vector2.new(138, 18))
+
+	for _, railInfo in ipairs({
+		{ "DeployRailLeft", Vector3.new(1.2, 2.2, 30), Vector3.new(-21.2, 1.6, 8) },
+		{ "DeployRailRight", Vector3.new(1.2, 2.2, 30), Vector3.new(21.2, 1.6, 8) },
+		{ "DeployFrontRail", Vector3.new(34, 2.2, 1.2), Vector3.new(0, 1.6, 22.4) },
+	}) do
+		local rail = makePart(
+			shell,
+			"Part",
+			railInfo[1],
+			railInfo[2],
+			CFrame.new(Vector3.new(deployCore.X, worldOrigin.Y, deployCore.Z) + railInfo[3]),
+			Color3.fromRGB(110, 84, 78),
+			Enum.Material.Metal
+		)
+		rail.CanQuery = false
+	end
+
+	for _, markerInfo in ipairs({
+		Vector3.new(-10, 0.2, 8),
+		Vector3.new(0, 0.2, 8),
+		Vector3.new(10, 0.2, 8),
+	}) do
+		makeGlowPart(
+			shell,
+			"DeployLaneMarker",
+			Vector3.new(4.8, 0.06, 8.4),
+			CFrame.new(Vector3.new(deployCore.X, worldOrigin.Y, deployCore.Z) + markerInfo),
+			Color3.fromRGB(255, 196, 166),
+			0.84
+		).CanQuery = false
+	end
+
+	local wingRooms = {
+		{ "WestRoomNorth", Vector3.new(-106, 7, -34), Vector3.new(56, 14, 42) },
+		{ "WestRoomSouth", Vector3.new(-106, 7, 52), Vector3.new(56, 14, 42) },
+		{ "EastRoomNorth", Vector3.new(106, 7, -34), Vector3.new(56, 14, 42) },
+		{ "EastRoomSouth", Vector3.new(106, 7, 52), Vector3.new(56, 14, 42) },
+	}
+	for _, room in ipairs(wingRooms) do
+		local roomFloor = makePart(
+			shell,
+			"Part",
+			room[1] .. "Floor",
+			Vector3.new(room[3].X, 1, room[3].Z),
+			CFrame.new(worldOrigin + Vector3.new(room[2].X, 0.5, room[2].Z)),
+			Color3.fromRGB(40, 44, 52),
+			Enum.Material.Concrete
+		)
+		roomFloor.CanQuery = false
+		local rearWall = makePart(
+			shell,
+			"Part",
+			room[1] .. "RearWall",
+			Vector3.new(room[3].X, room[3].Y, 3),
+			CFrame.new(worldOrigin + Vector3.new(room[2].X, room[2].Y, room[2].Z - room[3].Z * 0.5)),
+			wallColor,
+			Enum.Material.Metal
+		)
+		rearWall.CanQuery = false
+		for _, sideOffset in ipairs({ -room[3].X * 0.5, room[3].X * 0.5 }) do
+			local sideWall = makePart(
+				shell,
+				"Part",
+				room[1] .. "SideWall",
+				Vector3.new(3, room[3].Y, room[3].Z),
+				CFrame.new(worldOrigin + Vector3.new(room[2].X + sideOffset, room[2].Y, room[2].Z)),
+				wallColor,
+				Enum.Material.Metal
+			)
+			sideWall.CanQuery = false
+		end
+		makeGlowPart(shell, room[1] .. "RoomTrim", Vector3.new(room[3].X - 6, 0.1, 1), CFrame.new(worldOrigin + Vector3.new(room[2].X, room[2].Y + room[3].Y * 0.35, room[2].Z - room[3].Z * 0.5 + 1.8)), shellTrimColor, 0.72).CanQuery = false
+	end
+
+	for _, support in ipairs({
+		Vector3.new(-54, 8, -72),
+		Vector3.new(54, 8, -72),
+		Vector3.new(-54, 8, 72),
+		Vector3.new(54, 8, 72),
+		Vector3.new(-92, 8, 8),
+		Vector3.new(92, 8, 8),
+	}) do
+		local beam = makePart(
+			shell,
+			"Part",
+			"SupportColumn",
+			Vector3.new(4, 16, 4),
+			CFrame.new(worldOrigin + support),
+			Color3.fromRGB(62, 70, 84),
+			Enum.Material.Metal
+		)
+		beam.CanQuery = false
+		makeGlowPart(shell, "SupportColumnCap", Vector3.new(1.6, 0.12, 1.6), beam.CFrame * CFrame.new(0, 8.1, 0), shellTrimColor, 0.46).CanQuery = false
+	end
+
+	for _, bridge in ipairs({
+		{ "WestBridge", Vector3.new(42, 0.8, 10), Vector3.new(-48, 0.4, 8), Color3.fromRGB(54, 58, 50) },
+		{ "EastBridge", Vector3.new(42, 0.8, 10), Vector3.new(48, 0.4, 8), Color3.fromRGB(50, 56, 62) },
+		{ "SouthBridge", Vector3.new(18, 0.8, 24), Vector3.new(0, 0.4, 54), Color3.fromRGB(58, 56, 50) },
+	}) do
+		local plate = makePart(
+			shell,
+			"Part",
+			bridge[1],
+			bridge[2],
+			CFrame.new(worldOrigin + bridge[3]),
+			bridge[4],
+			Enum.Material.Metal
+		)
+		plate.CanQuery = false
+	end
+
+	local propClusters = {
+		{
+			base = worldOrigin + Vector3.new(-108, 0.7, -32),
+			color = Color3.fromRGB(118, 100, 74),
+			accent = Color3.fromRGB(236, 214, 146),
+		},
+		{
+			base = worldOrigin + Vector3.new(108, 0.7, -28),
+			color = Color3.fromRGB(72, 86, 108),
+			accent = Color3.fromRGB(156, 194, 244),
+		},
+		{
+			base = worldOrigin + Vector3.new(-18, 0.7, 106),
+			color = Color3.fromRGB(106, 94, 72),
+			accent = Color3.fromRGB(236, 224, 182),
+		},
+		{
+			base = worldOrigin + Vector3.new(98, 0.7, 18),
+			color = Color3.fromRGB(98, 88, 62),
+			accent = Color3.fromRGB(244, 214, 132),
+		},
+	}
+	for index, cluster in ipairs(propClusters) do
+		local crateA = makePart(
+			shell,
+			"Part",
+			"CrateCluster" .. tostring(index) .. "A",
+			Vector3.new(6, 2.2, 4),
+			CFrame.new(cluster.base),
+			cluster.color,
+			Enum.Material.WoodPlanks
+		)
+		crateA.CanQuery = false
+		local crateB = makePart(
+			shell,
+			"Part",
+			"CrateCluster" .. tostring(index) .. "B",
+			Vector3.new(3.4, 3.2, 3.4),
+			CFrame.new(cluster.base + Vector3.new(4.4, 0.5, 1.8)),
+			cluster.color:Lerp(Color3.fromRGB(210, 202, 178), 0.16),
+			Enum.Material.WoodPlanks
+		)
+		crateB.CanQuery = false
+		makeGlowPart(shell, "CrateCluster" .. tostring(index) .. "Glow", Vector3.new(7.4, 0.08, 5.6), crateA.CFrame * CFrame.new(0, 1.16, 0), cluster.accent, 0.82).CanQuery = false
+	end
+
+	for _, benchInfo in ipairs({
+		{ "WestBench", Vector3.new(-34, 0.7, 78), Vector3.new(10, 1, 2.6), Color3.fromRGB(102, 90, 68) },
+		{ "EastBench", Vector3.new(34, 0.7, 78), Vector3.new(10, 1, 2.6), Color3.fromRGB(82, 92, 108) },
+	}) do
+		local bench = makePart(
+			shell,
+			"Part",
+			benchInfo[1],
+			benchInfo[3],
+			CFrame.new(worldOrigin + benchInfo[2]),
+			benchInfo[4],
+			Enum.Material.WoodPlanks
+		)
+		bench.CanQuery = false
+	end
+
+	for index, beaconInfo in ipairs({
+		{ Vector3.new(-118, 4, 94), Color3.fromRGB(236, 224, 182) },
+		{ Vector3.new(92, 4, 18), Color3.fromRGB(244, 214, 132) },
+		{ Vector3.new(0, 4, -102), Color3.fromRGB(244, 186, 164) },
+		{ Vector3.new(0, 4, 100), Color3.fromRGB(236, 224, 182) },
+	}) do
+		local beacon = makePart(
+			shell,
+			"Part",
+			"GuideBeacon" .. tostring(index),
+			Vector3.new(1.6, 8, 1.6),
+			CFrame.new(worldOrigin + beaconInfo[1]),
+			Color3.fromRGB(74, 82, 96),
+			Enum.Material.Metal
+		)
+		beacon.CanQuery = false
+		makeGlowPart(shell, "GuideBeaconGlow" .. tostring(index), Vector3.new(2.1, 0.12, 2.1), beacon.CFrame * CFrame.new(0, 4.1, 0), beaconInfo[2], 0.34).CanQuery = false
+	end
+
+	for _, pathInfo in ipairs({
+		{ "DeployGuide", Vector3.new(2.2, 0.06, 54), Vector3.new(0, 0.18, -74), Color3.fromRGB(244, 186, 164) },
+		{ "DeployGuideWide", Vector3.new(18, 0.06, 62), Vector3.new(0, 0.16, -70), Color3.fromRGB(164, 112, 102) },
+		{ "ArchiveGuide", Vector3.new(2.2, 0.06, 42), Vector3.new(0, 0.18, 82), Color3.fromRGB(236, 224, 182) },
+		{ "ContractGuide", Vector3.new(30, 0.06, 2.2), Vector3.new(-48, 0.18, -92), Color3.fromRGB(244, 186, 164) },
+		{ "ChallengeGuide", Vector3.new(30, 0.06, 2.2), Vector3.new(46, 0.18, 92), Color3.fromRGB(236, 224, 182) },
+		{ "TrainingGuide", Vector3.new(52, 0.06, 2.2), Vector3.new(-82, 0.18, 8), Color3.fromRGB(234, 214, 146) },
+		{ "OpsGuide", Vector3.new(52, 0.06, 2.2), Vector3.new(82, 0.18, 8), Color3.fromRGB(156, 194, 244) },
+		{ "SocialGuide", Vector3.new(28, 0.06, 2.2), Vector3.new(88, 0.18, 86), Color3.fromRGB(134, 228, 188) },
+	}) do
+		makeGlowPart(shell, pathInfo[1], pathInfo[2], CFrame.new(worldOrigin + pathInfo[3]), pathInfo[4], 0.9).CanQuery = false
+	end
+
+	for index, z in ipairs({ -88, -24, 40, 104 }) do
+		makeGlowPart(shell, "CeilingBar" .. tostring(index), Vector3.new(220, 0.24, 2), CFrame.new(worldOrigin + Vector3.new(0, 24.2, z)), Color3.fromRGB(220, 232, 248), 0.28).CanQuery = false
+	end
+end
+
+local function ensurePlayableLobbyShell(lobbyModel: Instance, worldOrigin: Vector3)
+	local staleShell = lobbyModel:FindFirstChild("PlayableShell")
+	if staleShell then
+		warn("[LobbyWorld] Removing stale PlayableShell before lobby validation.")
+		staleShell:Destroy()
+	end
+
+	if hasPlayableLobbyGeometry(lobbyModel) then
+		return
+	end
+
+	buildPlayableLobbyShell(lobbyModel, worldOrigin)
+end
+
+local function ensureAuthoredLobbyDistricts(lobbyModel: Instance, worldOrigin: Vector3)
+	local staleDistricts = lobbyModel:FindFirstChild("AuthoredDistricts")
+	if staleDistricts then
+		staleDistricts:Destroy()
+	end
+
+	if lobbyModel:FindFirstChild("PlayableShell") then
+		return
+	end
+
+	local districts = Instance.new("Model")
+	districts.Name = "AuthoredDistricts"
+	districts.Parent = lobbyModel
+
+	local centralConcourse = makePart(
+		districts,
+		"Part",
+		"CentralConcourse",
+		Vector3.new(112, 0.9, 84),
+		CFrame.new(worldOrigin + Vector3.new(0, 0.45, 10)),
+		Color3.fromRGB(42, 48, 58),
+		Enum.Material.DiamondPlate
+	)
+	centralConcourse.CanQuery = false
+	makeGlowPart(districts, "CentralConcourseGlow", Vector3.new(96, 0.08, 68), centralConcourse.CFrame * CFrame.new(0, 0.5, 0), Color3.fromRGB(118, 132, 156), 0.9).CanQuery = false
+
+	local commandRing = makePart(
+		districts,
+		"Part",
+		"CommandRing",
+		Vector3.new(42, 0.3, 42),
+		CFrame.new(worldOrigin + Vector3.new(0, 0.82, 10)),
+		Color3.fromRGB(70, 82, 98),
+		Enum.Material.Metal
+	)
+	commandRing.CanCollide = false
+	commandRing.CanQuery = false
+	commandRing.Transparency = 0.16
+	makeGlowPart(districts, "CommandRingGlow", Vector3.new(48, 0.08, 48), commandRing.CFrame * CFrame.new(0, 0.08, 0), Color3.fromRGB(156, 184, 228), 0.76).CanQuery = false
+
+	for _, stripInfo in ipairs({
+		{ "NorthRouteStrip", Vector3.new(12, 0.12, 54), Vector3.new(0, 0.16, -42), Color3.fromRGB(156, 118, 104) },
+		{ "SouthRouteStrip", Vector3.new(12, 0.12, 44), Vector3.new(0, 0.16, 70), Color3.fromRGB(186, 178, 132) },
+		{ "EastRouteStrip", Vector3.new(54, 0.12, 12), Vector3.new(76, 0.16, 10), Color3.fromRGB(132, 178, 236) },
+		{ "WestRouteStrip", Vector3.new(54, 0.12, 12), Vector3.new(-76, 0.16, 10), Color3.fromRGB(208, 194, 132) },
+	}) do
+		local strip = makePart(
+			districts,
+			"Part",
+			stripInfo[1],
+			stripInfo[2],
+			CFrame.new(worldOrigin + stripInfo[3]),
+			Color3.fromRGB(62, 66, 74),
+			Enum.Material.Metal
+		)
+		strip.CanCollide = false
+		strip.CanQuery = false
+		makeGlowPart(districts, stripInfo[1] .. "Glow", Vector3.new(math.max(stripInfo[2].X - 6, 8), 0.06, math.max(stripInfo[2].Z - 6, 8)), strip.CFrame * CFrame.new(0, 0.1, 0), stripInfo[4], 0.82).CanQuery = false
+	end
+
+	local function makeDeck(name: string, position: Vector3, size: Vector3, color: Color3, accent: Color3, label: string, labelWidth: number, headerOffset: Vector3)
+		local deck = makePart(
+			districts,
+			"Part",
+			name,
+			size,
+			CFrame.new(Vector3.new(position.X, worldOrigin.Y + (size.Y * 0.5), position.Z)),
+			color,
+			Enum.Material.DiamondPlate
+		)
+		deck.CanQuery = false
+		makeGlowPart(districts, name .. "Glow", Vector3.new(math.max(size.X - 8, 12), 0.08, math.max(size.Z - 8, 12)), deck.CFrame * CFrame.new(0, (size.Y * 0.5) + 0.08, 0), accent, 0.84).CanQuery = false
+		local header = makePart(
+			districts,
+			"Part",
+			name .. "Header",
+			Vector3.new(math.max(size.X * 0.62, 20), 1.1, 2.2),
+			CFrame.new(Vector3.new(position.X, worldOrigin.Y, position.Z) + headerOffset),
+			color:Lerp(Color3.fromRGB(218, 218, 218), 0.12),
+			Enum.Material.Metal
+		)
+		header.CanQuery = false
+		makeGlowPart(districts, name .. "HeaderGlow", Vector3.new(math.max(size.X * 0.48, 16), 0.12, 0.8), header.CFrame * CFrame.new(0, 0.28, 0.8), accent, 0.62).CanQuery = false
+		attachWorldText(header, label, Vector3.new(0, 1.08, 0), accent, Vector2.new(labelWidth, 18))
+		local threshold = makePart(
+			districts,
+			"Part",
+			name .. "Threshold",
+			Vector3.new(math.max(size.X * 0.38, 14), 0.16, 2.4),
+			CFrame.new(Vector3.new(position.X, worldOrigin.Y + 0.16, position.Z + (size.Z * 0.5) - 2)),
+			Color3.fromRGB(74, 82, 94),
+			Enum.Material.Metal
+		)
+		threshold.CanCollide = false
+		threshold.CanQuery = false
+		makeGlowPart(districts, name .. "ThresholdGlow", Vector3.new(math.max(size.X * 0.3, 10), 0.06, 0.8), threshold.CFrame * CFrame.new(0, 0.12, 0), accent, 0.78).CanQuery = false
+		for _, side in ipairs({ -1, 1 }) do
+			local rail = makePart(
+				districts,
+				"Part",
+				name .. "Rail",
+				Vector3.new(1.2, 2.2, math.max(size.Z - 8, 10)),
+				CFrame.new(Vector3.new(position.X + (side * ((size.X * 0.5) - 1.4)), worldOrigin.Y + 1.1, position.Z)),
+				color:Lerp(Color3.fromRGB(196, 196, 196), 0.08),
+				Enum.Material.Metal
+			)
+			rail.CanQuery = false
+		end
+		return deck
+	end
+
+	local contractCore = findAnchorPosition(lobbyModel, { "QuestBoard", "ContractBoard", "Contracts", "Vote Model", "map vote" }, worldOrigin + Vector3.new(-46, 0, -94))
+	local contractDeck = makeDeck("AuthoredContractDeck", contractCore + Vector3.new(0, 0, 6), Vector3.new(40, 1.1, 22), Color3.fromRGB(88, 64, 54), Color3.fromRGB(244, 186, 164), "CONTRACT BOARD", 124, Vector3.new(0, 8.8, -6.2))
+	for _, panelOffset in ipairs({ -10, 10 }) do
+		local boardPanel = makePart(
+			districts,
+			"Part",
+			"ContractStatusPanel",
+			Vector3.new(12, 5.4, 0.8),
+			contractDeck.CFrame * CFrame.new(panelOffset, 3.3, -8.8),
+			Color3.fromRGB(42, 48, 56),
+			Enum.Material.SmoothPlastic
+		)
+		boardPanel.CanQuery = false
+		makeGlowPart(districts, "ContractStatusPanelGlow", Vector3.new(8.8, 0.06, 0.2), boardPanel.CFrame * CFrame.new(0, 1.8, 0.18), Color3.fromRGB(244, 186, 164), 0.72).CanQuery = false
+	end
+
+	local challengeCore = findAnchorPosition(lobbyModel, { "DailyBoard", "WeeklyBoard", "ChallengeBoard", "QuestBoard", "LeaderboardMonument" }, worldOrigin + Vector3.new(34, 0, 96))
+	local challengeDeck = makeDeck("AuthoredChallengeDeck", challengeCore + Vector3.new(0, 0, 4), Vector3.new(42, 1.1, 22), Color3.fromRGB(84, 78, 56), Color3.fromRGB(236, 224, 182), "DAILY OPS", 110, Vector3.new(0, 8.8, -6.2))
+	for _, tileOffset in ipairs({ -12, 0, 12 }) do
+		local tile = makePart(
+			districts,
+			"Part",
+			"ChallengeTile",
+			Vector3.new(9, 0.42, 9),
+			challengeDeck.CFrame * CFrame.new(tileOffset, 0.76, -2),
+			Color3.fromRGB(104, 98, 72),
+			Enum.Material.Metal
+		)
+		tile.CanQuery = false
+		makeGlowPart(districts, "ChallengeTileGlow", Vector3.new(6.8, 0.06, 6.8), tile.CFrame * CFrame.new(0, 0.08, 0), Color3.fromRGB(236, 224, 182), 0.76).CanQuery = false
+	end
+
+	local quartermasterCore = findAnchorPosition(lobbyModel, { "Shop", "Inventory", "SkillTree" }, worldOrigin + Vector3.new(88, 0, 8))
+	local quartermasterDeck = makeDeck("AuthoredQuartermasterDeck", quartermasterCore, Vector3.new(54, 1.1, 30), Color3.fromRGB(62, 76, 96), Color3.fromRGB(156, 194, 244), "QUARTERMASTER", 132, Vector3.new(0, 8.8, -10))
+	for _, kioskOffset in ipairs({
+		Vector3.new(-16, 1.05, -6),
+		Vector3.new(0, 1.05, -6),
+		Vector3.new(16, 1.05, -6),
+	}) do
+		local kiosk = makePart(
+			districts,
+			"Part",
+			"QuartermasterKiosk",
+			Vector3.new(10, 2.1, 10),
+			CFrame.new(quartermasterCore + kioskOffset),
+			Color3.fromRGB(76, 88, 110),
+			Enum.Material.Metal
+		)
+		kiosk.CanQuery = false
+		makeGlowPart(districts, "QuartermasterKioskGlow", Vector3.new(7.2, 0.08, 7.2), kiosk.CFrame * CFrame.new(0, 1.08, 0), Color3.fromRGB(156, 194, 244), 0.68).CanQuery = false
+		local screen = makeGlowPart(districts, "QuartermasterScreenGlow", Vector3.new(5.8, 1.8, 0.12), kiosk.CFrame * CFrame.new(0, 0.4, -5.06), Color3.fromRGB(172, 214, 255), 0.26)
+		screen.CanQuery = false
+	end
+	local quartermasterCounter = makePart(
+		districts,
+		"Part",
+		"QuartermasterCounter",
+		Vector3.new(44, 1.2, 4),
+		quartermasterDeck.CFrame * CFrame.new(0, 0.6, 8.6),
+		Color3.fromRGB(78, 90, 110),
+		Enum.Material.Metal
+	)
+	quartermasterCounter.CanQuery = false
+
+	local socialCore = findAnchorPosition(lobbyModel, { "Social", "Squad" }, worldOrigin + Vector3.new(76, 0, 88))
+	local socialDeck = makeDeck("AuthoredSocialDeck", socialCore, Vector3.new(50, 1.1, 26), Color3.fromRGB(58, 74, 68), Color3.fromRGB(134, 228, 188), "SQUAD CORNER", 122, Vector3.new(0, 8.2, -8))
+	for _, seatOffset in ipairs({
+		Vector3.new(-14, 0.55, 8),
+		Vector3.new(0, 0.55, 8),
+		Vector3.new(14, 0.55, 8),
+	}) do
+		local seatBase = makePart(
+			districts,
+			"Part",
+			"SocialSeatBase",
+			Vector3.new(8, 1.1, 3),
+			CFrame.new(socialCore + seatOffset),
+			Color3.fromRGB(92, 108, 96),
+			Enum.Material.WoodPlanks
+		)
+		seatBase.CanQuery = false
+	end
+	local socialTable = makePart(
+		districts,
+		"Part",
+		"SocialTable",
+		Vector3.new(14, 1.2, 6),
+		socialDeck.CFrame * CFrame.new(0, 0.62, -1),
+		Color3.fromRGB(84, 102, 94),
+		Enum.Material.WoodPlanks
+	)
+	socialTable.CanQuery = false
+	makeGlowPart(districts, "SocialTableGlow", Vector3.new(10, 0.06, 3.2), socialTable.CFrame * CFrame.new(0, 0.12, 0), Color3.fromRGB(134, 228, 188), 0.84).CanQuery = false
+
+	local archiveCore = findAnchorPosition(lobbyModel, { "LeaderboardMonument", "MasterBoard", "Leaderboard (Levels)", "BoardFace" }, worldOrigin + Vector3.new(0, 0, 102))
+	local archiveWall = makePart(
+		districts,
+		"Part",
+		"ResultsArchiveWall",
+		Vector3.new(82, 10, 3),
+		CFrame.new(Vector3.new(archiveCore.X, worldOrigin.Y + 5.2, archiveCore.Z + 18)),
+		Color3.fromRGB(66, 64, 54),
+		Enum.Material.Metal
+	)
+	archiveWall.CanQuery = false
+	makeGlowPart(districts, "ResultsArchiveWallGlow", Vector3.new(68, 0.12, 0.8), archiveWall.CFrame * CFrame.new(0, 2.8, 1), Color3.fromRGB(236, 224, 182), 0.58).CanQuery = false
+	attachWorldText(archiveWall, "RESULTS ARCHIVE", Vector3.new(0, 3.6, 0), Color3.fromRGB(240, 228, 192), Vector2.new(138, 18))
+	for _, panelOffset in ipairs({ -22, 0, 22 }) do
+		local archivePanel = makePart(
+			districts,
+			"Part",
+			"AuthoredArchivePanel",
+			Vector3.new(16, 5.6, 0.6),
+			archiveWall.CFrame * CFrame.new(panelOffset, -0.2, 1.4),
+			Color3.fromRGB(40, 46, 54),
+			Enum.Material.SmoothPlastic
+		)
+		archivePanel.CanQuery = false
+		makeGlowPart(districts, "AuthoredArchivePanelGlow", Vector3.new(12.4, 0.06, 0.2), archivePanel.CFrame * CFrame.new(0, 2.08, 0.18), Color3.fromRGB(236, 224, 182), 0.76).CanQuery = false
+	end
+
+	local deployCore = findAnchorPosition(lobbyModel, { "DeployPad", "LaunchPad", "Vote Model", "map vote", "VoteBoard", "DeployVoteDeck" }, worldOrigin + Vector3.new(0, 0, -88))
+	makeGlowPart(districts, "AuthoredDeployGuide", Vector3.new(4, 0.06, 56), CFrame.new(Vector3.new(deployCore.X, worldOrigin.Y + 0.18, deployCore.Z + 20)), Color3.fromRGB(244, 186, 164), 0.9).CanQuery = false
+	makeGlowPart(districts, "AuthoredDeployGuideWide", Vector3.new(18, 0.06, 62), CFrame.new(Vector3.new(deployCore.X, worldOrigin.Y + 0.16, deployCore.Z + 20)), Color3.fromRGB(164, 112, 102), 0.9).CanQuery = false
+	makeGlowPart(districts, "AuthoredArchiveGuide", Vector3.new(28, 0.06, 2.2), CFrame.new(Vector3.new(archiveCore.X, worldOrigin.Y + 0.18, archiveCore.Z + 8)), Color3.fromRGB(236, 224, 182), 0.9).CanQuery = false
+	makeGlowPart(districts, "AuthoredSocialGuide", Vector3.new(28, 0.06, 2.2), CFrame.new(Vector3.new(socialCore.X, worldOrigin.Y + 0.18, socialCore.Z - 10)), Color3.fromRGB(134, 228, 188), 0.9).CanQuery = false
+	for _, pylonOffset in ipairs({
+		Vector3.new(-10, 3.8, -4),
+		Vector3.new(10, 3.8, -4),
+		Vector3.new(-10, 3.8, 22),
+		Vector3.new(10, 3.8, 22),
+	}) do
+		local pylon = makePart(
+			districts,
+			"Part",
+			"AuthoredDeployPylon",
+			Vector3.new(2, 7.6, 2),
+			CFrame.new(Vector3.new(deployCore.X, worldOrigin.Y, deployCore.Z) + pylonOffset),
+			Color3.fromRGB(102, 72, 66),
+			Enum.Material.Metal
+		)
+		pylon.CanQuery = false
+		makeGlowPart(districts, "AuthoredDeployPylonGlow", Vector3.new(1.6, 0.12, 1.6), pylon.CFrame * CFrame.new(0, 3.92, 0), Color3.fromRGB(255, 206, 174), 0.36).CanQuery = false
+	end
+	for _, beaconInfo in ipairs({
+		{ "ContractBeacon", contractDeck.Position + Vector3.new(-18, 3.2, 0), Color3.fromRGB(244, 186, 164) },
+		{ "ChallengeBeacon", challengeDeck.Position + Vector3.new(18, 3.2, 0), Color3.fromRGB(236, 224, 182) },
+		{ "QuartermasterBeacon", quartermasterDeck.Position + Vector3.new(24, 3.2, 0), Color3.fromRGB(156, 194, 244) },
+		{ "SocialBeacon", socialDeck.Position + Vector3.new(-22, 3.2, 0), Color3.fromRGB(134, 228, 188) },
+	}) do
+		local beacon = makePart(
+			districts,
+			"Part",
+			beaconInfo[1],
+			Vector3.new(1.6, 6.4, 1.6),
+			CFrame.new(beaconInfo[2]),
+			Color3.fromRGB(74, 82, 94),
+			Enum.Material.Metal
+		)
+		beacon.CanQuery = false
+		makeGlowPart(districts, beaconInfo[1] .. "Glow", Vector3.new(1.8, 0.12, 1.8), beacon.CFrame * CFrame.new(0, 3.28, 0), beaconInfo[3], 0.38).CanQuery = false
+	end
+
+	for index, z in ipairs({ -96, -34, 26, 88 }) do
+		local bar = makeGlowPart(
+			districts,
+			"AuthoredCeilingBar" .. tostring(index),
+			Vector3.new(176, 0.24, 2.4),
+			CFrame.new(worldOrigin + Vector3.new(0, 18.4, z)),
+			Color3.fromRGB(216, 228, 244),
+			0.32
+		)
+		bar.CanQuery = false
+	end
+
+	for _, ribInfo in ipairs({
+		{ "WestRibA", Vector3.new(-104, 8, -20), Vector3.new(3, 16, 34) },
+		{ "WestRibB", Vector3.new(-104, 8, 54), Vector3.new(3, 16, 34) },
+		{ "EastRibA", Vector3.new(104, 8, -20), Vector3.new(3, 16, 34) },
+		{ "EastRibB", Vector3.new(104, 8, 54), Vector3.new(3, 16, 34) },
+		{ "NorthRib", Vector3.new(0, 8, -112), Vector3.new(78, 16, 3) },
+		{ "SouthRib", Vector3.new(0, 8, 122), Vector3.new(82, 16, 3) },
+	}) do
+		local rib = makePart(
+			districts,
+			"Part",
+			ribInfo[1],
+			ribInfo[3],
+			CFrame.new(worldOrigin + ribInfo[2]),
+			Color3.fromRGB(56, 62, 74),
+			Enum.Material.Metal
+		)
+		rib.CanQuery = false
+		makeGlowPart(districts, ribInfo[1] .. "Glow", Vector3.new(math.max(ribInfo[3].X - 6, 1), 0.12, math.max(ribInfo[3].Z - 1.4, 1)), rib.CFrame * CFrame.new(0, 6.2, 0), Color3.fromRGB(118, 132, 156), 0.72).CanQuery = false
+	end
+
+	for _, trimInfo in ipairs({
+		{ "NorthWallTrim", Vector3.new(168, 0.2, 1.6), Vector3.new(0, 11.2, -118), Color3.fromRGB(244, 186, 164) },
+		{ "SouthWallTrim", Vector3.new(168, 0.2, 1.6), Vector3.new(0, 11.2, 126), Color3.fromRGB(236, 224, 182) },
+		{ "WestWallTrim", Vector3.new(1.6, 0.2, 126), Vector3.new(-118, 11.2, 14), Color3.fromRGB(208, 194, 132) },
+		{ "EastWallTrim", Vector3.new(1.6, 0.2, 126), Vector3.new(118, 11.2, 14), Color3.fromRGB(156, 194, 244) },
+	}) do
+		local trim = makeGlowPart(
+			districts,
+			trimInfo[1],
+			trimInfo[2],
+			CFrame.new(worldOrigin + trimInfo[3]),
+			trimInfo[4],
+			0.54
+		)
+		trim.CanQuery = false
+	end
+
+	for _, shadowInfo in ipairs({
+		{ "NorthCornerShadow", Vector3.new(34, 0.12, 34), Vector3.new(-96, 0.2, -102) },
+		{ "NorthCornerShadow", Vector3.new(34, 0.12, 34), Vector3.new(96, 0.2, -102) },
+		{ "SouthCornerShadow", Vector3.new(34, 0.12, 34), Vector3.new(-96, 0.2, 114) },
+		{ "SouthCornerShadow", Vector3.new(34, 0.12, 34), Vector3.new(96, 0.2, 114) },
+	}) do
+		local shadow = makePart(
+			districts,
+			"Part",
+			shadowInfo[1],
+			shadowInfo[2],
+			CFrame.new(worldOrigin + shadowInfo[3]),
+			Color3.fromRGB(18, 20, 26),
+			Enum.Material.SmoothPlastic
+		)
+		shadow.Transparency = 0.42
+		shadow.CanCollide = false
+		shadow.CanQuery = false
+	end
+
+	for _, wallInfo in ipairs({
+		{ "ContractBackplate", contractDeck.Position + Vector3.new(0, 4.2, -11.2), Vector3.new(44, 8, 1.2), Color3.fromRGB(46, 38, 36), Color3.fromRGB(244, 186, 164) },
+		{ "ChallengeBackplate", challengeDeck.Position + Vector3.new(0, 4.2, -11.2), Vector3.new(46, 8, 1.2), Color3.fromRGB(54, 50, 38), Color3.fromRGB(236, 224, 182) },
+		{ "QuartermasterBackplate", quartermasterDeck.Position + Vector3.new(0, 4.8, -15.2), Vector3.new(58, 9.2, 1.4), Color3.fromRGB(40, 50, 64), Color3.fromRGB(156, 194, 244) },
+		{ "SocialBackplate", socialDeck.Position + Vector3.new(0, 4.0, -13.4), Vector3.new(54, 8.2, 1.2), Color3.fromRGB(38, 50, 46), Color3.fromRGB(134, 228, 188) },
+	}) do
+		local backplate = makePart(
+			districts,
+			"Part",
+			wallInfo[1],
+			wallInfo[3],
+			CFrame.new(wallInfo[2]),
+			wallInfo[4],
+			Enum.Material.Metal
+		)
+		backplate.CanQuery = false
+		makeGlowPart(districts, wallInfo[1] .. "Glow", Vector3.new(math.max(wallInfo[3].X - 10, 10), 0.1, 0.4), backplate.CFrame * CFrame.new(0, 2.8, 0.7), wallInfo[5], 0.62).CanQuery = false
+	end
+end
+
+function LobbyWorld.ensureActivityContent(): boolean
+	local compositionRoot = getActiveLobbyCompositionRoot()
+	if not compositionRoot then
+		return false
+	end
+	ensureLobbyActivityContent(compositionRoot)
+	local root = Workspace:FindFirstChild(Config.RootName)
+	if root and root:IsA("Model") and compositionRoot == root then
+		wireLobbyRoot(root, root)
+	end
+	return hasRequiredActivityParts(compositionRoot:FindFirstChild("TrainingYard", true), REQUIRED_ACTIVITY_PARTS.TrainingYard)
+		and hasRequiredActivityParts(compositionRoot:FindFirstChild("ParkourCourse", true), REQUIRED_ACTIVITY_PARTS.ParkourCourse)
+		and hasRequiredActivityParts(compositionRoot:FindFirstChild("TargetRange", true), REQUIRED_ACTIVITY_PARTS.TargetRange)
+		and hasRequiredActivityParts(compositionRoot:FindFirstChild("SalvageRun", true), REQUIRED_ACTIVITY_PARTS.SalvageRun)
+end
+
+local function resolveMissionStaging(root: Instance, compositionRoot: Instance)
+	local mission = root:FindFirstChild("MissionStaging")
+	if not mission then
+		local nestedMission = compositionRoot and compositionRoot:FindFirstChild("MissionStaging", true)
+		if nestedMission and nestedMission:IsA("Model") then
+			nestedMission.Parent = root
+			mission = nestedMission
+		end
+	end
+
+	if mission and mission:IsA("Model") then
+		local missionSpawn = mission:FindFirstChild("MissionSpawn", true)
+			or mission:FindFirstChild("DropMarker", true)
+			or mission:FindFirstChild("Base", true)
+		local cameraStart = mission:FindFirstChild("MissionCameraStart", true)
+		local cameraEnd = mission:FindFirstChild("MissionCameraEnd", true)
+			or mission:FindFirstChild("MissionCameraStop", true)
+		if missionSpawn and missionSpawn:IsA("BasePart") and cameraStart and cameraStart:IsA("BasePart") and cameraEnd and cameraEnd:IsA("BasePart") then
+			return mission, missionSpawn, cameraStart, cameraEnd
+		end
+		warn("[LobbyWorld] Authored MissionStaging is missing a valid mission spawn or mission cameras. Falling back to generated staging.")
+		mission:Destroy()
+	end
+
+	return makeMissionStaging(root, Config.Origin + Config.MissionOffset)
+end
+
+local function findLabelAnchor(instance: Instance?): BasePart?
+	if not instance then
+		return nil
+	end
+	if instance:IsA("BasePart") then
+		return instance
+	end
+	if instance:IsA("Model") then
+		local model = instance :: Model
+		if model.PrimaryPart then
+			return model.PrimaryPart
+		end
+	end
+	local sign = instance:FindFirstChild("Sign", true) or instance:FindFirstChild("SignBand", true) or instance:FindFirstChild("BackWallSign", true)
+	if sign and sign:IsA("BasePart") then
+		return sign
+	end
+	local header = instance:FindFirstChild("Header", true) or instance:FindFirstChild("Banner", true)
+	if header and header:IsA("BasePart") then
+		return header
+	end
+	return instance:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local attachAnchorLight
+local function attachAreaIdentityLabel(root: Instance, areaName: string, title: string, subtitle: string, accent: Color3)
+	local area = root:FindFirstChild(areaName, true)
+	local anchor = findLabelAnchor(area)
+	if anchor then
+		attachLabel(anchor, title, subtitle, accent)
+	end
+end
+
+attachAnchorLight = function(part: BasePart, color: Color3, brightness: number?, range: number?)
+	clearNamedChildren(part, { "LandmarkLight" })
+
+	local light = Instance.new("PointLight")
+	light.Name = "LandmarkLight"
+	light.Color = color
+	light.Brightness = brightness or 1.4
+	light.Range = range or 18
+	light.Shadows = true
+	light.Parent = part
+end
+
+local function attachAreaEntryMarker(root: Instance, areaName: string, entryName: string, text: string, accent: Color3, size: Vector2?)
+	local area = root:FindFirstChild(areaName, true)
+	local entry = area and area:FindFirstChild(entryName, true)
+	if entry and entry:IsA("BasePart") then
+		attachWorldText(entry, text, Vector3.new(0, 1.9, 0), accent, size or Vector2.new(92, 18))
+		if text ~= "RETURN" then
+			attachAnchorLight(entry, accent, 0.9, 10)
+		end
+	end
+end
+
+local function findAreaEntryPart(root: Instance, areaName: string, entryName: string): BasePart?
+	local area = root:FindFirstChild(areaName, true)
+	local entry = area and area:FindFirstChild(entryName, true)
+	if entry and entry:IsA("BasePart") then
+		return entry
+	end
+	return nil
+end
+
+local function findDonationAnchor(root: Instance): BasePart?
+	local keywordHits = {
+		"donat",
+		"tipjar",
+		"tip_jar",
+		"tip-jar",
+		"supportterminal",
+		"support terminal",
+		"supporterterminal",
+		"supporter terminal",
+		"mr.pluto board",
+		"mr pluto board",
+	}
+	local function nameMatches(name: string): boolean
+		local lowered = string.lower(name)
+		for _, keyword in ipairs(keywordHits) do
+			if string.find(lowered, keyword, 1, true) then
+				return true
+			end
+		end
+		return false
+	end
+
+	for _, descendant in ipairs(root:GetDescendants()) do
+		if descendant:IsA("BasePart") and nameMatches(descendant.Name) then
+			return descendant
+		end
+		if descendant:IsA("Model") and nameMatches(descendant.Name) then
+			local primary = descendant.PrimaryPart
+			if primary then
+				return primary
+			end
+			local firstPart = descendant:FindFirstChildWhichIsA("BasePart", true)
+			if firstPart then
+				return firstPart
+			end
+		end
+	end
+
+	local supportTerminal = root:FindFirstChild("SupportTerminal", true)
+	if supportTerminal and supportTerminal:IsA("BasePart") then
+		return supportTerminal
+	end
+
+	return nil
+end
+
+local function polishDonationAnchor(root: Instance, lobbyModel: Instance)
+	local donationAnchor = findDonationAnchor(lobbyModel)
+	if not donationAnchor then
+		root:SetAttribute("DonationAnchorName", "")
+		return
+	end
+
+	root:SetAttribute("DonationAnchorName", donationAnchor.Name)
+	attachLabel(donationAnchor, "SUPPORT THE GAME", "Back bunker upgrades, polish passes, and new ops", Color3.fromRGB(246, 214, 132))
+	attachWorldText(donationAnchor, "DONATE", Vector3.new(0, 2.05, 0), Color3.fromRGB(255, 228, 164), Vector2.new(92, 20))
+	attachAnchorLight(donationAnchor, Color3.fromRGB(244, 206, 126), 1.2, 14)
+	clearNamedChildren(donationAnchor, {
+		"DonationTierPrompt1",
+		"DonationTierPrompt2",
+		"DonationTierPrompt3",
+	})
+	for index, tier in ipairs(DonationConfig.Tiers) do
+		if type(tier) == "table" then
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.Name = ("DonationTierPrompt%d"):format(index)
+			prompt.ActionText = "Donate"
+			prompt.ObjectText = tostring(tier.Label or ("Tier " .. tostring(index)))
+			prompt.HoldDuration = 0
+			prompt.MaxActivationDistance = 10
+			prompt.RequiresLineOfSight = false
+			prompt.Style = Enum.ProximityPromptStyle.Default
+			prompt.KeyboardKeyCode = index == 1 and Enum.KeyCode.One or (index == 2 and Enum.KeyCode.Two or Enum.KeyCode.Three)
+			prompt:SetAttribute("DonationTierId", tostring(tier.Id or index))
+			prompt:SetAttribute("DonationProductId", tonumber(tier.ProductId) or 0)
+			prompt:SetAttribute("DonationAmount", tonumber(tier.Amount) or 0)
+			prompt.Parent = donationAnchor
+		end
+	end
+end
+
+local function wireLobbyRoot(root: Instance, lobbyModel: Instance)
 	local anchorPart = lobbyModel:FindFirstChild("OuterGround", true)
 	if anchorPart and anchorPart:IsA("BasePart") then
 		CollectionService:AddTag(anchorPart, "LobbyAnchor")
 	end
 
-	local spawn = lobbyModel:FindFirstChild("LobbySpawn", true)
+	local spawn = normalizeLobbySpawnPoints(lobbyModel)
 	if spawn and spawn:IsA("BasePart") then
 		CollectionService:AddTag(spawn, "LobbySpawn")
+		attachWorldText(spawn, "SPAWN", Vector3.new(0, 2.4, 0), Color3.fromRGB(214, 230, 252), Vector2.new(88, 20))
+		attachAnchorLight(spawn, Color3.fromRGB(184, 214, 255), 1.35, 15)
 	end
+	ensureLobbyArrivalAnchor(lobbyModel)
 
 	local board = lobbyModel:FindFirstChild("VoteBoard", true)
+		or lobbyModel:FindFirstChild("Vote Model", true)
+		or lobbyModel:FindFirstChild("map vote", true)
+		or lobbyModel:FindFirstChild("DeployVoteDeck", true)
+	if board and not board:IsA("BasePart") then
+		board = board:FindFirstChildWhichIsA("BasePart", true)
+	end
 	if board and board:IsA("BasePart") then
 		clearNamedChildren(board, { "BoardGui", "BoardGuiMirror" })
 		attachDeployVoteBoard(board)
+		attachLabel(board, "VOTE BOARD", "Pick the next run before launch", Color3.fromRGB(240, 214, 166))
+		attachAnchorLight(board, Color3.fromRGB(240, 214, 166), 1.45, 18)
 	end
 
 	for index = 1, 3 do
@@ -2008,19 +4129,74 @@ local function wireDesignerLobby(root: Instance, lobbyModel: Instance)
 		local prompt = ensurePrompt(launchPad, "DeployPrompt", "Launch Run", "Mission Vote Ready", 12)
 		root:SetAttribute("DeployPadName", launchPad.Name)
 		root:SetAttribute("DeployPromptName", prompt.Name)
+		attachWorldText(launchPad, "DEPLOY", Vector3.new(0, 2.25, 0), Color3.fromRGB(255, 214, 190), Vector2.new(96, 20))
+		attachAnchorLight(launchPad, Color3.fromRGB(255, 214, 190), 1.85, 20)
 	else
 		root:SetAttribute("DeployPadName", "")
 		root:SetAttribute("DeployPromptName", "")
 	end
 
-	local leaderboardBoard = lobbyModel:FindFirstChild("MasterBoard", true) or lobbyModel:FindFirstChild("LeaderboardBoard", true)
+	local leaderboardBoard = lobbyModel:FindFirstChild("MasterBoard", true)
+		or lobbyModel:FindFirstChild("LeaderboardBoard", true)
+		or lobbyModel:FindFirstChild("BoardFace", true)
 	if leaderboardBoard and leaderboardBoard:IsA("BasePart") then
-		clearNamedChildren(leaderboardBoard, { "BoardGui" })
+		clearLegacyLeaderboardRigs(lobbyModel)
+		for _, boardName in ipairs({ "BoardFace", "MasterBoard", "LeaderboardBoard" }) do
+			local boardPart = lobbyModel:FindFirstChild(boardName, true)
+			if boardPart and boardPart:IsA("BasePart") then
+				clearNamedChildren(boardPart, { "BoardGui", "BoardGuiMirror", "Sign", "WorldText" })
+				clearBoardPresentation(boardPart)
+				local isActiveBoard = boardPart == leaderboardBoard
+				boardPart.Transparency = isActiveBoard and 0 or 1
+				boardPart.CastShadow = isActiveBoard
+			end
+		end
 		attachLeaderboardMasterBoard(leaderboardBoard, {})
+		attachLabel(leaderboardBoard, "LEADERBOARD", "Top operators and current standings", Color3.fromRGB(200, 214, 255))
+		attachAnchorLight(leaderboardBoard, Color3.fromRGB(200, 214, 255), 1.1, 14)
 	end
+
+	for _, boardInfo in ipairs({
+		{ name = "Leaderboard (Levels)", title = "LEVELS", accent = Color3.fromRGB(132, 178, 232) },
+		{ name = "Leaderboard (Runs)", title = "RUNS", accent = Color3.fromRGB(122, 198, 156) },
+		{ name = "leaderboard (Kills)", title = "KILLS", accent = Color3.fromRGB(214, 174, 104) },
+		{ name = "Leaderboard (Kills)", title = "KILLS", accent = Color3.fromRGB(214, 174, 104) },
+	}) do
+		local boardPart = lobbyModel:FindFirstChild(boardInfo.name, true)
+		if boardPart and boardPart:IsA("BasePart") then
+			attachCategoryLeaderboardBoard(boardPart, boardInfo.title, boardInfo.accent)
+			attachAnchorLight(boardPart, boardInfo.accent, 1, 12)
+		end
+	end
+
+	attachAreaIdentityLabel(lobbyModel, "TrainingYard", "TRAINING YARD", "Warm up movement and range control", Color3.fromRGB(244, 212, 152))
+	attachAreaIdentityLabel(lobbyModel, "ParkourCourse", "PARKOUR LINE", "Run the blocks and claim the roof", Color3.fromRGB(206, 220, 255))
+	attachAreaIdentityLabel(lobbyModel, "DuelRing", "DUEL RING", "Stage 1v1s and settle bragging rights", Color3.fromRGB(244, 182, 182))
+	attachAreaIdentityLabel(lobbyModel, "TargetRange", "TARGET RANGE", "Dial in aim and test recoil control", Color3.fromRGB(186, 238, 214))
+	attachAreaIdentityLabel(lobbyModel, "SalvageRun", "SALVAGE RUN", "Recover bunker caches before the timer burns out", Color3.fromRGB(244, 214, 168))
+	attachAreaIdentityLabel(lobbyModel, "SupporterLounge", "SUPPORTER LOUNGE", "Weekly crate lane and premium bunker access", Color3.fromRGB(246, 220, 138))
+	attachAreaIdentityLabel(lobbyModel, "VipLounge", "VIP OPERATIONS", "Priority launch deck and fast lane", Color3.fromRGB(186, 220, 255))
+
+	attachAreaEntryMarker(lobbyModel, "TrainingYard", "EntryPad", "TRAIN", Color3.fromRGB(244, 212, 152))
+	attachAreaEntryMarker(lobbyModel, "ParkourCourse", "StartPad", "START", Color3.fromRGB(206, 220, 255))
+	attachAreaEntryMarker(lobbyModel, "DuelRing", "RedCornerPad", "RED", Color3.fromRGB(255, 194, 194), Vector2.new(64, 18))
+	attachAreaEntryMarker(lobbyModel, "DuelRing", "BlueCornerPad", "BLUE", Color3.fromRGB(198, 218, 255), Vector2.new(64, 18))
+	attachAreaEntryMarker(lobbyModel, "TargetRange", "FiringLine", "RANGE", Color3.fromRGB(186, 238, 214))
+	attachAreaEntryMarker(lobbyModel, "SalvageRun", "StartPad", "SALVAGE", Color3.fromRGB(244, 214, 168))
+	attachAreaEntryMarker(lobbyModel, "SalvageRun", "FinishPad", "EXTRACT", Color3.fromRGB(224, 232, 242))
+	attachAreaEntryMarker(lobbyModel, "TrainingYard", "ReturnPad", "RETURN", Color3.fromRGB(224, 232, 242))
+	attachAreaEntryMarker(lobbyModel, "ParkourCourse", "ReturnPad", "RETURN", Color3.fromRGB(224, 232, 242))
+	attachAreaEntryMarker(lobbyModel, "DuelRing", "ReturnPad", "RETURN", Color3.fromRGB(224, 232, 242))
+	attachAreaEntryMarker(lobbyModel, "TargetRange", "ReturnPad", "RETURN", Color3.fromRGB(224, 232, 242))
+	attachAreaEntryMarker(lobbyModel, "SalvageRun", "ReturnPad", "RETURN", Color3.fromRGB(224, 232, 242))
+	attachAreaEntryMarker(lobbyModel, "SupporterLounge", "ReturnPad", "RETURN", Color3.fromRGB(224, 232, 242))
+	attachAreaEntryMarker(lobbyModel, "VipLounge", "ReturnPad", "RETURN", Color3.fromRGB(224, 232, 242))
+
+	polishDonationAnchor(root, lobbyModel)
+
 end
 
-local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
+makeOpenSkyLobby = function(root: Instance, worldPosition: Vector3)
 	local plaza = Instance.new("Model")
 	plaza.Name = "OpenSkyLobby"
 	plaza.Parent = root
@@ -2353,8 +4529,17 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 			button.CanTouch = false
 			button.CanQuery = true
 			local detector = Instance.new("ClickDetector")
-			detector.MaxActivationDistance = 32
+			detector.MaxActivationDistance = 48
 			detector.Parent = button
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.Name = "Prompt"
+			prompt.ActionText = name:gsub("Button", "")
+			prompt.ObjectText = "Leaderboard"
+			prompt.KeyboardKeyCode = Enum.KeyCode.E
+			prompt.HoldDuration = 0
+			prompt.RequiresLineOfSight = false
+			prompt.MaxActivationDistance = 18
+			prompt.Parent = button
 			return button
 		end
 
@@ -2387,6 +4572,68 @@ local function makeOpenSkyLobby(root: Instance, worldPosition: Vector3)
 		for _, info in ipairs(LEADERBOARD_MASTER_SCROLL_BUTTONS) do
 			addControlFromRect(info.name, info)
 		end
+
+		local worldControls = Instance.new("Model")
+		worldControls.Name = "WorldControls"
+		worldControls.Parent = monument
+
+		local function addWorldControlPad(name: string, label: string, positionOffset: Vector3, size: Vector3, color: Color3)
+			local pad = makePart(
+				worldControls,
+				"Part",
+				name,
+				size,
+				CFrame.new(position + positionOffset),
+				color,
+				Enum.Material.Metal
+			)
+			pad.CanQuery = true
+			local glow = makeGlowPart(
+				worldControls,
+				name .. "Glow",
+				Vector3.new(size.X - 0.6, 0.08, size.Z - 0.6),
+				pad.CFrame * CFrame.new(0, (size.Y * 0.5) + 0.08, 0),
+				color,
+				0.42
+			)
+			glow.CanCollide = false
+			glow.CanQuery = false
+			local detector = Instance.new("ClickDetector")
+			detector.MaxActivationDistance = 48
+			detector.Parent = pad
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.Name = "Prompt"
+			prompt.ActionText = label
+			prompt.ObjectText = "Leaderboard"
+			prompt.KeyboardKeyCode = Enum.KeyCode.E
+			prompt.HoldDuration = 0
+			prompt.RequiresLineOfSight = false
+			prompt.MaxActivationDistance = 18
+			prompt.Parent = pad
+			attachWorldText(pad, label, Vector3.new(0, 1.2, 0), Color3.fromRGB(244, 244, 244), Vector2.new(72, 16))
+			return pad
+		end
+
+		local windowPadY = 0.64
+		for index, info in ipairs({
+			{ "AllTimeButton", "ALL TIME", Vector3.new(-20, windowPadY, 36), Color3.fromRGB(92, 116, 156) },
+			{ "MonthlyButton", "MONTHLY", Vector3.new(-6, windowPadY, 36), Color3.fromRGB(92, 116, 156) },
+			{ "WeeklyButton", "WEEKLY", Vector3.new(8, windowPadY, 36), Color3.fromRGB(92, 116, 156) },
+			{ "DailyButton", "DAILY", Vector3.new(22, windowPadY, 36), Color3.fromRGB(92, 116, 156) },
+		}) do
+			addWorldControlPad(info[1], info[2], info[3], Vector3.new(11, 1.1, 5.5), info[4])
+		end
+
+		for _, info in ipairs({
+			{ "LevelsButton", "LEVELS", Vector3.new(-16, windowPadY, 44), Color3.fromRGB(104, 146, 204) },
+			{ "RunsButton", "RUNS", Vector3.new(0, windowPadY, 44), Color3.fromRGB(92, 176, 136) },
+			{ "KillsButton", "KILLS", Vector3.new(16, windowPadY, 44), Color3.fromRGB(206, 162, 92) },
+		}) do
+			addWorldControlPad(info[1], info[2], info[3], Vector3.new(13, 1.1, 5.5), info[4])
+		end
+
+		addWorldControlPad("ScrollUpButton", "UP", Vector3.new(28, windowPadY, 28), Vector3.new(7, 1.1, 7), Color3.fromRGB(132, 144, 164))
+		addWorldControlPad("ScrollDownButton", "DOWN", Vector3.new(28, windowPadY, 52), Vector3.new(7, 1.1, 7), Color3.fromRGB(132, 144, 164))
 
 		return monument
 	end
@@ -4179,15 +6426,19 @@ local function makeBunkerShell(root: Instance, worldPosition: Vector3)
 end
 
 local function applyLobbyLighting()
-	Lighting.ClockTime = 5
-	Lighting.Brightness = 2
-	Lighting.Ambient = Color3.fromRGB(148, 156, 170)
-	Lighting.OutdoorAmbient = Color3.fromRGB(94, 102, 116)
-	Lighting.ColorShift_Top = Color3.fromRGB(48, 62, 84)
-	Lighting.ColorShift_Bottom = Color3.fromRGB(24, 28, 36)
-	Lighting.EnvironmentDiffuseScale = 0.55
-	Lighting.EnvironmentSpecularScale = 0.2
+	pcall(function()
+		Lighting.Technology = Enum.Technology.Future
+	end)
+	Lighting.ClockTime = 5.7
+	Lighting.Brightness = 2.28
+	Lighting.Ambient = Color3.fromRGB(154, 162, 176)
+	Lighting.OutdoorAmbient = Color3.fromRGB(102, 110, 126)
+	Lighting.ColorShift_Top = Color3.fromRGB(66, 84, 114)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(32, 36, 46)
+	Lighting.EnvironmentDiffuseScale = 0.62
+	Lighting.EnvironmentSpecularScale = 0.34
 	Lighting.GlobalShadows = true
+	Lighting.ShadowSoftness = 0.28
 
 	local atmosphere = Lighting:FindFirstChild("LobbyAtmosphere")
 	if not atmosphere then
@@ -4195,12 +6446,12 @@ local function applyLobbyLighting()
 		atmosphere.Name = "LobbyAtmosphere"
 		atmosphere.Parent = Lighting
 	end
-	atmosphere.Density = 0.11
-	atmosphere.Offset = 0.05
-	atmosphere.Color = Color3.fromRGB(188, 198, 214)
-	atmosphere.Decay = Color3.fromRGB(118, 126, 140)
+	atmosphere.Density = 0.14
+	atmosphere.Offset = 0.01
+	atmosphere.Color = Color3.fromRGB(194, 204, 222)
+	atmosphere.Decay = Color3.fromRGB(122, 130, 148)
 	atmosphere.Glare = 0
-	atmosphere.Haze = 0.18
+	atmosphere.Haze = 0.34
 
 	local bloom = Lighting:FindFirstChild("LobbyBloom")
 	if not bloom then
@@ -4208,9 +6459,9 @@ local function applyLobbyLighting()
 		bloom.Name = "LobbyBloom"
 		bloom.Parent = Lighting
 	end
-	bloom.Intensity = 0.015
-	bloom.Size = 10
-	bloom.Threshold = 3.6
+	bloom.Intensity = 0.06
+	bloom.Size = 16
+	bloom.Threshold = 2.08
 
 	local colorCorrection = Lighting:FindFirstChild("LobbyColorCorrection")
 	if not colorCorrection then
@@ -4218,10 +6469,10 @@ local function applyLobbyLighting()
 		colorCorrection.Name = "LobbyColorCorrection"
 		colorCorrection.Parent = Lighting
 	end
-	colorCorrection.Brightness = 0.08
-	colorCorrection.Contrast = 0.06
-	colorCorrection.Saturation = 0
-	colorCorrection.TintColor = Color3.fromRGB(236, 240, 255)
+	colorCorrection.Brightness = 0.028
+	colorCorrection.Contrast = 0.1
+	colorCorrection.Saturation = -0.02
+	colorCorrection.TintColor = Color3.fromRGB(244, 238, 228)
 end
 
 local function makeArch(model: Instance, worldPosition: Vector3, palette)
@@ -5383,7 +7634,7 @@ makeGuidePaths = function(root: Instance, origin: Vector3, areaConfig)
 	end
 end
 
-local function makeMissionStaging(root: Instance, worldPosition: Vector3)
+makeMissionStaging = function(root: Instance, worldPosition: Vector3)
 	local mission = Instance.new("Model")
 	mission.Name = "MissionStaging"
 	mission.Parent = root
@@ -5392,7 +7643,7 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 		mission,
 		"Part",
 		"OuterFloor",
-		Vector3.new(236, 2, 236),
+		Vector3.new(320, 2, 320),
 		CFrame.new(worldPosition + Vector3.new(0, -1.2, 0)),
 		Color3.fromRGB(18, 21, 26),
 		Enum.Material.Concrete
@@ -5403,7 +7654,7 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 		mission,
 		"Part",
 		"Base",
-		Vector3.new(176, 2, 176),
+		Vector3.new(252, 2, 252),
 		CFrame.new(worldPosition + Vector3.new(0, -1, 0)),
 		Color3.fromRGB(32, 36, 42),
 		Enum.Material.DiamondPlate
@@ -5415,8 +7666,8 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 			mission,
 			"Part",
 			"FloorSeamX" .. tostring(index + 3),
-			Vector3.new(2, 0.08, 156),
-			CFrame.new(worldPosition + Vector3.new(index * 34, 0.16, 0)),
+			Vector3.new(2, 0.08, 220),
+			CFrame.new(worldPosition + Vector3.new(index * 46, 0.16, 0)),
 			Color3.fromRGB(70, 76, 84),
 			Enum.Material.Metal
 		)
@@ -5430,8 +7681,8 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 			mission,
 			"Part",
 			"FloorSeamZ" .. tostring(index + 3),
-			Vector3.new(156, 0.08, 2),
-			CFrame.new(worldPosition + Vector3.new(0, 0.16, index * 34)),
+			Vector3.new(220, 0.08, 2),
+			CFrame.new(worldPosition + Vector3.new(0, 0.16, index * 46)),
 			Color3.fromRGB(70, 76, 84),
 			Enum.Material.Metal
 		)
@@ -5444,7 +7695,7 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 		mission,
 		"Part",
 		"Glow",
-		Vector3.new(136, 0.4, 136),
+		Vector3.new(204, 0.4, 204),
 		CFrame.new(worldPosition + Vector3.new(0, 1.2, 0)),
 		Color3.fromRGB(214, 118, 72),
 		Enum.Material.Neon
@@ -5457,7 +7708,7 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 		mission,
 		"Part",
 		"PerimeterFrame",
-		Vector3.new(186, 1, 186),
+		Vector3.new(264, 1, 264),
 		CFrame.new(worldPosition + Vector3.new(0, 0.9, 0)),
 		Color3.fromRGB(79, 47, 37),
 		Enum.Material.Metal
@@ -5516,10 +7767,10 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 	makeGlowPart(mission, "RearGantryLight", Vector3.new(58, 0.22, 1), CFrame.new(worldPosition + Vector3.new(0, 14.8, 55.8)), Color3.fromRGB(236, 160, 112), 0.8)
 
 	for _, offset in ipairs({
-		Vector3.new(-54, 1.4, -54),
-		Vector3.new(54, 1.4, -54),
-		Vector3.new(-54, 1.4, 54),
-		Vector3.new(54, 1.4, 54),
+		Vector3.new(-92, 1.4, -92),
+		Vector3.new(92, 1.4, -92),
+		Vector3.new(-92, 1.4, 92),
+		Vector3.new(92, 1.4, 92),
 	}) do
 		local cornerPylon = makePart(
 			mission,
@@ -5538,8 +7789,8 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 		mission,
 		"Part",
 		"ZoneWallLeft",
-		Vector3.new(6, 22, 132),
-		CFrame.new(worldPosition + Vector3.new(-72, 10, 0)),
+		Vector3.new(8, 26, 212),
+		CFrame.new(worldPosition + Vector3.new(-104, 12, 0)),
 		Color3.fromRGB(28, 31, 36),
 		Enum.Material.Metal
 	)
@@ -5549,8 +7800,8 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 		mission,
 		"Part",
 		"ZoneWallRight",
-		Vector3.new(6, 22, 132),
-		CFrame.new(worldPosition + Vector3.new(72, 10, 0)),
+		Vector3.new(8, 26, 212),
+		CFrame.new(worldPosition + Vector3.new(104, 12, 0)),
 		Color3.fromRGB(28, 31, 36),
 		Enum.Material.Metal
 	)
@@ -5560,8 +7811,8 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 		mission,
 		"Part",
 		"ZoneWallBack",
-		Vector3.new(144, 22, 6),
-		CFrame.new(worldPosition + Vector3.new(0, 10, -72)),
+		Vector3.new(212, 26, 8),
+		CFrame.new(worldPosition + Vector3.new(0, 12, -104)),
 		Color3.fromRGB(28, 31, 36),
 		Enum.Material.Metal
 	)
@@ -5639,38 +7890,51 @@ local function makeMissionStaging(root: Instance, worldPosition: Vector3)
 end
 
 function LobbyWorld.start()
-	clearExisting(Config.RootName)
+	clearLegacyLobbyDuplicates()
 	applyLobbyLighting()
 
-	local root = Instance.new("Folder")
-	root.Name = Config.RootName
-	root.Parent = Workspace
-	root:SetAttribute("WorldType", "LobbyHub")
-	root:SetAttribute("PlayerCountMax", Config.SquadSize.Max)
-
-	local lobbyAnchor = cloneDesignerLobbyTemplate(root)
-	if lobbyAnchor then
-		wireDesignerLobby(root, lobbyAnchor)
-	else
-		makeOpenSkyLobby(root, Config.Origin)
-		lobbyAnchor = root:FindFirstChild("OpenSkyLobby")
-		if lobbyAnchor and lobbyAnchor:IsA("Model") then
-			local anchorPart = lobbyAnchor:FindFirstChild("OuterGround")
-			if anchorPart and anchorPart:IsA("BasePart") then
-				CollectionService:AddTag(anchorPart, "LobbyAnchor")
-			end
-		end
+	local existingRoot = Workspace:FindFirstChild(Config.RootName)
+	if existingRoot and not (existingRoot:IsA("Model") or existingRoot:IsA("Folder")) then
+		existingRoot:Destroy()
+		existingRoot = nil
+	end
+	if not existingRoot or not isConfiguredLobbyRootReady(existingRoot) then
+		existingRoot = waitForConfiguredLobbyRoot(nil)
 	end
 
-	local compositionRoot = lobbyAnchor or root
+	local root = existingRoot
+	if root then
+		root:SetAttribute("WorldType", "LobbyHub")
+		root:SetAttribute("PlayerCountMax", Config.SquadSize.Max)
+	end
+
+	if not root then
+		warn(("[LobbyWorld] %s was not available. Generated fallback lobbies are disabled."):format(Config.RootName))
+		return
+	end
+
+	local compositionRoot = root
+	local worldOrigin = getLobbyWorldOrigin(compositionRoot)
+	ensurePlayableLobbyShell(compositionRoot, worldOrigin)
+	ensureAuthoredLobbyDistricts(compositionRoot, worldOrigin)
+	compositionRoot = root
+	worldOrigin = getLobbyWorldOrigin(compositionRoot)
 	if not compositionRoot:FindFirstChild("LobbySpawn", true) then
-		makeSpawn(compositionRoot, Config.Origin + Config.SpawnOffset)
+		makeSpawn(compositionRoot, worldOrigin + Config.SpawnOffset)
+	end
+	if not (compositionRoot:FindFirstChild("DeployPad", true) or compositionRoot:FindFirstChild("LaunchPad", true)) then
+		makeDeployPad(compositionRoot, worldOrigin + Config.Areas.Deploy.Offset)
 	end
 	if not compositionRoot:FindFirstChild("CentralHub", true) then
-		makeCentralHub(compositionRoot, Config.Origin + Config.SpawnOffset + Config.LobbyLayout.CentralHubOffset)
+		makeCentralHub(compositionRoot, worldOrigin + Config.SpawnOffset + Config.LobbyLayout.CentralHubOffset)
 	end
-	publishDesignerLobbyExport(compositionRoot)
-	local mission, missionSpawn, cameraStart, cameraEnd = makeMissionStaging(root, Config.Origin + Config.MissionOffset)
+	ensureLobbyActivityContent(compositionRoot)
+	if root and root:IsA("Model") then
+		wireLobbyRoot(root, compositionRoot)
+	end
+	validateLobbyFeatures(compositionRoot)
+	publishLobbyExport(compositionRoot)
+	local mission, missionSpawn, cameraStart, cameraEnd = resolveMissionStaging(root, compositionRoot)
 	if not root:GetAttribute("DeployPadName") then
 		root:SetAttribute("DeployPadName", "")
 	end

@@ -3,6 +3,50 @@
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
+      "$ignoreUnknownInstances": true,
+      "Remotes": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+        "FlowChanged": { "$className": "RemoteEvent" },
+        "LobbyStateChanged": { "$className": "RemoteEvent" },
+        "TokenBalanceChanged": { "$className": "RemoteEvent" },
+        "SquadUpdated": { "$className": "RemoteEvent" },
+        "DeployRequested": { "$className": "RemoteEvent" },
+        "DeployStateChanged": { "$className": "RemoteEvent" },
+        "CombatFeedback": { "$className": "RemoteEvent" },
+        "Notification": { "$className": "RemoteEvent" },
+        "ShopStateChanged": { "$className": "RemoteEvent" },
+        "ProgressionUpdated": { "$className": "RemoteEvent" },
+        "PersistenceStateChanged": { "$className": "RemoteEvent" },
+        "SubscriptionStateChanged": { "$className": "RemoteEvent" },
+        "GetBootstrapData": { "$className": "RemoteFunction" },
+        "GetDailyRewardState": { "$className": "RemoteFunction" },
+        "GetDailyOpsState": { "$className": "RemoteFunction" },
+        "GetSubscriptionState": { "$className": "RemoteFunction" },
+        "GetWeeklyRewardState": { "$className": "RemoteFunction" },
+        "RefreshEntitlements": { "$className": "RemoteFunction" },
+        "ClaimDailyReward": { "$className": "RemoteFunction" },
+        "ClaimDailyOpsReward": { "$className": "RemoteFunction" },
+        "ClaimWeeklyRewardCrate": { "$className": "RemoteFunction" },
+        "GetSquadDirectory": { "$className": "RemoteFunction" },
+        "GetInviteablePlayers": { "$className": "RemoteFunction" },
+        "CreateOrJoinSquad": { "$className": "RemoteFunction" },
+        "SendSquadInvite": { "$className": "RemoteFunction" },
+        "RespondToSquadInvite": { "$className": "RemoteFunction" },
+        "SetSquadPrivacy": { "$className": "RemoteFunction" },
+        "LeaveSquad": { "$className": "RemoteFunction" },
+        "RequestMapVote": { "$className": "RemoteFunction" },
+        "RequestDuel": { "$className": "RemoteFunction" },
+        "RequestDeploy": { "$className": "RemoteFunction" },
+        "RequestActivityTransit": { "$className": "RemoteFunction" },
+        "LeaveMission": { "$className": "RemoteFunction" },
+        "GetShopCatalog": { "$className": "RemoteFunction" },
+        "PurchaseShopItem": { "$className": "RemoteFunction" },
+        "EquipLoadoutItem": { "$className": "RemoteFunction" },
+        "SpendSkillPoint": { "$className": "RemoteFunction" },
+        "RespecSkillTree": { "$className": "RemoteFunction" },
+        "AdminCommand": { "$className": "RemoteFunction" }
+      },
       "Shared": {
         "$path": "src/shared"
       }
@@ -20,10 +64,9 @@
       }
     },
     "Workspace": {
-      "$path": "src/workspace/workspace-assets.rbxmx",
       "$ignoreUnknownInstances": true,
-      "HealthGUI": {
-        "$path": "src/workspace/HealthGUI"
+      "right lobby": {
+        "$path": "src/workspace/right lobby.rbxm"
       }
     }
   }

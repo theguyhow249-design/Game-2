@@ -17,7 +17,7 @@ local TokenEconomy = require(Shared:WaitForChild("TokenEconomy"))
 local Theme = require(script.Parent.Theme)
 local CinematicController = require(script.Parent.CinematicController)
 local Remotes = require(script.Parent.Remotes)
-local UiBuilder = require(script.Parent.Parent.UI.UiBuilder)
+local UiBuilder = require(script.Parent.Parent.UI.UiBuilderRuntime)
 
 local FlowController = {}
 
@@ -35,16 +35,46 @@ local COMBAT_AUDIO = {
 	weapon_service_pistol = { volume = 0.18, pitch = 0.92 },
 	weapon_patrol_carbine = { volume = 0.2, pitch = 0.8 },
 	weapon_street_smg = { volume = 0.12, pitch = 1.28 },
+	weapon_compact_smg = { volume = 0.11, pitch = 1.34 },
+	weapon_marksman_carbine = { volume = 0.22, pitch = 0.76 },
+	weapon_guardian_carbine = { volume = 0.2, pitch = 0.78 },
 	weapon_trench_shotgun = { volume = 0.32, pitch = 0.58 },
+	weapon_scattershot = { volume = 0.28, pitch = 0.72 },
 	weapon_training_blade = { volume = 0.1, pitch = 1.08 },
 	weapon_crowbar = { volume = 0.11, pitch = 0.86 },
 	weapon_fire_axe = { volume = 0.12, pitch = 0.78 },
 	weapon_fists = { volume = 0.09, pitch = 1.22 },
 }
 
+local WEAPON_FEEDBACK = {
+	weapon_service_pistol = { recoilScale = 1.05, twistScale = 1.08, color = Color3.fromRGB(188, 214, 248) },
+	weapon_breacher_pistol = { recoilScale = 1.12, twistScale = 1.12, color = Color3.fromRGB(226, 196, 148) },
+	weapon_siege_revolver = { recoilScale = 1.22, twistScale = 1.2, color = Color3.fromRGB(244, 186, 132) },
+	weapon_patrol_carbine = { recoilScale = 0.98, twistScale = 0.96, color = Color3.fromRGB(166, 214, 242) },
+	weapon_marksman_carbine = { recoilScale = 1.08, twistScale = 0.92, color = Color3.fromRGB(198, 226, 252) },
+	weapon_guardian_carbine = { recoilScale = 0.9, twistScale = 0.86, color = Color3.fromRGB(178, 228, 208) },
+	weapon_street_smg = { recoilScale = 0.92, twistScale = 1.16, color = Color3.fromRGB(172, 232, 228) },
+	weapon_compact_smg = { recoilScale = 0.98, twistScale = 1.24, color = Color3.fromRGB(196, 214, 248) },
+	weapon_trench_shotgun = { recoilScale = 1.32, twistScale = 1.18, color = Color3.fromRGB(255, 208, 142) },
+	weapon_scattershot = { recoilScale = 1.18, twistScale = 1.08, color = Color3.fromRGB(248, 216, 156) },
+}
+
 local started = false
 local player = nil
 local ui = nil
+local getRarityStyle
+local normalizeShopTab
+local normalizeStationPanelName
+local connectPremiumPurchaseHandlers
+local connectDonationPromptHandlers
+local createFlowPromptDeps
+local styleCoreLobbyButtons
+local bindPrimaryLobbyButtons
+local bindSecondaryLobbyButtons
+local bindAdminAndShopButtons
+local safeInvoke
+local combatFloatsEnabledState = true
+local compactMissionToastsEnabledState = false
 
 local function new(className, props)
 	local instance = Instance.new(className)
@@ -221,35 +251,47 @@ local function buildPreviewWeaponVisual(parent, handle, weapon, scale)
 	end
 	if style == "Pistol" then
 		handle.Size = scaleVector3(Vector3.new(0.26, 0.92, 0.54), scale)
-		attachPreviewWeaponPart(parent, handle, "Frame", scaleVector3(Vector3.new(0.24, 0.36, 0.66), scale), CFrame.new(0, 0.02 * scale, 0.04 * scale), weapon.HandleColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "Slide", scaleVector3(Vector3.new(0.32, 0.2, 1.08), scale), CFrame.new(0, 0.3 * scale, -0.12 * scale), accentColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.14, 0.14, 0.88), scale), CFrame.new(0, 0.22 * scale, -0.88 * scale), accentColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "Muzzle", scaleVector3(Vector3.new(0.16, 0.16, 0.12), scale), CFrame.new(0, 0.22 * scale, -1.38 * scale), Color3.fromRGB(26, 26, 30), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Frame", scaleVector3(Vector3.new(0.24, 0.32, 0.58), scale), CFrame.new(0, 0.02 * scale, 0.08 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Slide", scaleVector3(Vector3.new(0.34, 0.2, 1.24), scale), CFrame.new(0, 0.3 * scale, -0.2 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "SlideTop", scaleVector3(Vector3.new(0.24, 0.05, 0.96), scale), CFrame.new(0, 0.42 * scale, -0.16 * scale), Color3.fromRGB(34, 36, 42), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.12, 0.12, 1.02), scale), CFrame.new(0, 0.22 * scale, -0.98 * scale), Color3.fromRGB(24, 26, 30), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Muzzle", scaleVector3(Vector3.new(0.16, 0.16, 0.12), scale), CFrame.new(0, 0.22 * scale, -1.58 * scale), Color3.fromRGB(26, 26, 30), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "FrontSight", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0, 0.48 * scale, -1.16 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		attachPreviewWeaponPart(parent, handle, "RearSightLeft", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(-0.08 * scale, 0.48 * scale, 0.02 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		attachPreviewWeaponPart(parent, handle, "RearSightRight", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0.08 * scale, 0.48 * scale, 0.02 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
 		return
 	end
 	if style == "Carbine" then
 		handle.Size = scaleVector3(Vector3.new(0.22, 1.02, 0.34), scale)
-		attachPreviewWeaponPart(parent, handle, "UpperReceiver", scaleVector3(Vector3.new(0.34, 0.26, 1.24), scale), CFrame.new(0, 0.34 * scale, -0.16 * scale), accentColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "LowerReceiver", scaleVector3(Vector3.new(0.28, 0.34, 0.82), scale), CFrame.new(0, 0.08 * scale, 0.02 * scale), weapon.HandleColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 0.1, 1.84), scale), CFrame.new(0, 0.32 * scale, -1.62 * scale), accentColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.24, 0.46, 0.96), scale), CFrame.new(0, 0.02 * scale, 0.88 * scale), weapon.HandleColor, Enum.Material.SmoothPlastic)
-		attachPreviewWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.18, 0.52, 0.22), scale), CFrame.new(0, -0.42 * scale, -0.08 * scale) * CFrame.Angles(math.rad(-8), 0, 0), weapon.HandleColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "UpperReceiver", scaleVector3(Vector3.new(0.34, 0.24, 1.38), scale), CFrame.new(0, 0.34 * scale, -0.24 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "LowerReceiver", scaleVector3(Vector3.new(0.28, 0.3, 0.78), scale), CFrame.new(0, 0.08 * scale, 0.04 * scale), weapon.HandleColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.09, 0.09, 2.12), scale), CFrame.new(0, 0.3 * scale, -1.96 * scale), Color3.fromRGB(24, 26, 30), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.22, 0.4, 1.04), scale), CFrame.new(0, 0.02 * scale, 1.02 * scale), weapon.HandleColor, Enum.Material.SmoothPlastic)
+		attachPreviewWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.16, 0.58, 0.18), scale), CFrame.new(0, -0.42 * scale, -0.06 * scale) * CFrame.Angles(math.rad(-6), 0, 0), Color3.fromRGB(28, 30, 34), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "FrontSight", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0, 0.56 * scale, -1.96 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		attachPreviewWeaponPart(parent, handle, "RearSightLeft", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(-0.06 * scale, 0.56 * scale, 0.08 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		attachPreviewWeaponPart(parent, handle, "RearSightRight", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0.06 * scale, 0.56 * scale, 0.08 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
 		return
 	end
 	if style == "SMG" then
 		handle.Size = scaleVector3(Vector3.new(0.24, 0.9, 0.32), scale)
-		attachPreviewWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.32, 0.24, 1.02), scale), CFrame.new(0, 0.28 * scale, -0.08 * scale), accentColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 0.1, 1.02), scale), CFrame.new(0, 0.22 * scale, -1.06 * scale), accentColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.16, 0.72, 0.2), scale), CFrame.new(0, -0.5 * scale, -0.06 * scale), weapon.HandleColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "Stock", scaleVector3(Vector3.new(0.18, 0.18, 0.72), scale), CFrame.new(0, 0.18 * scale, 0.72 * scale), Color3.fromRGB(26, 28, 32), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.32, 0.22, 1.18), scale), CFrame.new(0, 0.28 * scale, -0.16 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.09, 0.09, 1.24), scale), CFrame.new(0, 0.22 * scale, -1.22 * scale), Color3.fromRGB(22, 22, 24), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Magazine", scaleVector3(Vector3.new(0.14, 0.82, 0.18), scale), CFrame.new(0, -0.52 * scale, -0.04 * scale), Color3.fromRGB(28, 30, 34), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Stock", scaleVector3(Vector3.new(0.16, 0.16, 0.9), scale), CFrame.new(0, 0.18 * scale, 0.9 * scale), Color3.fromRGB(26, 28, 32), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "FrontSight", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0, 0.48 * scale, -1.28 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		attachPreviewWeaponPart(parent, handle, "RearSightLeft", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(-0.06 * scale, 0.48 * scale, 0.06 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
+		attachPreviewWeaponPart(parent, handle, "RearSightRight", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0.06 * scale, 0.48 * scale, 0.06 * scale), Color3.fromRGB(126, 255, 112), Enum.Material.Neon)
 		return
 	end
 	if style == "Shotgun" then
 		handle.Size = scaleVector3(Vector3.new(0.26, 1, 0.34), scale)
-		attachPreviewWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.36, 0.24, 1.08), scale), CFrame.new(0, 0.28 * scale, -0.1 * scale), accentColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.1, 0.1, 2.02), scale), CFrame.new(0, 0.22 * scale, -1.76 * scale), accentColor, Enum.Material.Metal)
-		attachPreviewWeaponPart(parent, handle, "Pump", scaleVector3(Vector3.new(0.22, 0.18, 0.58), scale), CFrame.new(0, 0.08 * scale, -0.98 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
-		attachPreviewWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.24, 0.42, 0.92), scale), CFrame.new(0, 0.02 * scale, 0.86 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		attachPreviewWeaponPart(parent, handle, "Receiver", scaleVector3(Vector3.new(0.36, 0.22, 1.22), scale), CFrame.new(0, 0.28 * scale, -0.16 * scale), accentColor, Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "ReceiverTop", scaleVector3(Vector3.new(0.24, 0.04, 0.86), scale), CFrame.new(0, 0.42 * scale, -0.12 * scale), Color3.fromRGB(34, 30, 28), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Barrel", scaleVector3(Vector3.new(0.09, 0.09, 2.34), scale), CFrame.new(0, 0.22 * scale, -2.06 * scale), Color3.fromRGB(22, 22, 24), Enum.Material.Metal)
+		attachPreviewWeaponPart(parent, handle, "Pump", scaleVector3(Vector3.new(0.2, 0.16, 0.74), scale), CFrame.new(0, 0.08 * scale, -1.18 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		attachPreviewWeaponPart(parent, handle, "StockCore", scaleVector3(Vector3.new(0.22, 0.38, 1.04), scale), CFrame.new(0, 0.02 * scale, 1.02 * scale), weapon.HandleColor, Enum.Material.WoodPlanks)
+		attachPreviewWeaponPart(parent, handle, "FrontBead", scaleVector3(Vector3.new(0.04, 0.04, 0.04), scale), CFrame.new(0, 0.42 * scale, -3.18 * scale), Color3.fromRGB(220, 184, 96), Enum.Material.Neon)
 		return
 	end
 end
@@ -280,17 +322,24 @@ end
 
 local function createFlowCleanup(
 	inputConnection,
-	promptConnection,
-	promptShownConnection,
-	leaderboardPlayerAddedConnection,
-	leaderboardPlayerRemovingConnection,
-	leaderboardPlayerConnections,
-	unbindLeaderboardPlayer,
-	promptTween,
-	subscriptionPromptConnection,
-	remoteCleanup
+	cleanupState
 )
 	return function()
+		local promptConnections = cleanupState and cleanupState.promptConnections
+		local leaderboardBindings = cleanupState and cleanupState.leaderboardBindings
+		local purchaseConnections = cleanupState and cleanupState.purchaseConnections
+		local promptTween = cleanupState and cleanupState.getPromptTween and cleanupState.getPromptTween()
+		local remoteCleanup = cleanupState and cleanupState.remoteCleanup
+		local promptConnection = promptConnections and promptConnections[1]
+		local promptShownConnection = promptConnections and promptConnections[2]
+		local donationPromptConnection = promptConnections and promptConnections[3]
+		local leaderboardPlayerConnections = leaderboardBindings and leaderboardBindings[1] or {}
+		local leaderboardPlayerAddedConnection = leaderboardBindings and leaderboardBindings[2]
+		local leaderboardPlayerRemovingConnection = leaderboardBindings and leaderboardBindings[3]
+		local unbindLeaderboardPlayer = leaderboardBindings and leaderboardBindings[4]
+		local gamePassPromptConnection = purchaseConnections and purchaseConnections[1]
+		local subscriptionPromptConnection = purchaseConnections and purchaseConnections[2]
+
 		if inputConnection then
 			inputConnection:Disconnect()
 		end
@@ -307,13 +356,21 @@ local function createFlowCleanup(
 			leaderboardPlayerRemovingConnection:Disconnect()
 		end
 		for candidate in pairs(leaderboardPlayerConnections) do
-			unbindLeaderboardPlayer(candidate)
+			if unbindLeaderboardPlayer then
+				unbindLeaderboardPlayer(candidate)
+			end
 		end
 		if promptTween then
 			promptTween:Cancel()
 		end
+		if gamePassPromptConnection then
+			gamePassPromptConnection:Disconnect()
+		end
 		if subscriptionPromptConnection then
 			subscriptionPromptConnection:Disconnect()
+		end
+		if donationPromptConnection then
+			donationPromptConnection:Disconnect()
 		end
 		if remoteCleanup then
 			remoteCleanup()
@@ -327,6 +384,8 @@ local LEADERBOARD_PLAYER_ATTRIBUTES = {
 	"ZombiesDefeated",
 	"AllTimeMissionsCompleted",
 	"AllTimeZombiesDefeated",
+	"MonthlyMissionsCompleted",
+	"MonthlyZombiesDefeated",
 	"WeeklyMissionsCompleted",
 	"WeeklyZombiesDefeated",
 	"DailyMissionsCompleted",
@@ -409,6 +468,19 @@ local function handleNotificationRemote(message, deps)
 				end
 			end
 			return
+		elseif message.kind == "Activity" then
+			local title = tostring(message.title or "Activity")
+			local body = tostring(message.body or message.message or "")
+			deps.pushMissionToast(
+				title,
+				body,
+				typeof(message.accent) == "Color3" and message.accent or Color3.fromRGB(188, 214, 128),
+				message.complete == true,
+				message.rewardText ~= nil and tostring(message.rewardText) or nil
+			)
+			deps.setCurrentSocialMessage(tostring(message.message or body or title))
+			deps.updateLobbyText()
+			return
 		elseif message.kind == "Invite" then
 			deps.setPendingInvite(message)
 			deps.setCurrentSocialMessage(tostring(message.message or deps.getCurrentSocialMessage()))
@@ -419,12 +491,14 @@ local function handleNotificationRemote(message, deps)
 		local nextMessage = tostring(message.message or message.status or deps.getCurrentSocialMessage())
 		deps.setCurrentSocialMessage(nextMessage)
 		if string.find(nextMessage, "Warning", 1, true) then
+			deps.pushMissionToast("WARNING", nextMessage, Color3.fromRGB(255, 176, 126), false, nil)
 			deps.playUiSound(SOUND_IDS.Alert, 0.28, 0.98)
 		end
 		deps.updateLobbyText()
 	elseif typeof(message) == "string" then
 		deps.setCurrentSocialMessage(message)
 		if string.find(message, "Warning", 1, true) then
+			deps.pushMissionToast("WARNING", message, Color3.fromRGB(255, 176, 126), false, nil)
 			deps.playUiSound(SOUND_IDS.Alert, 0.28, 0.98)
 		end
 		deps.updateLobbyText()
@@ -495,6 +569,1161 @@ local function bindFlowRemoteHandlers(deps)
 	})
 end
 
+local function applyFlowBootstrap(bootstrap, deps)
+	if bootstrap.tokenBalance ~= nil then
+		deps.setTokenValue(bootstrap.tokenBalance)
+	end
+	if bootstrap.squadSnapshot ~= nil then
+		deps.setSquadValue(bootstrap.squadSnapshot)
+	end
+	if bootstrap.squadDirectory ~= nil then
+		deps.setSquadDirectoryValue(bootstrap.squadDirectory)
+	end
+	if bootstrap.inviteablePlayers ~= nil then
+		deps.setInviteablePlayersValue(bootstrap.inviteablePlayers)
+	end
+	if bootstrap.dailyRewardState ~= nil then
+		deps.setDailyRewardValue(bootstrap.dailyRewardState)
+	end
+	if bootstrap.dailyOpsState ~= nil then
+		deps.setDailyOpsValue(bootstrap.dailyOpsState)
+	end
+	if bootstrap.weeklyRewardState ~= nil then
+		deps.setWeeklyRewardValue(bootstrap.weeklyRewardState)
+	end
+	if bootstrap.subscriptionState ~= nil then
+		deps.setSubscriptionStateValue(bootstrap.subscriptionState)
+	end
+	if bootstrap.seasonalEventState ~= nil then
+		deps.setSeasonalEventValue(bootstrap.seasonalEventState)
+	end
+	if bootstrap.shopCatalog ~= nil then
+		deps.setShopCatalogValue(bootstrap.shopCatalog)
+	end
+	if bootstrap.progression ~= nil then
+		deps.setProgressionValue(bootstrap.progression)
+	end
+	if bootstrap.persistenceState ~= nil then
+		deps.setPersistenceStateValue(bootstrap.persistenceState)
+	end
+	if bootstrap.lobbyState ~= nil then
+		deps.setLobbyValue(bootstrap.lobbyState)
+	end
+end
+
+local function handleFlowPromptTriggered(prompt, deps)
+	if deps.getState() ~= "Lobby" or not prompt then
+		return
+	end
+
+	if prompt:GetAttribute("RequiresSupporter") == true and not deps.isSupporterActive() then
+		deps.setPendingNpcDialogue({
+			title = "Supporter Access",
+			role = "Premium bunker lane",
+			body = "Supporter access is required for this lounge. Activate Bunker Supporter to use the lounge, weekly crate terminal, and premium reward lane.",
+			actionLabel = "Close",
+			actionPanel = "",
+		})
+		deps.setActivePopup("NpcDialogue")
+		deps.updateLobbyText()
+		return
+	end
+
+	if prompt:GetAttribute("RequiresVip") == true and not deps.hasVipAccess() then
+		deps.setPendingNpcDialogue({
+			title = "VIP Access",
+			role = "Operator fast lane",
+			body = "VIP access is required for this lane. VIP Operation owners and active supporters can both use this area.",
+			actionLabel = "Close",
+			actionPanel = "",
+		})
+		deps.setActivePopup("NpcDialogue")
+		deps.updateLobbyText()
+		return
+	end
+
+	local duelAction = prompt:GetAttribute("DuelAction")
+	if duelAction ~= nil then
+		deps.requestDuel(duelAction)
+		return
+	end
+
+	if prompt.Name == "LobbyNpcPrompt" or prompt:GetAttribute("NpcDialogueTitle") ~= nil then
+		deps.setPendingNpcDialogue({
+			title = prompt:GetAttribute("NpcDialogueTitle"),
+			role = prompt:GetAttribute("NpcDialogueRole"),
+			body = prompt:GetAttribute("NpcDialogueBody"),
+			actionLabel = prompt:GetAttribute("NpcActionLabel"),
+			actionPanel = prompt:GetAttribute("NpcActionPanel"),
+		})
+		deps.setActivePopup("NpcDialogue")
+		deps.updateLobbyText()
+		return
+	end
+
+	local panelName = normalizeStationPanelName(prompt.ObjectText)
+		or normalizeStationPanelName(prompt.ActionText)
+		or normalizeStationPanelName(prompt.Parent and prompt.Parent.Name)
+	if panelName then
+		deps.openStationPanel(panelName)
+	end
+end
+
+local function handleFlowPromptShown(prompt, deps)
+	if not prompt then
+		return
+	end
+
+	if prompt:GetAttribute("RequiresSupporter") == true then
+		local unlocked = deps.isSupporterActive()
+		prompt.ActionText = tostring(prompt:GetAttribute(unlocked and "UnlockedActionText" or "LockedActionText") or prompt.ActionText)
+		prompt.ObjectText = tostring(prompt:GetAttribute(unlocked and "UnlockedObjectText" or "LockedObjectText") or prompt.ObjectText)
+	elseif prompt:GetAttribute("RequiresVip") == true then
+		local unlocked = deps.hasVipAccess()
+		prompt.ActionText = tostring(prompt:GetAttribute(unlocked and "UnlockedActionText" or "LockedActionText") or prompt.ActionText)
+		prompt.ObjectText = tostring(prompt:GetAttribute(unlocked and "UnlockedObjectText" or "LockedObjectText") or prompt.ObjectText)
+	end
+
+	local inMission = deps.getState() == "Mission" or deps.isInMission()
+	if inMission and prompt:GetAttribute("MissionPrompt") ~= true then
+		deps.suppressedMissionPrompts[prompt] = true
+		prompt.Enabled = false
+	end
+end
+
+local function connectFlowPromptHandlers(deps)
+	local promptConnection = ProximityPromptService.PromptTriggered:Connect(function(prompt)
+		handleFlowPromptTriggered(prompt, deps)
+	end)
+	local promptShownConnection = ProximityPromptService.PromptShown:Connect(function(prompt)
+		handleFlowPromptShown(prompt, deps)
+	end)
+	return promptConnection, promptShownConnection
+end
+
+local function createFlowRemoteDeps(
+	player,
+	progression,
+	setLobbyValue,
+	setTokenValue,
+	setSquadValue,
+	setDeployValue,
+	handleCombatFeedback,
+	showResultsPopup,
+	pushMissionToast,
+	playUiSound,
+	updateLobbyText,
+	getCurrentSocialMessage,
+	setCurrentSocialMessage,
+	setPendingInvite,
+	setCurrentShopTab,
+	setCurrentShopStatus,
+	setCurrentInventoryStatus,
+	setCurrentInventoryTab,
+	getActivePopup,
+	setActivePopup,
+	setProgressionValue,
+	setSubscriptionStateValue,
+	setPersistenceStateValue
+)
+	return {
+		player = player,
+		progression = progression,
+		setLobbyValue = setLobbyValue,
+		setTokenValue = setTokenValue,
+		setSquadValue = setSquadValue,
+		setDeployValue = setDeployValue,
+		handleCombatFeedback = handleCombatFeedback,
+		showResultsPopup = showResultsPopup,
+		pushMissionToast = pushMissionToast,
+		playUiSound = playUiSound,
+		updateLobbyText = updateLobbyText,
+		getCurrentSocialMessage = getCurrentSocialMessage,
+		setCurrentSocialMessage = setCurrentSocialMessage,
+		setPendingInvite = setPendingInvite,
+		setCurrentShopTab = setCurrentShopTab,
+		setCurrentShopStatus = setCurrentShopStatus,
+		setCurrentInventoryStatus = setCurrentInventoryStatus,
+		setCurrentInventoryTab = setCurrentInventoryTab,
+		getActivePopup = getActivePopup,
+		setActivePopup = setActivePopup,
+		setProgressionValue = setProgressionValue,
+		setSubscriptionStateValue = setSubscriptionStateValue,
+		setPersistenceStateValue = setPersistenceStateValue,
+	}
+end
+
+local function createFlowBootstrapDeps(
+	setTokenValue,
+	setSquadValue,
+	setSquadDirectoryValue,
+	setInviteablePlayersValue,
+	setDailyRewardValue,
+	setDailyOpsValue,
+	setWeeklyRewardValue,
+	setSubscriptionStateValue,
+	setSeasonalEventValue,
+	setShopCatalogValue,
+	setProgressionValue,
+	setPersistenceStateValue,
+	setLobbyValue
+)
+	return {
+		setTokenValue = setTokenValue,
+		setSquadValue = setSquadValue,
+		setSquadDirectoryValue = setSquadDirectoryValue,
+		setInviteablePlayersValue = setInviteablePlayersValue,
+		setDailyRewardValue = setDailyRewardValue,
+		setDailyOpsValue = setDailyOpsValue,
+		setWeeklyRewardValue = setWeeklyRewardValue,
+		setSubscriptionStateValue = setSubscriptionStateValue,
+		setSeasonalEventValue = setSeasonalEventValue,
+		setShopCatalogValue = setShopCatalogValue,
+		setProgressionValue = setProgressionValue,
+		setPersistenceStateValue = setPersistenceStateValue,
+		setLobbyValue = setLobbyValue,
+	}
+end
+
+local function createDeployValueHandler(deps)
+	return function(value)
+		if typeof(value) == "string" then
+			deps.setCurrentDeployStatus(value)
+		elseif type(value) == "table" then
+			if value.userId and value.userId ~= deps.playerUserId then
+				return
+			end
+
+			local resolvedStatus = tostring(value.message or value.status or deps.getCurrentDeployStatus())
+			deps.setCurrentDeployStatus(resolvedStatus)
+			if value.message then
+				deps.setCurrentSocialMessage(tostring(value.message))
+			end
+
+			if value.stage == "Loading" then
+				deps.enterLoading(resolvedStatus, false)
+				return
+			elseif value.stage == "Deployment" then
+				deps.enterLoading(resolvedStatus, false)
+				deps.playCinematic(value)
+				return
+			elseif value.stage == "Lobby" then
+				deps.stopCinematic()
+				deps.enterLobby(resolvedStatus)
+				deps.refreshSquadDirectory()
+				deps.refreshDailyRewardState()
+				deps.refreshDailyOpsState()
+				deps.refreshWeeklyRewardState()
+				return
+			elseif value.stage == "Mission" then
+				deps.setMissionTelemetryValue(value)
+				deps.stopCinematic()
+				deps.enterMission(resolvedStatus)
+				return
+			end
+		end
+
+		deps.updateLobbyText()
+	end
+end
+
+local function createLobbyValueHandler(deps)
+	return function(payload)
+		if type(payload) ~= "table" then
+			return
+		end
+
+		if payload.tokens ~= nil or payload.balance ~= nil or payload.amount ~= nil then
+			deps.setTokenBalance(tonumber(payload.tokens or payload.balance or payload.amount) or deps.getTokenBalance())
+		end
+
+		if payload.status or payload.deployStatus then
+			deps.setCurrentDeployStatus(tostring(payload.status or payload.deployStatus))
+		end
+
+		if payload.social or payload.announcement then
+			deps.setCurrentSocialMessage(tostring(payload.social or payload.announcement))
+		end
+
+		if type(payload.nextMissionPreview) == "table" then
+			local currentPreview = deps.getNextMissionPreview()
+			deps.setNextMissionPreview({
+				scenarioName = tostring(payload.nextMissionPreview.scenarioName or currentPreview.scenarioName),
+				scenarioDescription = tostring(payload.nextMissionPreview.scenarioDescription or currentPreview.scenarioDescription),
+				layoutName = tostring(payload.nextMissionPreview.layoutName or currentPreview.layoutName),
+				layoutDescription = tostring(payload.nextMissionPreview.layoutDescription or currentPreview.layoutDescription),
+				modifierName = tostring(payload.nextMissionPreview.modifierName or currentPreview.modifierName),
+				modifierDescription = tostring(payload.nextMissionPreview.modifierDescription or currentPreview.modifierDescription),
+			})
+		end
+
+		if type(payload.nextMissionVote) == "table" then
+			local incomingSessionId = tonumber(payload.nextMissionVote.sessionId) or 0
+			if incomingSessionId ~= deps.getCurrentVoteSessionId() then
+				deps.setCurrentVoteSessionId(incomingSessionId)
+				deps.setCurrentVoteOptionId(nil)
+			end
+
+			local nextMissionVoteOptions = {}
+			deps.setLeadingMissionVoteOptionId(
+				type(payload.nextMissionVote.leadingOptionId) == "string" and payload.nextMissionVote.leadingOptionId or nil
+			)
+
+			for index, option in ipairs(payload.nextMissionVote.options or {}) do
+				nextMissionVoteOptions[index] = {
+					optionId = tostring(option.optionId or ("map_" .. tostring(index))),
+					scenarioName = tostring(option.scenarioName or "Hold The Core"),
+					layoutName = tostring(option.layoutName or "Breach Yard"),
+					modifierName = tostring(option.modifierName or "Standard Ops"),
+					modifierDescription = tostring(option.modifierDescription or ""),
+					voteCount = tonumber(option.voteCount) or 0,
+				}
+			end
+			deps.setNextMissionVoteOptions(nextMissionVoteOptions)
+
+			local currentVoteOptionId = deps.getCurrentVoteOptionId()
+			if currentVoteOptionId then
+				local voteStillExists = false
+				for _, option in ipairs(nextMissionVoteOptions) do
+					if option.optionId == currentVoteOptionId then
+						voteStillExists = true
+						break
+					end
+				end
+				if not voteStillExists then
+					deps.setCurrentVoteOptionId(nil)
+				end
+			end
+		end
+
+		local shopTab = normalizeShopTab(payload.shopTab)
+		if shopTab and Theme.ShopCopy[shopTab] then
+			deps.setCurrentShopTab(shopTab)
+		end
+
+		if payload.squad or payload.members then
+			deps.setSquadValue(payload.squad or payload.members)
+		end
+
+		if payload.stage == "Loading" then
+			deps.enterLoading(deps.getCurrentDeployStatus(), false)
+			return
+		elseif payload.stage == "Lobby" then
+			deps.stopCinematic()
+			deps.enterLobby(deps.getCurrentDeployStatus())
+			return
+		elseif payload.stage == "Mission" or payload.phase == "Mission" then
+			deps.stopCinematic()
+			deps.enterMission(deps.getCurrentDeployStatus())
+			return
+		end
+
+		deps.updateLobbyText()
+	end
+end
+
+local function createSecondaryLobbyButtonDeps(deps)
+	return {
+		ui = deps.ui,
+		getState = deps.getState,
+		setInventoryTab = deps.setInventoryTab,
+		getCurrentInventoryTab = deps.getCurrentInventoryTab,
+		setInventoryRarityFilter = deps.setInventoryRarityFilter,
+		setInventoryTypeFilter = deps.setInventoryTypeFilter,
+		setInventorySortMode = deps.setInventorySortMode,
+		updateLobbyText = deps.updateLobbyText,
+		setActivePopup = deps.setActivePopup,
+		setSkillTreeBranchFilter = deps.setSkillTreeBranchFilter,
+		setPendingRespecConfirmation = deps.setPendingRespecConfirmation,
+		requestRespecSkillTree = deps.requestRespecSkillTree,
+		getPendingNpcDialogue = deps.getPendingNpcDialogue,
+		handleNpcDialogueAction = deps.handleNpcDialogueAction,
+		closeNpcDialogue = deps.closeNpcDialogue,
+		requestDailyReward = deps.requestDailyReward,
+		requestWeeklyReward = deps.requestWeeklyReward,
+		openQuestBoard = deps.openQuestBoard,
+		requestActivityTransit = deps.requestActivityTransit,
+	}
+end
+
+local function createPrimaryLobbyButtonDeps(deps)
+	return {
+		ui = deps.ui,
+		getState = function()
+			return deps.stateRef()
+		end,
+		enterLoading = deps.enterLoading,
+		requestDailyReward = deps.requestDailyReward,
+		refreshSquadDirectory = deps.refreshSquadDirectory,
+		setActivePopup = deps.setActivePopup,
+		setShopStatus = function(value)
+			deps.setCurrentShopStatus(value)
+		end,
+		getShopStatus = function()
+			return deps.getCurrentShopStatus()
+		end,
+		getCurrentShopTab = function()
+			return deps.getCurrentShopTab()
+		end,
+		updateLobbyText = deps.updateLobbyText,
+		setInventoryTab = deps.setInventoryTab,
+		setSkillTreeStatus = function(value)
+			deps.setCurrentSkillTreeStatus(value)
+		end,
+		refreshInviteablePlayers = deps.refreshInviteablePlayers,
+		setSocialMessage = function(value)
+			deps.setCurrentSocialMessage(value)
+		end,
+		openMissionPanel = deps.openMissionPanel,
+		closeMissionPanel = deps.closeMissionPanel,
+		requestDeploy = deps.requestDeploy,
+		requestMapVote = deps.requestMapVote,
+	}
+end
+
+local function createAdminAndShopButtonDeps(deps)
+	return {
+		ui = deps.ui,
+		getState = deps.getState,
+		toggleUiAudio = deps.toggleUiAudio,
+		toggleScreenShake = deps.toggleScreenShake,
+		toggleCombatFloats = deps.toggleCombatFloats,
+		toggleCompactToasts = deps.toggleCompactToasts,
+		setActivePopup = deps.setActivePopup,
+		openAdminPanel = deps.openAdminPanel,
+		requestAdminCommand = deps.requestAdminCommand,
+		requestAdminTargetCommand = deps.requestAdminTargetCommand,
+		setAdminTab = deps.setAdminTab,
+		refreshAdminTargets = deps.refreshAdminTargets,
+		handleAdminTargetPlayerRemoving = deps.handleAdminTargetPlayerRemoving,
+		respondToInvite = deps.respondToInvite,
+		setPendingRespecConfirmation = deps.setPendingRespecConfirmation,
+		updateLobbyText = deps.updateLobbyText,
+		handleResultsContinue = deps.handleResultsContinue,
+		requestLeaveSquad = deps.requestLeaveSquad,
+		openInvitePanel = deps.openInvitePanel,
+		toggleSquadPrivacy = deps.toggleSquadPrivacy,
+		selectShopTab = deps.selectShopTab,
+		setShopRarityFilter = deps.setShopRarityFilter,
+		setShopPremiumFilter = deps.setShopPremiumFilter,
+		setInventoryRarityFilter = deps.setInventoryRarityFilter,
+	}
+end
+
+local function createStartSecondaryLobbyButtonDeps(deps)
+	return createSecondaryLobbyButtonDeps({
+		ui = deps.ui,
+		getState = function()
+			return deps.stateRef()
+		end,
+		setInventoryTab = deps.setInventoryTab,
+		getCurrentInventoryTab = function()
+			return deps.getCurrentInventoryTab()
+		end,
+		setInventoryRarityFilter = deps.setInventoryRarityFilter,
+		setInventoryTypeFilter = deps.setInventoryTypeFilter,
+		setInventorySortMode = deps.setInventorySortMode,
+		updateLobbyText = deps.updateLobbyText,
+		setActivePopup = deps.setActivePopup,
+		setSkillTreeBranchFilter = deps.setSkillTreeBranchFilter,
+		setPendingRespecConfirmation = deps.setPendingRespecConfirmation,
+		requestRespecSkillTree = deps.requestRespecSkillTree,
+		getPendingNpcDialogue = function()
+			return deps.getPendingNpcDialogue()
+		end,
+		handleNpcDialogueAction = function()
+			local pendingNpcDialogue = deps.getPendingNpcDialogue()
+			local actionPanel = pendingNpcDialogue.actionPanel
+			local panelName = normalizeStationPanelName(actionPanel)
+			deps.setPendingNpcDialogue(nil)
+			if actionPanel == "QuestBoard" then
+				deps.setActivePopup("QuestBoard")
+				deps.refreshDailyRewardState()
+				deps.refreshDailyOpsState()
+				deps.refreshWeeklyRewardState()
+				deps.refreshSubscriptionState()
+			elseif panelName == "Activities" then
+				deps.setActivePopup("Activities")
+			elseif panelName == "Social" then
+				deps.setActivePopup("Social")
+				deps.refreshSquadDirectory()
+				deps.refreshInviteablePlayers()
+			elseif panelName == "Inventory" then
+				deps.setInventoryTab("Weapons")
+				deps.setActivePopup("Inventory")
+			elseif panelName == "SkillTree" then
+				deps.setActivePopup("SkillTree")
+				deps.setCurrentSkillTreeStatus("Allocate points to unlock deeper branch nodes.")
+			elseif panelName == "Squad" then
+				deps.setActivePopup("Squad")
+				deps.refreshSquadDirectory()
+			elseif panelName == "Shop" then
+				deps.setActivePopup("Shop")
+			else
+				deps.setActivePopup(nil)
+			end
+			deps.updateLobbyText()
+		end,
+		closeNpcDialogue = function()
+			deps.setPendingNpcDialogue(nil)
+			if deps.getActivePopup() == "NpcDialogue" then
+				deps.setActivePopup(nil)
+			end
+			deps.updateLobbyText()
+		end,
+		requestDailyReward = deps.requestDailyReward,
+		requestWeeklyReward = deps.requestWeeklyReward,
+		openQuestBoard = function()
+			deps.setActivePopup("QuestBoard")
+			deps.refreshDailyRewardState()
+			deps.refreshDailyOpsState()
+			deps.refreshWeeklyRewardState()
+			deps.refreshSubscriptionState()
+			deps.updateLobbyText()
+		end,
+		requestActivityTransit = deps.requestActivityTransit,
+	})
+end
+
+local function createStartAdminAndShopButtonDeps(deps)
+	return createAdminAndShopButtonDeps({
+		ui = deps.ui,
+		getState = function()
+			return deps.stateRef()
+		end,
+		toggleUiAudio = function()
+			deps.setUiAudioEnabled(not deps.getUiAudioEnabled())
+			SoundService:SetAttribute("UiAudioEnabled", deps.getUiAudioEnabled())
+			deps.updateLobbyText()
+		end,
+		toggleScreenShake = function()
+			deps.setScreenShakeEnabled(not deps.getScreenShakeEnabled())
+			if not deps.getScreenShakeEnabled() then
+				deps.resetCameraKick()
+			end
+			deps.updateLobbyText()
+		end,
+		toggleCombatFloats = function()
+			deps.setCombatFloatsEnabled(not deps.getCombatFloatsEnabled())
+			deps.updateLobbyText()
+		end,
+		toggleCompactToasts = function()
+			deps.setCompactMissionToastsEnabled(not deps.getCompactMissionToastsEnabled())
+			deps.updateLobbyText()
+		end,
+		setActivePopup = deps.setActivePopup,
+		openAdminPanel = function()
+			local progression = deps.getProgression()
+			if progression.identity and (progression.identity.isModerator == true or progression.identity.isAdmin == true or progression.identity.isOwner == true) then
+				deps.setAdminTab("Session")
+				deps.setActivePopup("Admin")
+				deps.requestAdminCommand({
+					commandId = "get_panel_state",
+				})
+				deps.refreshAdminTargets()
+				deps.updateLobbyText()
+			end
+		end,
+		requestAdminCommand = deps.requestAdminCommand,
+		requestAdminTargetCommand = deps.requestAdminTargetCommand,
+		setAdminTab = deps.setAdminTab,
+		refreshAdminTargets = deps.refreshAdminTargets,
+		handleAdminTargetPlayerRemoving = function(leavingPlayer)
+			if deps.getSelectedAdminTargetUserId() == leavingPlayer.UserId then
+				deps.setSelectedAdminTargetUserId(nil)
+			end
+			deps.refreshAdminTargets()
+		end,
+		respondToInvite = deps.respondToInvite,
+		setPendingRespecConfirmation = deps.setPendingRespecConfirmation,
+		updateLobbyText = deps.updateLobbyText,
+		handleResultsContinue = function()
+			if deps.isPlayerInMission() or deps.stateRef() == "Mission" then
+				deps.requestLeaveMission()
+				return
+			end
+			deps.setPendingResults(nil)
+			deps.hideResultsPopup()
+		end,
+		requestLeaveSquad = deps.requestLeaveSquad,
+		openInvitePanel = function()
+			deps.setActivePopup("Social")
+			deps.refreshInviteablePlayers()
+			deps.setCurrentSocialMessage("Pick a survivor from the roster and send the invite.")
+			deps.updateLobbyText()
+		end,
+		toggleSquadPrivacy = function()
+			deps.requestSetSquadPrivacy(not deps.isSquadLocked())
+		end,
+		selectShopTab = function(tabName)
+			deps.setCurrentShopStatus(Theme.ShopCopy[tabName] or deps.getCurrentShopStatus())
+			deps.setShopTab(tabName)
+		end,
+		setShopRarityFilter = deps.setShopRarityFilter,
+		setShopPremiumFilter = deps.setShopPremiumFilter,
+		setInventoryRarityFilter = deps.setInventoryRarityFilter,
+	})
+end
+
+local function connectLobbyInputHandler(deps)
+	return UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then
+			return
+		end
+
+		if deps.getState() == "Mission" and deps.isMissionEliminated() then
+			if input.KeyCode == Enum.KeyCode.B then
+				deps.requestLeaveMission()
+				return
+			end
+		end
+
+		if deps.getState() == "Loading" and deps.isAwaitingContinuePrompt() and os.clock() - deps.getLoadingStartedAt() > 0.15 then
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+				deps.enterLobby()
+				deps.refreshDailyRewardState()
+				deps.refreshDailyOpsState()
+				deps.refreshWeeklyRewardState()
+				deps.refreshShopCatalog()
+				deps.refreshSquadDirectory()
+				deps.refreshInviteablePlayers()
+			end
+		end
+	end)
+end
+
+local function createFlowCleanupState(deps)
+	local cleanupState = {}
+
+	cleanupState.purchaseConnections = { deps.connectPremiumPurchaseHandlers(deps.player, {
+		setCurrentShopStatus = deps.setCurrentShopStatus,
+		setCurrentSocialMessage = deps.setCurrentSocialMessage,
+		showPremiumUnlockBanner = deps.showPremiumUnlockBanner,
+		playUiSound = deps.playUiSound,
+		refreshEntitlements = deps.refreshEntitlements,
+		updateLobbyText = deps.updateLobbyText,
+		pulsePremiumStatus = deps.pulsePremiumStatus,
+	}) }
+
+	cleanupState.promptConnections = { deps.connectFlowPromptHandlers(deps.createFlowPromptDeps(
+		deps.suppressedMissionPrompts,
+		deps.getState,
+		deps.isSupporterActive,
+		deps.hasVipAccess,
+		deps.isInMission,
+		deps.requestDuel,
+		deps.openStationPanel,
+		deps.setActivePopup,
+		deps.updateLobbyText,
+		deps.setPendingNpcDialogue
+	)) }
+
+	table.insert(cleanupState.promptConnections, deps.connectDonationPromptHandlers(deps.player, {
+		setCurrentShopStatus = deps.setCurrentShopStatus,
+		playUiSound = deps.playUiSound,
+		updateLobbyText = deps.updateLobbyText,
+	}))
+
+	cleanupState.leaderboardBindings = { deps.createLeaderboardPlayerBindings(deps.updateLobbyText) }
+	cleanupState.getPromptTween = deps.getPromptTween
+	cleanupState.remoteCleanup = deps.bindFlowRemoteHandlers(deps.createFlowRemoteDeps(
+		deps.player,
+		deps.progression,
+		deps.setLobbyValue,
+		deps.setTokenValue,
+		deps.setSquadValue,
+		deps.setDeployValue,
+		deps.handleCombatFeedback,
+		deps.showResultsPopup,
+		deps.pushMissionToast,
+		deps.playUiSound,
+		deps.updateLobbyText,
+		deps.getCurrentSocialMessage,
+		deps.setCurrentSocialMessage,
+		deps.setPendingInvite,
+		deps.setCurrentShopTab,
+		deps.setCurrentShopStatus,
+		deps.setCurrentInventoryStatus,
+		deps.setCurrentInventoryTab,
+		deps.getActivePopup,
+		deps.setActivePopup,
+		deps.setProgressionValue,
+		deps.setSubscriptionStateValue,
+		deps.setPersistenceStateValue
+	))
+
+	return cleanupState
+end
+
+local function scheduleInitialBootstrap(deps)
+	task.defer(function()
+		for _ = 1, 20 do
+			local callOk, bootstrap = safeInvoke(RemoteNames.Functions.GetBootstrapData)
+			if callOk and type(bootstrap) == "table" then
+				applyFlowBootstrap(bootstrap, createFlowBootstrapDeps(
+					deps.setTokenValue,
+					deps.setSquadValue,
+					deps.setSquadDirectoryValue,
+					deps.setInviteablePlayersValue,
+					deps.setDailyRewardValue,
+					deps.setDailyOpsValue,
+					deps.setWeeklyRewardValue,
+					deps.setSubscriptionStateValue,
+					deps.setSeasonalEventValue,
+					deps.setShopCatalogValue,
+					deps.setProgressionValue,
+					deps.setPersistenceStateValue,
+					deps.setLobbyValue
+				))
+				return
+			end
+			task.wait(0.25)
+		end
+
+		deps.refreshDailyRewardState()
+		deps.refreshDailyOpsState()
+		deps.refreshWeeklyRewardState()
+		deps.refreshSubscriptionState()
+		deps.refreshShopCatalog()
+		deps.refreshSquadDirectory()
+		deps.refreshInviteablePlayers()
+		deps.updateLobbyText()
+	end)
+end
+
+local function spawnUiEnforcementLoop(deps)
+	task.spawn(function()
+		while deps.isUiMounted() and deps.isPlayerMounted() do
+			deps.enforceUiState()
+			task.wait(0.75)
+		end
+	end)
+end
+
+local function finishFlowStartup(deps)
+	deps.setPageVisibility(deps.ui, "Home")
+	deps.animateHomeScreen(true)
+	for _, popup in pairs(deps.ui.Lobby.Popups) do
+		popup.Visible = false
+	end
+	deps.ui.Loading.Prompt.TextTransparency = 0
+	deps.updateLobbyText()
+
+	deps.styleCoreLobbyButtons(
+		deps.ui,
+		deps.getQuickAccessButtons,
+		deps.setQuickAccessExpanded,
+		deps.setQuickAccessButtonsExpanded,
+		deps.setQuickAccessButtonExpanded,
+		deps.getCurrentShopTab()
+	)
+
+	deps.bindPrimaryLobbyButtons(createPrimaryLobbyButtonDeps({
+		ui = deps.ui,
+		stateRef = deps.stateRef,
+		enterLoading = deps.enterLoading,
+		requestDailyReward = deps.requestDailyReward,
+		refreshSquadDirectory = deps.refreshSquadDirectory,
+		setActivePopup = deps.setActivePopup,
+		setCurrentShopStatus = deps.setCurrentShopStatus,
+		getCurrentShopStatus = deps.getCurrentShopStatus,
+		getCurrentShopTab = deps.getCurrentShopTab,
+		updateLobbyText = deps.updateLobbyText,
+		setInventoryTab = deps.setInventoryTab,
+		setCurrentSkillTreeStatus = deps.setCurrentSkillTreeStatus,
+		refreshInviteablePlayers = deps.refreshInviteablePlayers,
+		setCurrentSocialMessage = deps.setCurrentSocialMessage,
+		openMissionPanel = deps.openMissionPanel,
+		closeMissionPanel = deps.closeMissionPanel,
+		requestDeploy = deps.requestDeploy,
+		requestMapVote = deps.requestMapVote,
+	}))
+
+	deps.bindSecondaryLobbyButtons(createStartSecondaryLobbyButtonDeps({
+		ui = deps.ui,
+		stateRef = deps.stateRef,
+		setInventoryTab = deps.setInventoryTab,
+		getCurrentInventoryTab = deps.getCurrentInventoryTab,
+		setInventoryRarityFilter = deps.setInventoryRarityFilter,
+		setInventoryTypeFilter = deps.setInventoryTypeFilter,
+		setInventorySortMode = deps.setInventorySortMode,
+		updateLobbyText = deps.updateLobbyText,
+		setActivePopup = deps.setActivePopup,
+		setSkillTreeBranchFilter = deps.setSkillTreeBranchFilter,
+		setPendingRespecConfirmation = deps.setPendingRespecConfirmation,
+		requestRespecSkillTree = deps.requestRespecSkillTree,
+		getPendingNpcDialogue = deps.getPendingNpcDialogue,
+		setPendingNpcDialogue = deps.setPendingNpcDialogue,
+		refreshDailyRewardState = deps.refreshDailyRewardState,
+		refreshDailyOpsState = deps.refreshDailyOpsState,
+		refreshWeeklyRewardState = deps.refreshWeeklyRewardState,
+		refreshSubscriptionState = deps.refreshSubscriptionState,
+		refreshSquadDirectory = deps.refreshSquadDirectory,
+		refreshInviteablePlayers = deps.refreshInviteablePlayers,
+		setCurrentSkillTreeStatus = deps.setCurrentSkillTreeStatus,
+		getActivePopup = deps.getActivePopup,
+		requestDailyReward = deps.requestDailyReward,
+		requestWeeklyReward = deps.requestWeeklyReward,
+		requestActivityTransit = deps.requestActivityTransit,
+	}))
+
+	deps.bindAdminAndShopButtons(createStartAdminAndShopButtonDeps({
+		ui = deps.ui,
+		stateRef = deps.stateRef,
+		getUiAudioEnabled = deps.getUiAudioEnabled,
+		setUiAudioEnabled = deps.setUiAudioEnabled,
+		getScreenShakeEnabled = deps.getScreenShakeEnabled,
+		setScreenShakeEnabled = deps.setScreenShakeEnabled,
+		resetCameraKick = deps.resetCameraKick,
+		getCombatFloatsEnabled = deps.getCombatFloatsEnabled,
+		setCombatFloatsEnabled = deps.setCombatFloatsEnabled,
+		getCompactMissionToastsEnabled = deps.getCompactMissionToastsEnabled,
+		setCompactMissionToastsEnabled = deps.setCompactMissionToastsEnabled,
+		setActivePopup = deps.setActivePopup,
+		getProgression = deps.getProgression,
+		setAdminTab = deps.setAdminTab,
+		requestAdminCommand = deps.requestAdminCommand,
+		requestAdminTargetCommand = deps.requestAdminTargetCommand,
+		refreshAdminTargets = deps.refreshAdminTargets,
+		getSelectedAdminTargetUserId = deps.getSelectedAdminTargetUserId,
+		setSelectedAdminTargetUserId = deps.setSelectedAdminTargetUserId,
+		respondToInvite = deps.respondToInvite,
+		setPendingRespecConfirmation = deps.setPendingRespecConfirmation,
+		updateLobbyText = deps.updateLobbyText,
+		isPlayerInMission = deps.isPlayerInMission,
+		requestLeaveMission = deps.requestLeaveMission,
+		setPendingResults = deps.setPendingResults,
+		hideResultsPopup = deps.hideResultsPopup,
+		requestLeaveSquad = deps.requestLeaveSquad,
+		refreshInviteablePlayers = deps.refreshInviteablePlayers,
+		setCurrentSocialMessage = deps.setCurrentSocialMessage,
+		requestSetSquadPrivacy = deps.requestSetSquadPrivacy,
+		isSquadLocked = deps.isSquadLocked,
+		setCurrentShopStatus = deps.setCurrentShopStatus,
+		getCurrentShopStatus = deps.getCurrentShopStatus,
+		setShopTab = deps.setShopTab,
+		setShopRarityFilter = deps.setShopRarityFilter,
+		setShopPremiumFilter = deps.setShopPremiumFilter,
+		setInventoryRarityFilter = deps.setInventoryRarityFilter,
+	}))
+
+	local inputConnection = connectLobbyInputHandler({
+		getState = deps.stateRef,
+		isMissionEliminated = deps.isMissionEliminated,
+		requestLeaveMission = deps.requestLeaveMission,
+		isAwaitingContinuePrompt = deps.isAwaitingContinuePrompt,
+		getLoadingStartedAt = deps.getLoadingStartedAt,
+		enterLobby = deps.enterLobby,
+		refreshDailyRewardState = deps.refreshDailyRewardState,
+		refreshDailyOpsState = deps.refreshDailyOpsState,
+		refreshWeeklyRewardState = deps.refreshWeeklyRewardState,
+		refreshShopCatalog = deps.refreshShopCatalog,
+		refreshSquadDirectory = deps.refreshSquadDirectory,
+		refreshInviteablePlayers = deps.refreshInviteablePlayers,
+	})
+
+	local cleanupState = createFlowCleanupState({
+		player = deps.player,
+		progression = deps.progression,
+		connectPremiumPurchaseHandlers = connectPremiumPurchaseHandlers,
+		connectFlowPromptHandlers = connectFlowPromptHandlers,
+		createFlowPromptDeps = createFlowPromptDeps,
+		connectDonationPromptHandlers = connectDonationPromptHandlers,
+		createLeaderboardPlayerBindings = createLeaderboardPlayerBindings,
+		bindFlowRemoteHandlers = bindFlowRemoteHandlers,
+		createFlowRemoteDeps = createFlowRemoteDeps,
+		suppressedMissionPrompts = deps.suppressedMissionPrompts,
+		getState = deps.stateRef,
+		isSupporterActive = deps.isSupporterActive,
+		hasVipAccess = deps.hasVipAccess,
+		isInMission = deps.isInMission,
+		requestDuel = deps.requestDuel,
+		openStationPanel = deps.openStationPanel,
+		setActivePopup = deps.setActivePopup,
+		updateLobbyText = deps.updateLobbyText,
+		setPendingNpcDialogue = deps.setPendingNpcDialogue,
+		setCurrentShopStatus = deps.setCurrentShopStatus,
+		setCurrentSocialMessage = deps.setCurrentSocialMessage,
+		showPremiumUnlockBanner = deps.showPremiumUnlockBanner,
+		playUiSound = deps.playUiSound,
+		refreshEntitlements = deps.refreshEntitlements,
+		pulsePremiumStatus = deps.pulsePremiumStatus,
+		getPromptTween = deps.getPromptTween,
+		setLobbyValue = deps.setLobbyValue,
+		setTokenValue = deps.setTokenValue,
+		setSquadValue = deps.setSquadValue,
+		setDeployValue = deps.setDeployValue,
+		handleCombatFeedback = deps.handleCombatFeedback,
+		showResultsPopup = deps.showResultsPopup,
+		pushMissionToast = deps.pushMissionToast,
+		getCurrentSocialMessage = deps.getCurrentSocialMessage,
+		setPendingInvite = deps.setPendingInvite,
+		setCurrentShopTab = deps.setCurrentShopTab,
+		setCurrentInventoryStatus = deps.setCurrentInventoryStatus,
+		setCurrentInventoryTab = deps.setCurrentInventoryTab,
+		getActivePopup = deps.getActivePopup,
+		setProgressionValue = deps.setProgressionValue,
+		setSubscriptionStateValue = deps.setSubscriptionStateValue,
+		setPersistenceStateValue = deps.setPersistenceStateValue,
+	})
+
+	deps.enterHome()
+	scheduleInitialBootstrap({
+		setTokenValue = deps.setTokenValue,
+		setSquadValue = deps.setSquadValue,
+		setSquadDirectoryValue = deps.setSquadDirectoryValue,
+		setInviteablePlayersValue = deps.setInviteablePlayersValue,
+		setDailyRewardValue = deps.setDailyRewardValue,
+		setDailyOpsValue = deps.setDailyOpsValue,
+		setWeeklyRewardValue = deps.setWeeklyRewardValue,
+		setSubscriptionStateValue = deps.setSubscriptionStateValue,
+		setSeasonalEventValue = deps.setSeasonalEventValue,
+		setShopCatalogValue = deps.setShopCatalogValue,
+		setProgressionValue = deps.setProgressionValue,
+		setPersistenceStateValue = deps.setPersistenceStateValue,
+		setLobbyValue = deps.setLobbyValue,
+		refreshDailyRewardState = deps.refreshDailyRewardState,
+		refreshDailyOpsState = deps.refreshDailyOpsState,
+		refreshWeeklyRewardState = deps.refreshWeeklyRewardState,
+		refreshSubscriptionState = deps.refreshSubscriptionState,
+		refreshShopCatalog = deps.refreshShopCatalog,
+		refreshSquadDirectory = deps.refreshSquadDirectory,
+		refreshInviteablePlayers = deps.refreshInviteablePlayers,
+		updateLobbyText = deps.updateLobbyText,
+	})
+
+	spawnUiEnforcementLoop({
+		isUiMounted = deps.isUiMounted,
+		isPlayerMounted = deps.isPlayerMounted,
+		enforceUiState = deps.enforceUiState,
+	})
+
+	return createFlowCleanup(inputConnection, cleanupState)
+end
+
+connectPremiumPurchaseHandlers = function(player, deps)
+	local gamePassPromptConnection = MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(finishedPlayer, gamePassId, wasPurchased)
+		if finishedPlayer ~= player then
+			return
+		end
+
+		if wasPurchased then
+			local purchasedVip = false
+			for _, item in ipairs(TokenEconomy.ShopItems) do
+				if item.GamePassId == gamePassId and item.GamePassKey == "vip_operation" then
+					purchasedVip = true
+					break
+				end
+			end
+			local nextStatus = purchasedVip
+				and "VIP unlocked. Access granted to VIP Operations."
+				or ("Game pass granted: %d. Refreshing entitlements."):format(tonumber(gamePassId) or 0)
+			deps.setCurrentShopStatus(nextStatus)
+			deps.setCurrentSocialMessage(nextStatus)
+			if purchasedVip then
+				deps.showPremiumUnlockBanner(
+					"VIP ACCESS UNLOCKED",
+					"VIP Operations is now open and your access badge has been updated.",
+					Color3.fromRGB(132, 182, 244),
+					"VIP ACTIVE"
+				)
+			else
+				deps.showPremiumUnlockBanner(
+					"GAME PASS UNLOCKED",
+					nextStatus,
+					Color3.fromRGB(188, 214, 128),
+					"OWNED"
+				)
+			end
+			deps.playUiSound(SOUND_IDS.Success, 0.36, 1.02)
+			deps.pulsePremiumStatus(purchasedVip and Color3.fromRGB(132, 182, 244) or Color3.fromRGB(188, 214, 128))
+			deps.refreshEntitlements()
+		else
+			deps.setCurrentShopStatus("Game pass purchase canceled.")
+		end
+		deps.updateLobbyText()
+	end)
+
+	local subscriptionPromptConnection = MarketplaceService.PromptSubscriptionPurchaseFinished:Connect(function(finishedPlayer, subscriptionId, wasPurchased)
+		if finishedPlayer ~= player then
+			return
+		end
+
+		if wasPurchased then
+			local nextStatus = "Supporter activated. VIP access and supporter rewards are now enabled."
+			deps.setCurrentShopStatus(nextStatus)
+			deps.setCurrentSocialMessage(nextStatus)
+			deps.showPremiumUnlockBanner(
+				"SUPPORTER STATUS ACTIVE",
+				"VIP access, supporter rewards, and the premium lounge are now available.",
+				Color3.fromRGB(214, 194, 122),
+				"SUPPORTER"
+			)
+			deps.playUiSound(SOUND_IDS.Success, 0.38, 1.02)
+			deps.pulsePremiumStatus(Color3.fromRGB(214, 194, 122))
+			deps.refreshEntitlements()
+		else
+			deps.setCurrentShopStatus(("Subscription purchase canceled for %s."):format(tostring(subscriptionId or "supporter")))
+		end
+		deps.updateLobbyText()
+	end)
+
+	return gamePassPromptConnection, subscriptionPromptConnection
+end
+
+connectDonationPromptHandlers = function(player, deps)
+	return ProximityPromptService.PromptTriggered:Connect(function(prompt)
+		if not prompt or prompt:GetAttribute("DonationTierId") == nil then
+			return
+		end
+
+		local productId = tonumber(prompt:GetAttribute("DonationProductId")) or 0
+		local amount = tonumber(prompt:GetAttribute("DonationAmount")) or 0
+		local tierLabel = tostring(prompt.ObjectText or "Donation")
+		if productId <= 0 then
+			deps.setCurrentShopStatus(("Donation tier %s is missing a developer product ID in DonationConfig."):format(tierLabel))
+			deps.updateLobbyText()
+			return
+		end
+
+		deps.setCurrentShopStatus(("Opening donation prompt for %s%s."):format(
+			tierLabel,
+			amount > 0 and (" (+%d tokens)"):format(amount) or ""
+		))
+		deps.playUiSound(SOUND_IDS.UiOpen, 0.32, 1.04)
+		deps.updateLobbyText()
+		MarketplaceService:PromptProductPurchase(player, productId)
+	end)
+end
+
+createFlowPromptDeps = function(
+	suppressedMissionPrompts,
+	getState,
+	isSupporterActive,
+	hasVipAccess,
+	isInMission,
+	requestDuel,
+	openStationPanel,
+	setActivePopup,
+	updateLobbyText,
+	setPendingNpcDialogue
+)
+	return {
+		suppressedMissionPrompts = suppressedMissionPrompts,
+		getState = getState,
+		isSupporterActive = isSupporterActive,
+		hasVipAccess = hasVipAccess,
+		isInMission = isInMission,
+		requestDuel = requestDuel,
+		openStationPanel = openStationPanel,
+		setActivePopup = setActivePopup,
+		updateLobbyText = updateLobbyText,
+		setPendingNpcDialogue = setPendingNpcDialogue,
+	}
+end
+
+local function getAllowedAdminTabs(identity)
+	local isModerator = identity.isModerator == true or identity.isAdmin == true or identity.isOwner == true
+	local isAdmin = identity.isAdmin == true or identity.isOwner == true
+	local isOwner = identity.isOwner == true
+	return {
+		Session = isModerator,
+		Progression = isAdmin,
+		LiveOps = isAdmin,
+		Access = isOwner,
+	}
+end
+
+local function describeMapVoteError(code)
+	if code == "busy" then
+		return "Map voting closes once deployment starts."
+	end
+	if code == "invalid_option" then
+		return "That map option is no longer available."
+	end
+	return "Map vote unavailable."
+end
+
+local function describeDailyRewardError(code)
+	if code == "already_claimed" then
+		return "Daily reward already claimed. Wait for the next reset."
+	end
+	return "Daily reward unavailable right now."
+end
+
+local function describeWeeklyRewardError(code)
+	if code == "inactive" then
+		return "Weekly crate requires active supporter access."
+	elseif code == "already_claimed" then
+		return "Weekly crate already collected. Return next cycle."
+	elseif code == "busy" then
+		return "Weekly crate is already being processed."
+	end
+	return "Weekly crate unavailable right now."
+end
+
+local function describeDailyOpsError(code)
+	if code == "missing_task" then
+		return "That daily op is no longer active."
+	elseif code == "not_ready" then
+		return "Finish the daily op before claiming its reward."
+	elseif code == "already_claimed" then
+		return "That daily op reward is already collected."
+	end
+	return "Daily op reward unavailable."
+end
+
+	local function describeShopError(code)
+		if code == "missing_item" then
+			return "That shop item no longer exists on the server."
+		elseif code == "already_owned" then
+			return "That stock is already unlocked in your locker."
+		elseif code == "drop_only_item" then
+			return "That item is recovered from mission drops, not bought in the shop."
+		elseif code == "season_locked" then
+		return "That seasonal item is locked until its event goes live."
+	elseif code == "insufficient_tokens" then
+		return "Not enough deploy tokens for that purchase."
+	elseif code == "deploy_token_purchase_is_reward_flow" then
+		return "Deploy token packs need linked Robux products or reward hooks."
+	elseif code == "invalid_currency" then
+		return "The selected currency is not valid for that item."
+	end
+	return "Purchase failed."
+end
+
+local function describeSquadError(code)
+	if code == "missing_squad" then
+		return "That squad is no longer available."
+	elseif code == "locked" then
+		return "That squad is already locked for deployment."
+	elseif code == "full" then
+		return "That squad is already full."
+	elseif code == "not_leader" then
+		return "Only the squad leader can do that."
+	elseif code == "missing_invite" then
+		return "That invite expired or is no longer valid."
+	elseif code == "same_squad" then
+		return "That survivor is already in your fireteam."
+	end
+	return "Unable to join squad."
+end
+
+local function describeDuelError(code)
+	if code == "corner_taken" then
+		return "That duel corner is already occupied."
+	elseif code == "already_in_match" then
+		return "You are already in an active duel."
+	elseif code == "cooldown" then
+		return "Duel cooldown active. Give it a few seconds before requeueing."
+	elseif code == "not_in_lobby" then
+		return "Duel ring is only available from the lobby."
+	elseif code == "invalid_corner" then
+		return "That duel entry is offline."
+	end
+	return "Unable to join the duel ring."
+end
+
 local function applyPreviewSkin(model, cosmeticId)
 	local profile = SHOP_WEAPON_SKIN_PROFILES[cosmeticId]
 	if not profile or not model then
@@ -525,7 +1754,7 @@ local function cloneNames(list)
 	return result
 end
 
-local function safeInvoke(name, ...)
+safeInvoke = function(name, ...)
 	local args = table.pack(...)
 	return pcall(function()
 		return Remotes.invoke(name, table.unpack(args, 1, args.n))
@@ -927,7 +2156,7 @@ local function formatSquadSummary(snapshot)
 	)
 end
 
-local function normalizeShopTab(tabName)
+normalizeShopTab = function(tabName)
 	if type(tabName) ~= "string" then
 		return nil
 	end
@@ -935,7 +2164,7 @@ local function normalizeShopTab(tabName)
 	return Theme.ShopCategoryToTab[tabName] or tabName
 end
 
-local function normalizeStationPanelName(panelName)
+normalizeStationPanelName = function(panelName)
 	if type(panelName) ~= "string" then
 		return nil
 	end
@@ -1059,6 +2288,35 @@ local function restoreCameraToPlayer(player)
 	end
 end
 
+local function getSpectateTargetHumanoid(localPlayer)
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= localPlayer and otherPlayer:GetAttribute("InMission") == true and otherPlayer:GetAttribute("MissionEliminated") ~= true then
+			local character = otherPlayer.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 and character:GetAttribute("Downed") ~= true then
+				return humanoid, otherPlayer
+			end
+		end
+	end
+	return nil, nil
+end
+
+local function spectateMissionTarget(localPlayer)
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return nil
+	end
+
+	local humanoid = getSpectateTargetHumanoid(localPlayer)
+	if humanoid then
+		camera.CameraType = Enum.CameraType.Custom
+		camera.CameraSubject = humanoid
+		return humanoid
+	end
+
+	return nil
+end
+
 local function styleButton(button, accent)
 	local baseColor = accent or button.BackgroundColor3
 	local hoverColor = baseColor:Lerp(Color3.new(1, 1, 1), 0.12)
@@ -1076,6 +2334,595 @@ local function styleButton(button, accent)
 			BackgroundColor3 = typeof(target) == "Color3" and target or baseColor,
 		}):Play()
 	end)
+end
+
+getRarityStyle = function(rarity)
+	local value = tostring(rarity or "Common")
+	if value == "Uncommon" then
+		return value, Color3.fromRGB(88, 166, 108)
+	elseif value == "Rare" then
+		return value, Color3.fromRGB(88, 136, 214)
+	elseif value == "Epic" then
+		return value, Color3.fromRGB(176, 108, 214)
+	elseif value == "Legendary" then
+		return value, Color3.fromRGB(232, 173, 78)
+	elseif value == "Supporter" then
+		return value, Color3.fromRGB(214, 190, 108)
+	end
+	return value, Color3.fromRGB(126, 138, 150)
+end
+
+local function styleActivityCardButtons(activityCards)
+	if not activityCards then
+		return
+	end
+	for _, card in pairs(activityCards) do
+		if card.ActionButton then
+			local stroke = card.Frame and card.Frame:FindFirstChildOfClass("UIStroke")
+			styleButton(card.ActionButton, (stroke and stroke.Color) or Theme.Colors.AccentWarm)
+		end
+	end
+end
+
+local function styleLobbyFilterButtons(lobbyUi)
+	if lobbyUi.SkillTreeFilterButtons then
+		for filterName, button in pairs(lobbyUi.SkillTreeFilterButtons) do
+			local branchTheme = Theme.SkillTreeBranches[filterName]
+			styleButton(button, filterName == "All" and Theme.Colors.AccentWarm or ((branchTheme and branchTheme.Color) or Theme.Colors.Backdrop))
+		end
+	end
+	if lobbyUi.ShopRarityButtons then
+		for filterName, button in pairs(lobbyUi.ShopRarityButtons) do
+			local _, rarityColor = getRarityStyle(filterName == "All" and "Epic" or filterName)
+			styleButton(button, filterName == "All" and Theme.Colors.AccentWarm or rarityColor)
+		end
+	end
+	if lobbyUi.ShopPremiumButtons then
+		for filterName, button in pairs(lobbyUi.ShopPremiumButtons) do
+			styleButton(
+				button,
+				filterName == "Packs" and Color3.fromRGB(104, 214, 164)
+					or (filterName == "Passes" and Color3.fromRGB(104, 168, 232)
+					or (filterName == "Supporter" and Color3.fromRGB(214, 182, 96) or Theme.Colors.AccentWarm))
+			)
+		end
+	end
+	if lobbyUi.InventoryRarityButtons then
+		for filterName, button in pairs(lobbyUi.InventoryRarityButtons) do
+			local _, rarityColor = getRarityStyle(filterName == "All" and "Epic" or filterName)
+			styleButton(button, filterName == "All" and Theme.Colors.AccentWarm or rarityColor)
+		end
+	end
+	if lobbyUi.InventoryTypeButtons then
+		for filterName, button in pairs(lobbyUi.InventoryTypeButtons) do
+			styleButton(
+				button,
+				filterName == "All" and Theme.Colors.AccentWarm
+					or (filterName == "Melee" and Color3.fromRGB(188, 126, 96)
+					or (filterName == "Sidearm" and Color3.fromRGB(104, 144, 196)
+					or (filterName == "Primary" and Color3.fromRGB(102, 176, 132)
+					or Color3.fromRGB(176, 144, 98))))
+			)
+		end
+	end
+	if lobbyUi.InventorySortButtons then
+		for filterName, button in pairs(lobbyUi.InventorySortButtons) do
+			styleButton(
+				button,
+				filterName == "Power" and Color3.fromRGB(206, 154, 96)
+					or (filterName == "Name" and Color3.fromRGB(102, 148, 196) or Theme.Colors.AccentWarm)
+			)
+		end
+	end
+end
+
+local function bindQuickAccessHover(quickAccessBar, quickButtons, setQuickAccessExpanded, setQuickAccessButtonsExpanded, setQuickAccessButtonExpanded)
+	for _, quickButton in ipairs(quickButtons) do
+		setQuickAccessButtonExpanded(quickButton, false)
+		quickButton.MouseEnter:Connect(function()
+			setQuickAccessButtonExpanded(quickButton, true)
+		end)
+		quickButton.MouseLeave:Connect(function()
+			setQuickAccessButtonExpanded(quickButton, false)
+		end)
+	end
+	quickAccessBar.MouseEnter:Connect(function()
+		setQuickAccessExpanded(true)
+	end)
+	quickAccessBar.MouseLeave:Connect(function()
+		setQuickAccessExpanded(false)
+		setQuickAccessButtonsExpanded(false)
+	end)
+end
+
+local function bindActivityCardTransitButtons(activityCards, stateGetter, requestActivityTransit)
+	if not activityCards then
+		return
+	end
+	local activityTransitKeys = {
+		Training = "Training",
+		Parkour = "Parkour",
+		Range = "Range",
+		Salvage = "Salvage",
+	}
+	for key, activityKey in pairs(activityTransitKeys) do
+		local card = activityCards[key]
+		if card and card.ActionButton then
+			card.ActionButton.MouseButton1Click:Connect(function()
+				if stateGetter() == "Lobby" then
+					requestActivityTransit(activityKey)
+				end
+			end)
+		end
+	end
+end
+
+styleCoreLobbyButtons = function(ui, getQuickAccessButtons, setQuickAccessExpanded, setQuickAccessButtonsExpanded, setQuickAccessButtonExpanded, currentShopTab)
+	styleButton(ui.Home.PlayButton, Theme.Colors.Accent)
+	styleButton(ui.Lobby.ClaimDailyButton, Theme.Colors.Accent)
+	styleButton(ui.Lobby.RefreshSquadsButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.InviteSquadButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.PrivacySquadButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.LeaveSquadButton, Theme.Colors.Accent)
+	styleButton(ui.Lobby.RefreshBoardButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.ShopQuickButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.InventoryQuickButton, Color3.fromRGB(86, 122, 176))
+	styleButton(ui.Lobby.SkillTreeQuickButton, Color3.fromRGB(118, 132, 166))
+	styleButton(ui.Lobby.ActivitiesQuickButton, Color3.fromRGB(98, 176, 124))
+	styleButton(ui.Lobby.SquadQuickButton, Color3.fromRGB(92, 146, 214))
+	styleButton(ui.Lobby.InviteQuickButton, Color3.fromRGB(76, 158, 136))
+	styleButton(ui.Lobby.SettingsQuickButton, Theme.Colors.Backdrop)
+	bindQuickAccessHover(
+		ui.Lobby.QuickAccessBar,
+		getQuickAccessButtons(),
+		setQuickAccessExpanded,
+		setQuickAccessButtonsExpanded,
+		setQuickAccessButtonExpanded
+	)
+	styleButton(ui.Lobby.CloseShopButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.InventoryWeaponTab, Color3.fromRGB(92, 122, 176))
+	styleButton(ui.Lobby.InventoryCosmeticTab, Color3.fromRGB(84, 128, 184))
+	styleButton(ui.Lobby.CloseInventoryButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.CloseSkillTreeButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.RespecSkillTreeButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.RespecConfirmAccept, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.RespecConfirmCancel, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.CloseSquadButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.CloseSocialButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.ToggleUiAudioButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.ToggleScreenShakeButton, Color3.fromRGB(86, 122, 176))
+	styleButton(ui.Lobby.CloseSettingsButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.NpcDialogueActionButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.NpcDialogueCloseButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.ClaimDailyQuestButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.ClaimWeeklyQuestButton, Color3.fromRGB(180, 154, 86))
+	styleButton(ui.Lobby.CloseQuestBoardButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.OpenActivitiesButton, Color3.fromRGB(88, 132, 188))
+	styleButton(ui.Lobby.BackToOpsButton, Color3.fromRGB(88, 132, 188))
+	styleButton(ui.Lobby.CloseActivitiesButton, Theme.Colors.Backdrop)
+	styleActivityCardButtons(ui.Lobby.ActivityCards)
+	styleButton(ui.Lobby.AcceptInviteButton, Theme.Colors.Accent)
+	styleButton(ui.Lobby.DeclineInviteButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.DeployButton, Theme.Colors.AccentWarm)
+	styleButton(ui.Lobby.MissionCloseButton, Theme.Colors.Backdrop)
+	styleButton(ui.Lobby.MissionLaunchButton, Theme.Colors.AccentWarm)
+	if ui.Lobby.CombatLeaveButton then
+		styleButton(ui.Lobby.CombatLeaveButton, Theme.Colors.Backdrop)
+	end
+	if ui.Lobby.MissionVoteButtons then
+		for _, button in ipairs(ui.Lobby.MissionVoteButtons) do
+			styleButton(button, Theme.Colors.Backdrop)
+		end
+	end
+	styleLobbyFilterButtons(ui.Lobby)
+	for tabName, button in pairs(ui.Lobby.ShopTabs) do
+		styleButton(button, tabName == currentShopTab and Theme.Colors.AccentWarm or Theme.Colors.Backdrop)
+	end
+end
+
+bindPrimaryLobbyButtons = function(deps)
+	local ui = deps.ui
+	local stateGetter = deps.getState
+	ui.Home.PlayButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Home" then
+			deps.enterLoading("Preparing lobby...", true)
+		end
+	end)
+
+	ui.Lobby.ClaimDailyButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.requestDailyReward()
+		end
+	end)
+
+	ui.Lobby.RefreshSquadsButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.refreshSquadDirectory()
+		end
+	end)
+
+	ui.Lobby.RefreshBoardButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.refreshSquadDirectory()
+		end
+	end)
+
+	ui.Lobby.ShopQuickButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setActivePopup("Shop")
+			deps.setShopStatus(Theme.ShopCopy[deps.getCurrentShopTab()] or deps.getShopStatus())
+			deps.updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.InventoryQuickButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setInventoryTab("Weapons")
+			deps.setActivePopup("Inventory")
+		end
+	end)
+
+	ui.Lobby.SkillTreeQuickButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setActivePopup("SkillTree")
+			deps.setSkillTreeStatus("Allocate points to unlock deeper branch nodes.")
+			deps.updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.ActivitiesQuickButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setActivePopup("Activities")
+			deps.updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.SquadQuickButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setActivePopup("Squad")
+			deps.refreshSquadDirectory()
+			deps.updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.InviteQuickButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setActivePopup("Social")
+			deps.refreshSquadDirectory()
+			deps.refreshInviteablePlayers()
+			deps.setSocialMessage("Pick a survivor from the roster and send the invite.")
+			deps.updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.SettingsQuickButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setActivePopup("Settings")
+			deps.updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.CloseShopButton.MouseButton1Click:Connect(function()
+		deps.setActivePopup(nil)
+	end)
+
+	ui.Lobby.DeployButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			if ui.Lobby.MissionPanel.Visible then
+				deps.requestDeploy()
+			else
+				deps.openMissionPanel()
+			end
+		end
+	end)
+	ui.Lobby.MissionCloseButton.MouseButton1Click:Connect(function()
+		deps.closeMissionPanel()
+	end)
+	ui.Lobby.MissionLaunchButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.requestDeploy()
+		end
+	end)
+	if ui.Lobby.MissionVoteButtons then
+		for _, button in ipairs(ui.Lobby.MissionVoteButtons) do
+			button.MouseButton1Click:Connect(function()
+				if stateGetter() == "Lobby" then
+					local optionId = button:GetAttribute("VoteOptionId")
+					if type(optionId) == "string" and optionId ~= "" then
+						deps.requestMapVote(optionId)
+					end
+				end
+			end)
+		end
+	end
+end
+
+bindSecondaryLobbyButtons = function(deps)
+	local ui = deps.ui
+	local stateGetter = deps.getState
+
+	ui.Lobby.InventoryWeaponTab.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setInventoryTab("Weapons")
+		end
+	end)
+
+	ui.Lobby.InventoryCosmeticTab.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setInventoryTab("Cosmetics")
+		end
+	end)
+
+	if ui.Lobby.InventoryTypeButtons then
+		for filterName, button in pairs(ui.Lobby.InventoryTypeButtons) do
+			button.MouseButton1Click:Connect(function()
+				if stateGetter() == "Lobby" and deps.getCurrentInventoryTab() == "Weapons" then
+					deps.setInventoryTypeFilter(filterName)
+					deps.updateLobbyText()
+				end
+			end)
+		end
+	end
+
+	if ui.Lobby.InventorySortButtons then
+		for filterName, button in pairs(ui.Lobby.InventorySortButtons) do
+			button.MouseButton1Click:Connect(function()
+				if stateGetter() == "Lobby" then
+					deps.setInventorySortMode(filterName)
+					deps.updateLobbyText()
+				end
+			end)
+		end
+	end
+
+	ui.Lobby.CloseInventoryButton.MouseButton1Click:Connect(function()
+		deps.setActivePopup(nil)
+	end)
+
+	ui.Lobby.CloseSkillTreeButton.MouseButton1Click:Connect(function()
+		deps.setActivePopup(nil)
+	end)
+	if ui.Lobby.SkillTreeFilterButtons then
+		for filterName, button in pairs(ui.Lobby.SkillTreeFilterButtons) do
+			button.MouseButton1Click:Connect(function()
+				if stateGetter() == "Lobby" then
+					deps.setSkillTreeBranchFilter(filterName)
+					deps.updateLobbyText()
+				end
+			end)
+		end
+	end
+	ui.Lobby.RespecConfirmCancel.MouseButton1Click:Connect(function()
+		deps.setPendingRespecConfirmation(false)
+		deps.updateLobbyText()
+	end)
+	ui.Lobby.RespecConfirmAccept.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.requestRespecSkillTree()
+		end
+	end)
+
+	ui.Lobby.CloseSquadButton.MouseButton1Click:Connect(function()
+		deps.setActivePopup(nil)
+	end)
+
+	ui.Lobby.CloseSocialButton.MouseButton1Click:Connect(function()
+		deps.setActivePopup(nil)
+	end)
+
+	ui.Lobby.NpcDialogueActionButton.MouseButton1Click:Connect(function()
+		if stateGetter() ~= "Lobby" or not deps.getPendingNpcDialogue() then
+			return
+		end
+		deps.handleNpcDialogueAction()
+	end)
+
+	ui.Lobby.NpcDialogueCloseButton.MouseButton1Click:Connect(function()
+		deps.closeNpcDialogue()
+	end)
+
+	ui.Lobby.ClaimDailyQuestButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.requestDailyReward()
+		end
+	end)
+
+	ui.Lobby.ClaimWeeklyQuestButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.requestWeeklyReward()
+		end
+	end)
+
+	ui.Lobby.CloseQuestBoardButton.MouseButton1Click:Connect(function()
+		deps.setActivePopup(nil)
+	end)
+
+	ui.Lobby.OpenActivitiesButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setActivePopup("Activities")
+			deps.updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.BackToOpsButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.openQuestBoard()
+		end
+	end)
+
+	ui.Lobby.CloseActivitiesButton.MouseButton1Click:Connect(function()
+		deps.setActivePopup(nil)
+	end)
+
+	bindActivityCardTransitButtons(ui.Lobby.ActivityCards, stateGetter, deps.requestActivityTransit)
+end
+
+bindAdminAndShopButtons = function(deps)
+	local ui = deps.ui
+	local stateGetter = deps.getState
+
+	ui.Lobby.ToggleUiAudioButton.MouseButton1Click:Connect(function()
+		deps.toggleUiAudio()
+	end)
+
+	ui.Lobby.ToggleScreenShakeButton.MouseButton1Click:Connect(function()
+		deps.toggleScreenShake()
+	end)
+
+	ui.Lobby.ToggleCombatFloatsButton.MouseButton1Click:Connect(function()
+		deps.toggleCombatFloats()
+	end)
+
+	ui.Lobby.ToggleCompactToastsButton.MouseButton1Click:Connect(function()
+		deps.toggleCompactToasts()
+	end)
+
+	ui.Lobby.CloseSettingsButton.MouseButton1Click:Connect(function()
+		deps.setActivePopup(nil)
+	end)
+
+	ui.Lobby.AdminButton.MouseButton1Click:Connect(function()
+		deps.openAdminPanel()
+	end)
+
+	local adminButtons = {
+		{ ui.Lobby.AdminHealButton, function() deps.requestAdminCommand("heal_self") end },
+		{ ui.Lobby.AdminHealSquadButton, function() deps.requestAdminCommand("heal_squad") end },
+		{ ui.Lobby.AdminTokensButton, function() deps.requestAdminCommand("grant_tokens") end },
+		{ ui.Lobby.AdminTokensLargeButton, function() deps.requestAdminCommand("grant_tokens_large") end },
+		{ ui.Lobby.AdminXpButton, function() deps.requestAdminCommand("grant_xp") end },
+		{ ui.Lobby.AdminXpLargeButton, function() deps.requestAdminCommand("grant_xp_large") end },
+		{ ui.Lobby.AdminReviveSquadButton, function() deps.requestAdminCommand("revive_squad") end },
+		{ ui.Lobby.AdminReturnButton, function() deps.requestAdminCommand("return_to_lobby") end },
+		{ ui.Lobby.AdminRefreshButton, function() deps.requestAdminCommand("refresh_access") end },
+		{ ui.Lobby.AdminGrantTokensTargetButton, function() deps.requestAdminTargetCommand("grant_tokens_target") end },
+		{ ui.Lobby.AdminGrantXpTargetButton, function() deps.requestAdminTargetCommand("grant_xp_target") end },
+		{ ui.Lobby.AdminHealTargetButton, function() deps.requestAdminTargetCommand("heal_target") end },
+		{ ui.Lobby.AdminGrantWeaponsButton, function() deps.requestAdminTargetCommand("unlock_all_weapons_target") end },
+		{ ui.Lobby.AdminGrantCosmeticsButton, function() deps.requestAdminTargetCommand("unlock_all_cosmetics_target") end },
+		{ ui.Lobby.AdminTerminateButton, function() deps.requestAdminTargetCommand("terminate_player") end },
+		{ ui.Lobby.AdminRoleModButton, function() deps.requestAdminTargetCommand("promote_moderator") end },
+		{ ui.Lobby.AdminRoleAdminButton, function() deps.requestAdminTargetCommand("promote_admin") end },
+		{ ui.Lobby.AdminRoleClearButton, function() deps.requestAdminTargetCommand("clear_access") end },
+		{ ui.Lobby.AdminBanButton, function() deps.requestAdminTargetCommand("ban_player") end },
+		{ ui.Lobby.AdminEventAutoButton, function() deps.requestAdminCommand("event_auto") end },
+		{ ui.Lobby.AdminEventOffButton, function() deps.requestAdminCommand("event_none") end },
+		{ ui.Lobby.AdminEventSpringButton, function() deps.requestAdminCommand("event_spring") end },
+		{ ui.Lobby.AdminEventHarvestButton, function() deps.requestAdminCommand("event_harvest") end },
+		{ ui.Lobby.AdminEventWinterButton, function() deps.requestAdminCommand("event_winter") end },
+		{ ui.Lobby.AdminSkipWaveButton, function() deps.requestAdminCommand("skip_wave") end },
+		{ ui.Lobby.AdminForceBossButton, function() deps.requestAdminCommand("force_boss") end },
+		{ ui.Lobby.AdminRefillAmmoButton, function() deps.requestAdminCommand("refill_ammo") end },
+		{ ui.Lobby.AdminTeleportSquadButton, function() deps.requestAdminCommand("teleport_squad") end },
+		{ ui.Lobby.AdminForcePowerRelayButton, function() deps.requestAdminCommand("force_power_relay") end },
+		{ ui.Lobby.AdminForceEvacTunnelButton, function() deps.requestAdminCommand("force_evac_tunnel") end },
+		{ ui.Lobby.AdminForceBlacksiteButton, function() deps.requestAdminCommand("force_blacksite_sweep") end },
+		{ ui.Lobby.AdminSpawnBruteButton, function() deps.requestAdminCommand("spawn_brute") end },
+		{ ui.Lobby.AdminSpawnRunnerButton, function() deps.requestAdminCommand("spawn_runner") end },
+		{ ui.Lobby.AdminSpawnSpitterButton, function() deps.requestAdminCommand("spawn_spitter") end },
+		{ ui.Lobby.AdminSpawnBruiserButton, function() deps.requestAdminCommand("spawn_bruiser") end },
+		{ ui.Lobby.AdminSpawnWardenHulkButton, function() deps.requestAdminCommand("spawn_warden_hulk") end },
+		{ ui.Lobby.AdminSpawnExploderButton, function() deps.requestAdminCommand("spawn_exploder") end },
+		{ ui.Lobby.AdminSpawnArtilleryButton, function() deps.requestAdminCommand("spawn_artillery") end },
+		{ ui.Lobby.AdminGiveDropsButton, function() deps.requestAdminCommand("give_all_drops") end },
+		{ ui.Lobby.AdminSpawnSupportBotsButton, function() deps.requestAdminCommand("spawn_support_bots") end },
+		{ ui.Lobby.AdminToggleSupportBotsButton, function() deps.requestAdminCommand("toggle_support_bots_auto") end },
+	}
+	for _, entry in ipairs(adminButtons) do
+		entry[1].MouseButton1Click:Connect(entry[2])
+	end
+
+	if ui.Lobby.AdminTabs then
+		for tabKey, tabButton in pairs(ui.Lobby.AdminTabs) do
+			tabButton.MouseButton1Click:Connect(function()
+				deps.setAdminTab(tabKey)
+			end)
+		end
+	end
+
+	ui.Lobby.CloseAdminButton.MouseButton1Click:Connect(function()
+		deps.setActivePopup(nil)
+	end)
+
+	Players.PlayerAdded:Connect(function()
+		deps.refreshAdminTargets()
+	end)
+	Players.PlayerRemoving:Connect(function(leavingPlayer)
+		deps.handleAdminTargetPlayerRemoving(leavingPlayer)
+	end)
+
+	ui.Lobby.AcceptInviteButton.MouseButton1Click:Connect(function()
+		deps.respondToInvite(true)
+	end)
+
+	ui.Lobby.DeclineInviteButton.MouseButton1Click:Connect(function()
+		deps.respondToInvite(false)
+	end)
+
+	ui.Lobby.RespecSkillTreeButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.setPendingRespecConfirmation(true)
+			deps.updateLobbyText()
+		end
+	end)
+
+	ui.Lobby.ResultsContinue.MouseButton1Click:Connect(function()
+		deps.handleResultsContinue()
+	end)
+
+	ui.Lobby.LeaveSquadButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.requestLeaveSquad()
+		end
+	end)
+
+	ui.Lobby.InviteSquadButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.openInvitePanel()
+		end
+	end)
+
+	ui.Lobby.PrivacySquadButton.MouseButton1Click:Connect(function()
+		if stateGetter() == "Lobby" then
+			deps.toggleSquadPrivacy()
+		end
+	end)
+
+	for tabName, button in pairs(ui.Lobby.ShopTabs) do
+		button.MouseButton1Click:Connect(function()
+			deps.selectShopTab(tabName)
+		end)
+	end
+	if ui.Lobby.ShopRarityButtons then
+		for filterName, button in pairs(ui.Lobby.ShopRarityButtons) do
+			button.MouseButton1Click:Connect(function()
+				if stateGetter() == "Lobby" then
+					deps.setShopRarityFilter(filterName)
+					deps.updateLobbyText()
+				end
+			end)
+		end
+	end
+	if ui.Lobby.ShopPremiumButtons then
+		for filterName, button in pairs(ui.Lobby.ShopPremiumButtons) do
+			button.MouseButton1Click:Connect(function()
+				if stateGetter() == "Lobby" then
+					deps.setShopPremiumFilter(filterName)
+					deps.updateLobbyText()
+				end
+			end)
+		end
+	end
+	if ui.Lobby.InventoryRarityButtons then
+		for filterName, button in pairs(ui.Lobby.InventoryRarityButtons) do
+			button.MouseButton1Click:Connect(function()
+				if stateGetter() == "Lobby" then
+					deps.setInventoryRarityFilter(filterName)
+					deps.updateLobbyText()
+				end
+			end)
+		end
+	end
 end
 
 local function playUiSound(soundId, volume, pitch)
@@ -1260,6 +3107,9 @@ local function spawnFloatingRewardText(text, accentColor, options)
 	end
 
 	options = type(options) == "table" and options or {}
+	if combatFloatsEnabledState ~= true and options.force ~= true then
+		return
+	end
 	local anchor = options.position or getRewardFloatAnchorPosition()
 	local xJitter = math.random(-40, 40)
 	local yJitter = math.random(-10, 16)
@@ -1312,22 +3162,41 @@ local function makeListCard(parent, name, height)
 	local card = new("Frame", {
 		Name = name,
 		BackgroundColor3 = Theme.Colors.PanelAlt,
+		BackgroundTransparency = 0.02,
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, height),
 		Parent = parent,
 	})
-	addCorner(card, UDim.new(0, 12))
-	addStroke(card, Theme.Colors.Stroke, 0.18, 1)
+	addCorner(card, UDim.new(0, 14))
+	addStroke(card, Theme.Colors.Stroke, 0.12, 1)
+	local cardGradient = new("UIGradient", {
+		Rotation = 0,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Theme.Colors.PanelAlt:Lerp(Color3.fromRGB(255, 255, 255), 0.04)),
+			ColorSequenceKeypoint.new(1, Theme.Colors.PanelAlt:Lerp(Color3.fromRGB(0, 0, 0), 0.12)),
+		}),
+		Parent = card,
+	})
 	local shine = new("Frame", {
 		Name = "Shine",
 		BackgroundColor3 = Theme.Colors.Text,
-		BackgroundTransparency = 0.96,
+		BackgroundTransparency = 0.92,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0, 0, 0, 0),
-		Size = UDim2.new(1, 0, 0, 1),
+		Position = UDim2.new(0, 12, 0, 10),
+		Size = UDim2.new(1, -24, 0, 1),
 		Parent = card,
 	})
 	addCorner(shine, UDim.new(0, 4))
+	local lowerRule = new("Frame", {
+		Name = "LowerRule",
+		BackgroundColor3 = Theme.Colors.Stroke,
+		BackgroundTransparency = 0.84,
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, 12, 1, -11),
+		Size = UDim2.new(1, -24, 0, 1),
+		Parent = card,
+	})
+	addCorner(lowerRule, UDim.new(0, 4))
 	return card
 end
 
@@ -1362,22 +3231,6 @@ end
 local function getSkillRank(skillTree, skillId)
 	local skills = skillTree and skillTree.skills
 	return math.max(0, math.floor((skills and skills[skillId]) or 0))
-end
-
-local function getRarityStyle(rarity)
-	local value = tostring(rarity or "Common")
-	if value == "Uncommon" then
-		return value, Color3.fromRGB(88, 166, 108)
-	elseif value == "Rare" then
-		return value, Color3.fromRGB(88, 136, 214)
-	elseif value == "Epic" then
-		return value, Color3.fromRGB(176, 108, 214)
-	elseif value == "Legendary" then
-		return value, Color3.fromRGB(232, 173, 78)
-	elseif value == "Supporter" then
-		return value, Color3.fromRGB(214, 190, 108)
-	end
-	return value, Color3.fromRGB(126, 138, 150)
 end
 
 local function getRarityWeight(rarity)
@@ -1434,6 +3287,43 @@ local function matchesRarityFilter(rarity, filterName)
 	return tostring(rarity or "Common") == tostring(filterName)
 end
 
+local function getInventoryWeaponLane(item)
+	local weapon = item and item.Id and MissionConfig.Weapons[item.Id] or nil
+	if not weapon then
+		return "All"
+	end
+	if weapon.WeaponType == "Melee" then
+		return "Melee"
+	end
+	if weapon.ModelStyle == "Pistol" then
+		return "Sidearm"
+	end
+	if weapon.ModelStyle == "SMG" or weapon.ModelStyle == "Shotgun" or weapon.WeaponType == "Spread" then
+		return "CQB"
+	end
+	return "Primary"
+end
+
+local function matchesInventoryTypeFilter(category, item, filterName)
+	if filterName == nil or filterName == "All" then
+		return true
+	end
+	if category ~= Theme.ShopTabToCategory.Weapons then
+		return true
+	end
+	return getInventoryWeaponLane(item) == filterName
+end
+
+local function getInventoryPowerScore(item)
+	local weapon = item and item.Id and MissionConfig.Weapons[item.Id] or nil
+	if not weapon then
+		return 0
+	end
+	local ammoValue = tonumber(weapon.MagazineSize or 0) * 0.35
+	local cadenceValue = weapon.Cooldown and (8 / math.max(weapon.Cooldown, 0.08)) or 0
+	return tonumber(weapon.Damage or 0) + (tonumber(weapon.Range or 0) * 0.05) + ammoValue + cadenceValue
+end
+
 local function matchesPremiumFilter(item, filterName)
 	if filterName == nil or filterName == "All" then
 		return true
@@ -1449,6 +3339,108 @@ local function matchesPremiumFilter(item, filterName)
 		return (item.CostType == "Robux") and not (type(item.GamePassId) == "number" and item.GamePassId > 0) and not (type(item.SubscriptionId) == "string" and item.SubscriptionId ~= "")
 	end
 	return true
+end
+
+local function getTokenShortfall(cost, balance)
+	return math.max(0, (tonumber(cost) or 0) - (tonumber(balance) or 0))
+end
+
+local function getShopStateColor(stateLabel)
+	if stateLabel == "EQUIPPED" or stateLabel == "ACTIVE" then
+		return Color3.fromRGB(126, 202, 144)
+	elseif stateLabel == "OWNED" or stateLabel == "PASS" or stateLabel == "SUPPORTER" then
+		return Color3.fromRGB(112, 176, 232)
+	elseif stateLabel == "SHORT" or stateLabel == "LOCKED" or stateLabel == "DROP ONLY" then
+		return Color3.fromRGB(188, 138, 92)
+	elseif stateLabel == "PREMIUM" then
+		return Color3.fromRGB(204, 174, 102)
+	elseif stateLabel == "PROCESSING" or stateLabel == "EQUIPPING" then
+		return Color3.fromRGB(214, 196, 124)
+	end
+	return Color3.fromRGB(96, 128, 164)
+end
+
+local activeCardTweens = setmetatable({}, { __mode = "k" })
+
+local function setCardFocusState(card, isFocused, accentColor)
+	if not card or not card:IsA("GuiObject") then
+		return
+	end
+	local stroke = card:FindFirstChildOfClass("UIStroke")
+	local gradient = card:FindFirstChildOfClass("UIGradient")
+	local accentBar = card:FindFirstChild("AccentBar")
+	local cardScale = card:FindFirstChild("CardScale")
+	if not cardScale then
+		cardScale = Instance.new("UIScale")
+		cardScale.Name = "CardScale"
+		cardScale.Scale = 1
+		cardScale.Parent = card
+	end
+
+	local existingTweens = activeCardTweens[card]
+	if existingTweens then
+		for _, tween in ipairs(existingTweens) do
+			tween:Cancel()
+		end
+	end
+	activeCardTweens[card] = {}
+	if isFocused then
+		if stroke then
+			local strokeTween = TweenService:Create(stroke, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Transparency = 0.02,
+				Thickness = 2,
+			})
+			table.insert(activeCardTweens[card], strokeTween)
+			strokeTween:Play()
+			stroke.Color = accentColor or stroke.Color
+		end
+		if gradient then
+			gradient.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, (accentColor or Color3.fromRGB(96, 132, 188)):Lerp(Color3.fromRGB(255, 255, 255), 0.16)),
+				ColorSequenceKeypoint.new(1, card.BackgroundColor3:Lerp(Color3.fromRGB(0, 0, 0), 0.08)),
+			})
+		end
+		if accentBar and accentBar:IsA("Frame") then
+			local accentTween = TweenService:Create(accentBar, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = UDim2.new(0, 6, 1, -24),
+			})
+			table.insert(activeCardTweens[card], accentTween)
+			accentTween:Play()
+		end
+		local scaleTween = TweenService:Create(cardScale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Scale = 1.015,
+		})
+		table.insert(activeCardTweens[card], scaleTween)
+		scaleTween:Play()
+	else
+		if stroke then
+			local strokeTween = TweenService:Create(stroke, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Transparency = 0.14,
+				Thickness = 1,
+			})
+			table.insert(activeCardTweens[card], strokeTween)
+			strokeTween:Play()
+			stroke.Color = accentColor or stroke.Color
+		end
+		if gradient then
+			gradient.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, card.BackgroundColor3:Lerp(Color3.fromRGB(255, 255, 255), 0.04)),
+				ColorSequenceKeypoint.new(1, card.BackgroundColor3:Lerp(Color3.fromRGB(0, 0, 0), 0.12)),
+			})
+		end
+		if accentBar and accentBar:IsA("Frame") then
+			local accentTween = TweenService:Create(accentBar, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = UDim2.new(0, 4, 1, -28),
+			})
+			table.insert(activeCardTweens[card], accentTween)
+			accentTween:Play()
+		end
+		local scaleTween = TweenService:Create(cardScale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Scale = 1,
+		})
+		table.insert(activeCardTweens[card], scaleTween)
+		scaleTween:Play()
+	end
 end
 
 local function getSkillState(skillId, skill, currentRank, maxRank, prereqMet, prereqName, availablePoints, spendingSkillId)
@@ -1559,6 +3551,9 @@ function FlowController.start()
 	local loadingStartedAt = 0
 	local awaitingContinuePrompt = false
 	local promptTween = nil
+	local loadingProgressTween = nil
+	local loadingAmbientTweens = {}
+	local lobbyAmbientTweens = {}
 	local activePopup = nil
 	local updateHudVisibility
 	local tokenBalance = Theme.DefaultTokenBalance
@@ -1579,6 +3574,8 @@ function FlowController.start()
 	local currentInventoryTab = "Weapons"
 	local currentInventoryStatus = "Owned gear appears here. Equip a weapon or cosmetic from the locker."
 	local currentInventoryRarityFilter = "All"
+	local currentInventoryTypeFilter = "All"
+	local currentInventorySortMode = "Rarity"
 	local currentSkillTreeStatus = "Allocate points to unlock deeper branch nodes."
 	local currentSkillTreeBranchFilter = "All"
 	local selectedSkillTreeNodeId = nil
@@ -1590,6 +3587,7 @@ function FlowController.start()
 	local nearArchiveLane = false
 	local nearCentralCommand = true
 	local nearDeployPad = false
+	local missionPanelPinned = false
 	local lobbyZoneSampleTimer = 0
 	local squadSnapshot = nil
 	local squadDirectory = {}
@@ -1628,6 +3626,7 @@ function FlowController.start()
 	}
 	local missionTelemetry = {
 		phase = "Staging",
+		status = "",
 		scenarioName = "Hold The Core",
 		scenarioDescription = "",
 		wave = 0,
@@ -1665,7 +3664,12 @@ function FlowController.start()
 	local isRefreshingInvitePlayers = false
 	local uiAudioEnabled = true
 	local screenShakeEnabled = true
+	local combatFloatsEnabled = true
+	local compactMissionToastsEnabled = false
 	local missionToastNonce = 0
+	local spectateSampleTimer = 0
+	local lastMissionAlertStatus = ""
+	local lastMissionAlertAt = 0
 	local suppressedMissionPrompts = {}
 	local overlayTweens = {}
 	SoundService:SetAttribute("UiAudioEnabled", uiAudioEnabled)
@@ -1730,63 +3734,63 @@ function FlowController.start()
 		if ui.Lobby.HudBar then
 			local sizeConstraint = ui.Lobby.HudBar:FindFirstChildOfClass("UISizeConstraint")
 			if sizeConstraint then
-				sizeConstraint.MaxSize = layoutState.mobileLayout and Vector2.new(2048, 72) or Vector2.new(640, 60)
+				sizeConstraint.MaxSize = layoutState.mobileLayout and Vector2.new(2048, 82) or Vector2.new(860, 76)
 			end
-			ui.Lobby.HudBar.Position = layoutState.mobileLayout and UDim2.new(0, 12, 0, 12) or UDim2.new(0, 16, 0, 18)
+			ui.Lobby.HudBar.Position = layoutState.mobileLayout and UDim2.new(0, 12, 0, 16) or UDim2.new(0, 18, 0, 24)
 			layoutState.hudShownPosition = ui.Lobby.HudBar.Position
 			layoutState.hudHiddenPosition = layoutState.hudShownPosition - UDim2.fromOffset(0, layoutState.mobileLayout and 12 or 18)
-			layoutState.hudCompactVisibleSize = layoutState.mobileLayout and UDim2.new(1, -24, 0, 56) or UDim2.new(0, 160, 0, 46)
-			layoutState.hudDeployVisibleSize = layoutState.mobileLayout and UDim2.new(1, -24, 0, 64) or UDim2.new(0.4, 0, 0, 60)
+			layoutState.hudCompactVisibleSize = layoutState.mobileLayout and UDim2.new(1, -24, 0, 66) or UDim2.new(0, 190, 0, 56)
+			layoutState.hudDeployVisibleSize = layoutState.mobileLayout and UDim2.new(1, -24, 0, 78) or UDim2.new(0, 720, 0, 76)
 
 			local hudModule = ui.Lobby.HudBar:FindFirstChild("HudModule")
 			if hudModule and hudModule:IsA("Frame") then
-					hudModule.Size = layoutState.mobileLayout and UDim2.new(0, 112, 0, 38) or UDim2.new(0, 136, 0, 38)
-					hudModule.Position = layoutState.mobileLayout and UDim2.new(0, 8, 0, 8) or UDim2.new(0, 12, 0, 12)
+					hudModule.Size = layoutState.mobileLayout and UDim2.new(0, 118, 0, 42) or UDim2.new(0, 148, 0, 46)
+					hudModule.Position = layoutState.mobileLayout and UDim2.new(0, 8, 0, 10) or UDim2.new(0, 14, 0, 14)
 				end
 				if ui.Lobby.TokenPill then
-					ui.Lobby.TokenPill.Position = layoutState.mobileLayout and UDim2.new(0, 126, 0, 10) or UDim2.new(0, 154, 0, 12)
-					ui.Lobby.TokenPill.Size = layoutState.mobileLayout and UDim2.new(0, 106, 0, 24) or UDim2.new(0, 132, 0, 20)
+					ui.Lobby.TokenPill.Position = layoutState.mobileLayout and UDim2.new(0, 132, 0, 12) or UDim2.new(0, 176, 0, 16)
+					ui.Lobby.TokenPill.Size = layoutState.mobileLayout and UDim2.new(0, 118, 0, 26) or UDim2.new(0, 170, 0, 24)
 				end
 				if ui.Lobby.DeployStatusPill then
-					ui.Lobby.DeployStatusPill.Position = layoutState.mobileLayout and UDim2.new(0, 238, 0, 10) or UDim2.new(0, 294, 0, 12)
-					ui.Lobby.DeployStatusPill.Size = layoutState.mobileLayout and UDim2.new(0, 100, 0, 24) or UDim2.new(0, 144, 0, 20)
+					ui.Lobby.DeployStatusPill.Position = layoutState.mobileLayout and UDim2.new(0, 256, 0, 12) or UDim2.new(0, 356, 0, 16)
+					ui.Lobby.DeployStatusPill.Size = layoutState.mobileLayout and UDim2.new(0, 120, 0, 26) or UDim2.new(0, 230, 0, 24)
 				end
 				if ui.Lobby.PersistencePill then
-					ui.Lobby.PersistencePill.Position = layoutState.mobileLayout and UDim2.new(0, 126, 0, 38) or UDim2.new(0, 154, 0, 38)
-					ui.Lobby.PersistencePill.Size = layoutState.mobileLayout and UDim2.new(0, 92, 0, 18) or UDim2.new(0, 100, 0, 14)
+					ui.Lobby.PersistencePill.Position = layoutState.mobileLayout and UDim2.new(0, 132, 0, 44) or UDim2.new(0, 176, 0, 46)
+					ui.Lobby.PersistencePill.Size = layoutState.mobileLayout and UDim2.new(0, 104, 0, 20) or UDim2.new(0, 126, 0, 18)
 				end
 				if ui.Lobby.DeployButton then
-					ui.Lobby.DeployButton.Size = layoutState.mobileLayout and UDim2.new(0, 96, 0, 38) or UDim2.new(0, 100, 0, 30)
-					ui.Lobby.DeployButton.Position = layoutState.mobileLayout and UDim2.new(1, -8, 0.5, 0) or UDim2.new(1, -10, 0.5, 0)
+					ui.Lobby.DeployButton.Size = layoutState.mobileLayout and UDim2.new(0, 104, 0, 42) or UDim2.new(0, 126, 0, 38)
+					ui.Lobby.DeployButton.Position = layoutState.mobileLayout and UDim2.new(1, -10, 0.5, 0) or UDim2.new(1, -14, 0.5, 0)
 				end
 			end
 
 		if ui.Lobby.MissionPanel then
-			ui.Lobby.MissionPanel.Position = layoutState.mobileLayout and UDim2.new(0.5, 0, 0, 72) or UDim2.new(0.61, 0, 0, 84)
-			ui.Lobby.MissionPanel.Size = layoutState.mobileLayout and UDim2.new(0, math.min(viewportX - 16, 388), 0, 336) or UDim2.new(0, 430, 0, 236)
+			ui.Lobby.MissionPanel.Position = layoutState.mobileLayout and UDim2.new(0.5, 0, 0, 92) or UDim2.new(0.55, 0, 0, 118)
+			ui.Lobby.MissionPanel.Size = layoutState.mobileLayout and UDim2.new(0, math.min(viewportX - 16, 404), 0, 360) or UDim2.new(0, 544, 0, 296)
 			if ui.Lobby.MissionInfoCard then
-				ui.Lobby.MissionInfoCard.Position = layoutState.mobileLayout and UDim2.new(0, 18, 0, 66) or UDim2.new(0, 16, 0, 64)
-				ui.Lobby.MissionInfoCard.Size = layoutState.mobileLayout and UDim2.new(1, -36, 0, 104) or UDim2.new(0, 166, 0, 118)
+				ui.Lobby.MissionInfoCard.Position = layoutState.mobileLayout and UDim2.new(0, 18, 0, 74) or UDim2.new(0, 16, 0, 68)
+				ui.Lobby.MissionInfoCard.Size = layoutState.mobileLayout and UDim2.new(1, -36, 0, 116) or UDim2.new(0, 210, 0, 154)
 			end
 			if ui.Lobby.MissionVoteDeck then
-				ui.Lobby.MissionVoteDeck.Position = layoutState.mobileLayout and UDim2.new(0, 18, 0, 180) or UDim2.new(0, 194, 0, 64)
-				ui.Lobby.MissionVoteDeck.Size = layoutState.mobileLayout and UDim2.new(1, -36, 0, 100) or UDim2.new(1, -210, 0, 118)
+				ui.Lobby.MissionVoteDeck.Position = layoutState.mobileLayout and UDim2.new(0, 18, 0, 204) or UDim2.new(0, 242, 0, 68)
+				ui.Lobby.MissionVoteDeck.Size = layoutState.mobileLayout and UDim2.new(1, -36, 0, 118) or UDim2.new(1, -258, 0, 154)
 			end
 		if ui.Lobby.MissionStatus then
-			ui.Lobby.MissionStatus.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 100) or UDim2.new(0, 24, 0, 44)
-			ui.Lobby.MissionStatus.Size = layoutState.mobileLayout and UDim2.new(1, -60, 0, 22) or UDim2.new(0, 124, 0, 34)
+			ui.Lobby.MissionStatus.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 108) or UDim2.new(0, 18, 0, 40)
+			ui.Lobby.MissionStatus.Size = layoutState.mobileLayout and UDim2.new(1, -60, 0, 26) or UDim2.new(0, 174, 0, 48)
 		end
 		if ui.Lobby.MissionMeta then
-			ui.Lobby.MissionMeta.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 126) or UDim2.new(0, 24, 0, 82)
-			ui.Lobby.MissionMeta.Size = layoutState.mobileLayout and UDim2.new(1, -60, 0, 16) or UDim2.new(0, 124, 0, 16)
+			ui.Lobby.MissionMeta.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 138) or UDim2.new(0, 18, 0, 102)
+			ui.Lobby.MissionMeta.Size = layoutState.mobileLayout and UDim2.new(1, -60, 0, 16) or UDim2.new(0, 174, 0, 16)
 		end
 		if ui.Lobby.MissionLoadout then
-			ui.Lobby.MissionLoadout.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 146) or UDim2.new(0, 24, 0, 100)
-			ui.Lobby.MissionLoadout.Size = layoutState.mobileLayout and UDim2.new(1, -60, 0, 16) or UDim2.new(0, 124, 0, 16)
+			ui.Lobby.MissionLoadout.Position = layoutState.mobileLayout and UDim2.new(0, 30, 0, 160) or UDim2.new(0, 18, 0, 122)
+			ui.Lobby.MissionLoadout.Size = layoutState.mobileLayout and UDim2.new(1, -60, 0, 18) or UDim2.new(0, 174, 0, 22)
 		end
 		if ui.Lobby.MissionVoteLabel then
 			ui.Lobby.MissionVoteLabel.Position = UDim2.new(0, 12, 0, 30)
-			ui.Lobby.MissionVoteLabel.Size = UDim2.new(1, -24, 0, 14)
+			ui.Lobby.MissionVoteLabel.Size = UDim2.new(1, -24, 0, 28)
 		end
 		if ui.Lobby.MissionVoteButtons then
 			local panelWidth = ui.Lobby.MissionPanel.Size.X.Offset
@@ -1794,39 +3798,39 @@ function FlowController.start()
 			local availableWidth = layoutState.mobileLayout and math.max(240, panelWidth - 36) or math.max(180, voteDeckWidth - 24)
 			local narrowVoteLayout = layoutState.mobileLayout and panelWidth <= 332
 			local gap = layoutState.mobileLayout and 6 or 8
-				local buttonHeight = layoutState.mobileLayout and 38 or 20
+				local buttonHeight = layoutState.mobileLayout and 40 or 28
 			if narrowVoteLayout then
 				local topWidth = math.floor((availableWidth - gap) / 2)
 				for index, button in ipairs(ui.Lobby.MissionVoteButtons) do
 					if index <= 2 then
 						button.Size = UDim2.new(0, topWidth, 0, buttonHeight)
-						button.Position = UDim2.new(0, 12 + ((index - 1) * (topWidth + gap)), 0, 50)
+						button.Position = UDim2.new(0, 12 + ((index - 1) * (topWidth + gap)), 0, 64)
 					else
 						button.Size = UDim2.new(1, -24, 0, buttonHeight)
-						button.Position = UDim2.new(0, 12, 0, 50 + buttonHeight + gap)
+						button.Position = UDim2.new(0, 12, 0, 64 + buttonHeight + gap)
 					end
 				end
 					ui.Lobby.MissionPanel.Size = UDim2.new(0, panelWidth, 0, 336)
 					if ui.Lobby.MissionVoteDeck then
-						ui.Lobby.MissionVoteDeck.Size = UDim2.new(1, -36, 0, 58 + (buttonHeight * 2) + gap)
+						ui.Lobby.MissionVoteDeck.Size = UDim2.new(1, -36, 0, 72 + (buttonHeight * 2) + gap)
 					end
 				else
 					if layoutState.mobileLayout then
 						local buttonWidth = math.floor((availableWidth - (gap * 2)) / 3)
 					for index, button in ipairs(ui.Lobby.MissionVoteButtons) do
 						button.Size = UDim2.new(0, buttonWidth, 0, buttonHeight)
-						button.Position = UDim2.new(0, 12 + ((index - 1) * (buttonWidth + gap)), 0, 50)
+						button.Position = UDim2.new(0, 12 + ((index - 1) * (buttonWidth + gap)), 0, 64)
 						end
 						if ui.Lobby.MissionVoteDeck then
-							ui.Lobby.MissionVoteDeck.Size = UDim2.new(1, -36, 0, 96)
+							ui.Lobby.MissionVoteDeck.Size = UDim2.new(1, -36, 0, 112)
 						end
 				else
 					for index, button in ipairs(ui.Lobby.MissionVoteButtons) do
 						button.Size = UDim2.new(1, -24, 0, buttonHeight)
-						button.Position = UDim2.new(0, 12, 0, 50 + ((index - 1) * (buttonHeight + gap)))
+						button.Position = UDim2.new(0, 12, 0, 64 + ((index - 1) * (buttonHeight + gap)))
 					end
 					if ui.Lobby.MissionVoteDeck then
-						ui.Lobby.MissionVoteDeck.Size = UDim2.new(1, -210, 0, 118)
+						ui.Lobby.MissionVoteDeck.Size = UDim2.new(1, -258, 0, 154)
 					end
 				end
 			end
@@ -1848,21 +3852,21 @@ function FlowController.start()
 
 		if ui.Lobby.LeaderboardBoard then
 			ui.Lobby.LeaderboardBoard.Size = layoutState.mobileLayout and UDim2.new(0, 142, 0, 26) or UDim2.new(0, 164, 0, 24)
-			ui.Lobby.LeaderboardBoard.Position = layoutState.mobileLayout and UDim2.new(0, 12, 1, -12) or UDim2.new(0, 16, 1, -16)
+			ui.Lobby.LeaderboardBoard.Position = layoutState.mobileLayout and UDim2.new(0, 12, 1, -26) or UDim2.new(0, 18, 1, -26)
 			layoutState.archiveHintShownPosition = ui.Lobby.LeaderboardBoard.Position
 			layoutState.archiveHintHiddenPosition = layoutState.archiveHintShownPosition - UDim2.fromOffset(ui.Lobby.LeaderboardBoard.Size.X.Offset + 18, 0)
 		end
 
 			if ui.Lobby.QuickAccessBar then
-				layoutState.quickAccessCollapsedWidth = layoutState.mobileLayout and 148 or 118
-				layoutState.quickAccessExpandedWidth = layoutState.mobileLayout and 194 or 154
-				ui.Lobby.QuickAccessBar.Size = UDim2.new(0, layoutState.quickAccessCollapsedWidth, 0, layoutState.mobileLayout and 322 or 246)
-				ui.Lobby.QuickAccessBar.Position = layoutState.mobileLayout and UDim2.new(1, -12, 0, 92) or UDim2.new(1, -16, 0, 112)
+				layoutState.quickAccessCollapsedWidth = layoutState.mobileLayout and 168 or 178
+				layoutState.quickAccessExpandedWidth = layoutState.mobileLayout and 208 or 178
+				ui.Lobby.QuickAccessBar.Size = UDim2.new(0, layoutState.quickAccessCollapsedWidth, 0, layoutState.mobileLayout and 386 or 454)
+				ui.Lobby.QuickAccessBar.Position = layoutState.mobileLayout and UDim2.new(1, -12, 0, 118) or UDim2.new(1, -20, 0, 146)
 			layoutState.quickAccessShownPosition = ui.Lobby.QuickAccessBar.Position
 			layoutState.quickAccessHiddenPosition = layoutState.quickAccessShownPosition + UDim2.fromOffset(layoutState.quickAccessCollapsedWidth + 24, 0)
 			for _, quickButton in ipairs(getQuickAccessButtons()) do
 				if quickButton then
-						quickButton.Size = UDim2.new(1, 0, 0, layoutState.mobileLayout and 40 or 28)
+						quickButton.Size = UDim2.new(1, 0, 0, layoutState.mobileLayout and 42 or 42)
 						local badge = quickButton:FindFirstChild("Badge")
 						if badge and badge:IsA("Frame") then
 							badge.Size = layoutState.mobileLayout and UDim2.new(0, 24, 0, 24) or UDim2.new(0, 18, 0, 18)
@@ -2162,6 +4166,9 @@ end
 		local readinessCard = ui.Home.ReadinessCard
 		local glow = ui.Home.BackdropGlow
 		local heroBand = ui.Home.HeroBand
+		local heroGlow = ui.Home.HeroGlow
+		local heroScanLine = ui.Home.HeroScanLine
+		local heroRouteCard = ui.Home.HeroRouteCard
 		local heroStatus = ui.Home.HeroStatus
 		local heroTitle = ui.Home.HeroTitle
 		local heroBody = ui.Home.HeroBody
@@ -2176,9 +4183,9 @@ end
 
 			leftPane.Position = UDim2.new(0, -28, 0, 0)
 			leftPane.BackgroundTransparency = 0.18
-			rightPane.Position = UDim2.new(0, 388, 0, 0)
+			rightPane.Position = UDim2.new(0, 372, 0, 0)
 			rightPane.BackgroundTransparency = 0.18
-			readinessCard.Position = UDim2.new(0, 24, 0, 192)
+			readinessCard.Position = UDim2.new(0, 24, 0, 190)
 			readinessCard.BackgroundTransparency = 0.22
 			glow.BackgroundTransparency = 0.96
 			heroStatus.TextTransparency = 1
@@ -2203,11 +4210,11 @@ end
 				BackgroundTransparency = 0.06,
 			}):Play()
 			TweenService:Create(rightPane, TweenInfo.new(0.46, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Position = UDim2.new(0, 360, 0, 0),
+				Position = UDim2.new(0, 344, 0, 0),
 				BackgroundTransparency = 0.02,
 			}):Play()
 			TweenService:Create(readinessCard, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Position = UDim2.new(0, 24, 0, 172),
+				Position = UDim2.new(0, 24, 0, 176),
 				BackgroundTransparency = 0.08,
 			}):Play()
 			TweenService:Create(glow, TweenInfo.new(0.52, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
@@ -2246,6 +4253,14 @@ end
 			glowTween:Play()
 			table.insert(homeSignalPulseTweens, glowTween)
 		end
+		if heroGlow then
+			local heroGlowTween = TweenService:Create(heroGlow, TweenInfo.new(1.85, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				BackgroundTransparency = 0.95,
+				Size = UDim2.new(0, 226, 0, 226),
+			})
+			heroGlowTween:Play()
+			table.insert(homeSignalPulseTweens, heroGlowTween)
+		end
 		if heroBand then
 			local bandTween = TweenService:Create(heroBand, TweenInfo.new(1.25, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
 				Size = UDim2.new(0, 212, 0, 4),
@@ -2253,6 +4268,24 @@ end
 			})
 			bandTween:Play()
 			table.insert(homeSignalPulseTweens, bandTween)
+		end
+		if heroScanLine then
+			heroScanLine.Position = UDim2.new(1, -290, 0, 132)
+			local scanTween = TweenService:Create(heroScanLine, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				Position = UDim2.new(1, -238, 0, 132),
+				BackgroundTransparency = 0.82,
+			})
+			scanTween:Play()
+			table.insert(homeSignalPulseTweens, scanTween)
+		end
+		if heroRouteCard then
+			heroRouteCard.Position = UDim2.new(1, -34, 1, -136)
+			local routeTween = TweenService:Create(heroRouteCard, TweenInfo.new(2.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				Position = UDim2.new(1, -34, 1, -132),
+				BackgroundTransparency = 0.04,
+			})
+			routeTween:Play()
+			table.insert(homeSignalPulseTweens, routeTween)
 		end
 		if signalSweep then
 			signalSweep.Position = UDim2.new(0, -72, 0, 8)
@@ -2271,6 +4304,43 @@ end
 				table.insert(homeSignalPulseTweens, pulseTween)
 			end
 		end
+	end
+
+	local function stopLobbyAmbientTweens()
+		for _, tween in ipairs(lobbyAmbientTweens) do
+			tween:Cancel()
+		end
+		table.clear(lobbyAmbientTweens)
+	end
+
+	local function startLobbyAmbientTweens()
+		stopLobbyAmbientTweens()
+		if not ui or not ui.Lobby then
+			return
+		end
+
+		local function attachScalePulse(target, highScale, duration)
+			if not target or not target:IsA("GuiObject") then
+				return
+			end
+			local scaleDriver = target:FindFirstChild("AmbientScale")
+			if not scaleDriver then
+				scaleDriver = Instance.new("UIScale")
+				scaleDriver.Name = "AmbientScale"
+				scaleDriver.Scale = 1
+				scaleDriver.Parent = target
+			end
+			scaleDriver.Scale = 1
+			local tween = TweenService:Create(scaleDriver, TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				Scale = highScale,
+			})
+			tween:Play()
+			table.insert(lobbyAmbientTweens, tween)
+		end
+
+		attachScalePulse(ui.Lobby.HudBar, 1.008, 1.7)
+		attachScalePulse(ui.Lobby.QuickAccessBar, 1.01, 1.95)
+		attachScalePulse(ui.Lobby.MissionPanel, 1.006, 1.6)
 	end
 
 	local viewportCameraConnection
@@ -2322,18 +4392,6 @@ end
 		ui.Lobby.AdminTargetMeta.Text = targetIsSelf and "Self-targeted commands affect your own operator profile." or ("Selected server target: %s"):format(tostring(targetPlayer.Name or targetPlayer.DisplayName))
 	end
 
-	local function getAllowedAdminTabs(identity)
-		local isModerator = identity.isModerator == true or identity.isAdmin == true or identity.isOwner == true
-		local isAdmin = identity.isAdmin == true or identity.isOwner == true
-		local isOwner = identity.isOwner == true
-		return {
-			Session = isModerator,
-			Progression = isAdmin,
-			LiveOps = isAdmin,
-			Access = isOwner,
-		}
-	end
-
 	local function updateAdminTabVisibility()
 		if not ui or not ui.Lobby.AdminTabs or not ui.Lobby.AdminPages then
 			return
@@ -2376,16 +4434,6 @@ end
 		updateAdminTabVisibility()
 	end
 
-	local function describeMapVoteError(code)
-		if code == "busy" then
-			return "Map voting closes once deployment starts."
-		end
-		if code == "invalid_option" then
-			return "That map option is no longer available."
-		end
-		return "Map vote unavailable."
-	end
-
 	local function findShopItem(category, itemId)
 		local items = shopCatalog[category] or {}
 		for _, item in ipairs(items) do
@@ -2408,6 +4456,157 @@ end
 		end
 		local ownedAttribute = ("ShopUnlocked_%s_%s"):format(category, item.Id)
 		return player:GetAttribute(ownedAttribute) == true
+	end
+
+	local function getShopItemState(category, item)
+		local isSubscriptionItem = type(item) == "table" and type(item.SubscriptionId) == "string" and item.SubscriptionId ~= ""
+		local isGamePassItem = type(item) == "table" and type(item.GamePassId) == "number" and item.GamePassId > 0
+		local isRobuxItem = type(item) == "table" and (item.CostType == "Robux" or category == Theme.ShopTabToCategory["Deploy Tokens"])
+		local isDropOnly = type(item) == "table" and item.DropOnly == true
+		local isSeasonLocked = type(item) == "table" and item.SeasonalEvent and (not seasonalEventState or seasonalEventState.Id ~= item.SeasonalEvent)
+		local isFeaturedEvent = type(item) == "table" and item.SeasonalEvent and seasonalEventState and seasonalEventState.Id == item.SeasonalEvent
+		local isOwned = false
+		if isSubscriptionItem then
+			isOwned = subscriptionState and subscriptionState.isActive == true
+		elseif isGamePassItem then
+			isOwned = player:GetAttribute("GamePassOwned_" .. tostring(item.GamePassKey or "")) == true
+		else
+			isOwned = playerOwnsItem(category, item)
+		end
+
+		local isEquipped = false
+		if category == Theme.ShopTabToCategory.Weapons then
+			isEquipped = progression.equippedWeapon == item.Id
+		elseif category == Theme.ShopTabToCategory.Cosmetics then
+			isEquipped = progression.equippedCosmetic == item.Id
+		end
+
+		local isTokenItem = not isSubscriptionItem and not isGamePassItem and not isRobuxItem and not isDropOnly and not isSeasonLocked
+		local isAffordable = isTokenItem and (tonumber(item.Cost) or 0) <= tokenBalance
+		local actionText = "Unlock"
+		local actionColor = Theme.Colors.Accent
+		local canAct = true
+		local detailText = "Ready to unlock from quartermaster stock"
+		local stateLabel = "AVAILABLE"
+
+		if equippingItemId == item.Id then
+			actionText = "Equipping..."
+			actionColor = Theme.Colors.AccentWarm
+			canAct = false
+			detailText = "Updating your active loadout"
+			stateLabel = "EQUIPPING"
+		elseif purchasingItemId == item.Id then
+			actionText = "Buying..."
+			canAct = false
+			detailText = "Quartermaster transaction in progress"
+			stateLabel = "PROCESSING"
+		elseif isDropOnly then
+			actionText = "Mission Drop"
+			actionColor = Theme.Colors.Backdrop
+			canAct = false
+			detailText = "Recovered in missions and not sold through the bunker market"
+			stateLabel = "DROP ONLY"
+		elseif isSeasonLocked then
+			actionText = "Season Locked"
+			actionColor = Theme.Colors.Backdrop
+			canAct = false
+			detailText = "Returns when the linked seasonal event is active again"
+			stateLabel = "LOCKED"
+		elseif isEquipped then
+			actionText = "Equipped"
+			actionColor = Theme.Colors.Backdrop
+			canAct = false
+			detailText = "Already assigned to your active bunker loadout"
+			stateLabel = "EQUIPPED"
+		elseif isOwned then
+			if category == Theme.ShopTabToCategory.Weapons or category == Theme.ShopTabToCategory.Cosmetics then
+				actionText = "Equip Now"
+				actionColor = Theme.Colors.AccentWarm
+				detailText = "Owned in your locker and ready to assign immediately"
+				stateLabel = "OWNED"
+			else
+				actionText = "Owned"
+				actionColor = Theme.Colors.Backdrop
+				canAct = false
+				detailText = isSubscriptionItem and "Supporter access is active on this account" or "Already unlocked on this account"
+				stateLabel = isSubscriptionItem and "ACTIVE" or "OWNED"
+			end
+		elseif isSubscriptionItem then
+			actionText = "Activate"
+			actionColor = Theme.Colors.AccentWarm
+			detailText = "Enables supporter status, VIP access, and premium bunker rewards"
+			stateLabel = "SUPPORTER"
+		elseif isGamePassItem then
+			actionText = "Get Pass"
+			actionColor = Theme.Colors.AccentWarm
+			detailText = "Permanent Roblox pass unlock for this account"
+			stateLabel = "PASS"
+		elseif isRobuxItem then
+			actionText = "Open Checkout"
+			actionColor = Theme.Colors.AccentWarm
+			detailText = "Opens the Roblox checkout flow for this premium product"
+			stateLabel = "PREMIUM"
+		elseif not isAffordable then
+			actionText = "Need Tokens"
+			actionColor = Theme.Colors.Backdrop
+			canAct = false
+			detailText = ("Need %d more deploy tokens before this stock can be unlocked"):format(getTokenShortfall(item.Cost, tokenBalance))
+			stateLabel = "SHORT"
+		end
+
+		local sortPriority = 5
+		if isFeaturedEvent and not isOwned and not isSeasonLocked then
+			sortPriority = 0
+		elseif not isOwned and isAffordable then
+			sortPriority = 1
+		elseif isOwned and not isEquipped and (category == Theme.ShopTabToCategory.Weapons or category == Theme.ShopTabToCategory.Cosmetics) then
+			sortPriority = 2
+		elseif not isOwned and (isSubscriptionItem or isGamePassItem or isRobuxItem) then
+			sortPriority = 3
+		elseif isEquipped then
+			sortPriority = 4
+		elseif isDropOnly or isSeasonLocked then
+			sortPriority = 6
+		end
+
+		return {
+			isSubscriptionItem = isSubscriptionItem,
+			isGamePassItem = isGamePassItem,
+			isRobuxItem = isRobuxItem,
+			isDropOnly = isDropOnly,
+			isSeasonLocked = isSeasonLocked,
+			isFeaturedEvent = isFeaturedEvent == true,
+			isOwned = isOwned == true,
+			isEquipped = isEquipped == true,
+			isAffordable = isAffordable == true,
+			actionText = actionText,
+			actionColor = actionColor,
+			canAct = canAct == true,
+			detailText = detailText,
+			stateLabel = stateLabel,
+			sortPriority = sortPriority,
+		}
+	end
+
+	local function getShopCategorySummary(category)
+		local total = 0
+		local owned = 0
+		local actionable = 0
+		local locked = 0
+		for _, item in ipairs(shopCatalog[category] or {}) do
+			total += 1
+			local state = getShopItemState(category, item)
+			if state.isOwned or state.isEquipped then
+				owned += 1
+			end
+			if state.canAct and not state.isRobuxItem and not state.isGamePassItem and not state.isSubscriptionItem then
+				actionable += 1
+			end
+			if state.isDropOnly or state.isSeasonLocked then
+				locked += 1
+			end
+		end
+		return total, owned, actionable, locked
 	end
 
 	local function updateSkillTreeDetailPanel(skillTree)
@@ -2459,21 +4658,32 @@ end
 		if not screenShakeEnabled then
 			return
 		end
-		cameraKick += Vector2.new(horizontal or 0, vertical or 0)
-		cameraKick = Vector2.new(math.clamp(cameraKick.X, -1.8, 1.8), math.clamp(cameraKick.Y, -2.2, 2.2))
+		local kickScale = state == "Mission" and 1 or 0.35
+		cameraKick += Vector2.new((horizontal or 0) * kickScale, (vertical or 0) * kickScale)
+		cameraKick = Vector2.new(math.clamp(cameraKick.X, -1.45, 1.45), math.clamp(cameraKick.Y, -1.8, 1.8))
 	end
 
 	local function updateSettingsControls()
 		local uiAudioOn = uiAudioEnabled == true
 		local screenShakeOn = screenShakeEnabled == true
+		local combatFloatsOn = combatFloatsEnabled == true
+		local compactToastsOn = compactMissionToastsEnabled == true
+		combatFloatsEnabledState = combatFloatsOn
+		compactMissionToastsEnabledState = compactToastsOn
 		ui.Lobby.ToggleUiAudioButton.Text = uiAudioOn and "UI Audio: On" or "UI Audio: Off"
 		ui.Lobby.ToggleScreenShakeButton.Text = screenShakeOn and "Screen Shake: On" or "Screen Shake: Off"
-		ui.Lobby.SettingsSummary.Text = ("%s. %s."):format(
+		ui.Lobby.ToggleCombatFloatsButton.Text = combatFloatsOn and "Combat Floats: On" or "Combat Floats: Off"
+		ui.Lobby.ToggleCompactToastsButton.Text = compactToastsOn and "Compact Toasts: On" or "Compact Toasts: Off"
+		ui.Lobby.SettingsSummary.Text = ("%s. %s.\n%s. %s."):format(
 			uiAudioOn and "UI audio is active" or "UI audio is muted",
-			screenShakeOn and "Screen shake is active" or "Screen shake is disabled"
+			screenShakeOn and "Screen shake is active" or "Screen shake is disabled",
+			combatFloatsOn and "Combat floats are active" or "Combat floats are hidden",
+			compactToastsOn and "Mission toasts use compact mode" or "Mission toasts use full mode"
 		)
 		setButtonEnabled(ui.Lobby.ToggleUiAudioButton, true, uiAudioOn and Theme.Colors.AccentWarm or Theme.Colors.Backdrop)
 		setButtonEnabled(ui.Lobby.ToggleScreenShakeButton, true, screenShakeOn and Color3.fromRGB(86, 122, 176) or Theme.Colors.Backdrop)
+		setButtonEnabled(ui.Lobby.ToggleCombatFloatsButton, true, combatFloatsOn and Color3.fromRGB(104, 156, 118) or Theme.Colors.Backdrop)
+		setButtonEnabled(ui.Lobby.ToggleCompactToastsButton, true, compactToastsOn and Color3.fromRGB(176, 136, 92) or Theme.Colors.Backdrop)
 	end
 
 	local function updateAdminControls()
@@ -2527,8 +4737,16 @@ end
 			setButtonEnabled(ui.Lobby.AdminForceBossButton, isAdmin, Color3.fromRGB(166, 86, 92))
 			setButtonEnabled(ui.Lobby.AdminRefillAmmoButton, isAdmin, Color3.fromRGB(82, 128, 188))
 			setButtonEnabled(ui.Lobby.AdminTeleportSquadButton, isAdmin, Color3.fromRGB(96, 164, 132))
+			setButtonEnabled(ui.Lobby.AdminForcePowerRelayButton, isAdmin, Color3.fromRGB(94, 156, 188))
+			setButtonEnabled(ui.Lobby.AdminForceEvacTunnelButton, isAdmin, Color3.fromRGB(96, 164, 132))
+			setButtonEnabled(ui.Lobby.AdminForceBlacksiteButton, isAdmin, Color3.fromRGB(168, 102, 86))
 			setButtonEnabled(ui.Lobby.AdminSpawnBruteButton, isAdmin, Color3.fromRGB(168, 122, 84))
 			setButtonEnabled(ui.Lobby.AdminSpawnRunnerButton, isAdmin, Color3.fromRGB(126, 174, 96))
+			setButtonEnabled(ui.Lobby.AdminSpawnSpitterButton, isAdmin, Color3.fromRGB(96, 188, 136))
+			setButtonEnabled(ui.Lobby.AdminSpawnBruiserButton, isAdmin, Color3.fromRGB(194, 142, 92))
+			setButtonEnabled(ui.Lobby.AdminSpawnWardenHulkButton, isAdmin, Color3.fromRGB(188, 112, 88))
+			setButtonEnabled(ui.Lobby.AdminSpawnExploderButton, isAdmin, Color3.fromRGB(214, 152, 88))
+			setButtonEnabled(ui.Lobby.AdminSpawnArtilleryButton, isAdmin, Color3.fromRGB(214, 172, 104))
 			setButtonEnabled(ui.Lobby.AdminGiveDropsButton, isAdmin, Color3.fromRGB(132, 96, 184))
 			setButtonEnabled(ui.Lobby.AdminSpawnSupportBotsButton, isAdmin, Color3.fromRGB(92, 152, 188))
 			setButtonEnabled(ui.Lobby.AdminToggleSupportBotsButton, isAdmin, supportBotsAuto and Color3.fromRGB(102, 168, 212) or Color3.fromRGB(88, 118, 168))
@@ -2578,19 +4796,57 @@ end
 			return
 		end
 
-		ui.Lobby.LeaderboardSummary.Text = "Top 100 ->"
+		local playersList = Players:GetPlayers()
+		local levelBody = buildLeaderboardBody(playersList, function(candidate)
+			return math.max(0, tonumber(candidate:GetAttribute("SkillTreeLevel")) or tonumber(candidate:GetAttribute("Level")) or 0)
+		end, function(value)
+			return ("Lv %d"):format(value)
+		end)
+		local runsBody = buildLeaderboardBody(playersList, function(candidate)
+			return math.max(0, tonumber(candidate:GetAttribute("AllTimeMissionsCompleted")) or tonumber(candidate:GetAttribute("MissionsCompleted")) or 0)
+		end, function(value)
+			return ("%d run%s"):format(value, value == 1 and "" or "s")
+		end)
+		local killsBody = buildLeaderboardBody(playersList, function(candidate)
+			return math.max(0, tonumber(candidate:GetAttribute("AllTimeZombiesDefeated")) or tonumber(candidate:GetAttribute("ZombiesDefeated")) or 0)
+		end, function(value)
+			return ("%d kill%s"):format(value, value == 1 and "" or "s")
+		end)
+		local myRank = math.max(0, tonumber(player:GetAttribute("LeaderboardRank")) or 0)
+		local statusBits = {}
+		if myRank > 0 then
+			table.insert(statusBits, ("Top %d standing"):format(myRank))
+		end
+		local monthlyRuns = math.max(0, tonumber(player:GetAttribute("MonthlyMissionsCompleted")) or 0)
+		local weeklyRuns = math.max(0, tonumber(player:GetAttribute("WeeklyMissionsCompleted")) or 0)
+		local dailyRuns = math.max(0, tonumber(player:GetAttribute("DailyMissionsCompleted")) or 0)
+		if monthlyRuns > 0 then
+			table.insert(statusBits, ("Month %d"):format(monthlyRuns))
+		end
+		if weeklyRuns > 0 then
+			table.insert(statusBits, ("Week %d"):format(weeklyRuns))
+		end
+		if dailyRuns > 0 then
+			table.insert(statusBits, ("Today %d"):format(dailyRuns))
+		end
+		ui.Lobby.LeaderboardSummary.Text = #statusBits > 0 and table.concat(statusBits, " | ") or "Levels | Runs | Kills"
+		ui.Lobby.LeaderboardBoard:SetAttribute("ArchiveLevels", levelBody)
+		ui.Lobby.LeaderboardBoard:SetAttribute("ArchiveRuns", runsBody)
+		ui.Lobby.LeaderboardBoard:SetAttribute("ArchiveKills", killsBody)
 	end
 
-	local function flashHitMarker(color)
+	local function flashHitMarker(color, scale, lifetime)
 		local token = hitMarkerToken + 1
 		hitMarkerToken = token
 		local marker = ui.Lobby.HitMarker
+		local sizeScale = math.max(0.8, tonumber(scale) or 1)
+		local visibleTime = math.max(0.08, tonumber(lifetime) or 0.14)
 		marker.Visible = true
 		for _, child in ipairs(marker:GetChildren()) do
 			if child:IsA("Frame") then
 				child.BackgroundColor3 = color
 				child.BackgroundTransparency = 0.02
-				child.Size = UDim2.new(0, 12, 0, 3)
+				child.Size = UDim2.new(0, math.floor(12 * sizeScale), 0, math.max(2, math.floor(3 * sizeScale)))
 			end
 		end
 		task.delay(0.08, function()
@@ -2600,11 +4856,11 @@ end
 			for _, child in ipairs(marker:GetChildren()) do
 				if child:IsA("Frame") then
 					child.BackgroundTransparency = 0.36
-					child.Size = UDim2.new(0, 9, 0, 2)
+					child.Size = UDim2.new(0, math.floor(9 * sizeScale), 0, math.max(1, math.floor(2 * sizeScale)))
 				end
 			end
 		end)
-		task.delay(0.14, function()
+		task.delay(visibleTime, function()
 			if hitMarkerToken == token and marker.Parent then
 				marker.Visible = false
 			end
@@ -2616,101 +4872,128 @@ end
 			return
 		end
 
-	local kind = tostring(payload.kind or "")
-	local weaponId = tostring(payload.weaponId or progression.equippedWeapon or "")
-	if kind == "shot" then
-		local recoil = tonumber(payload.recoil) or 0.14
-		local twist = tonumber(payload.twist) or 0.08
-		queueCameraKick(twist, recoil)
-		playCombatSound(weaponId, false, false)
-	elseif kind == "hit" then
-		local killConfirmed = payload.kill == true
-		local markerColor = killConfirmed and Color3.fromRGB(255, 214, 128) or Color3.fromRGB(255, 255, 255)
-		flashHitMarker(markerColor)
-		queueCameraKick(0, -0.04)
-		playCombatSound(weaponId, true, killConfirmed)
-		if state == "Mission" then
+		local kind = tostring(payload.kind or "")
+		local weaponId = tostring(payload.weaponId or progression.equippedWeapon or "")
+		if kind == "shot" then
+			local feedbackProfile = WEAPON_FEEDBACK[weaponId]
+			local recoil = (tonumber(payload.recoil) or 0.14) * (feedbackProfile and feedbackProfile.recoilScale or 1)
+			local twist = (tonumber(payload.twist) or 0.08) * (feedbackProfile and feedbackProfile.twistScale or 1)
+			queueCameraKick(twist, recoil)
+			playCombatSound(weaponId, false, false)
+			if state == "Mission" and ui and ui.Lobby and ui.Lobby.CombatAmmo then
+				pulseGuiObject(ui.Lobby.CombatAmmo, feedbackProfile and feedbackProfile.color or Color3.fromRGB(172, 208, 244))
+			end
+		elseif kind == "hit" then
+			local killConfirmed = payload.kill == true
 			local critical = payload.critical == true
-			local damage = math.max(1, tonumber(payload.damage) or 0)
-			local damageColor = critical and Color3.fromRGB(255, 212, 104)
-				or (killConfirmed and Color3.fromRGB(255, 236, 148) or Color3.fromRGB(238, 242, 255))
-			local anchor = getWorldVectorAnchorPosition(payload.hitPosition, critical and 4.8 or 4.2, UDim2.new(0.58, 0, 0.44, 0))
-			if damage > 0 then
-				spawnFloatingRewardText(tostring(damage), damageColor, {
-					position = anchor,
-					textSize = critical and 27 or (killConfirmed and 24 or 21),
-					rise = critical and 62 or 48,
-					lifetime = critical and 0.82 or 0.66,
-				})
+			local markerColor = critical and Color3.fromRGB(255, 184, 92) or (killConfirmed and Color3.fromRGB(255, 214, 128) or Color3.fromRGB(255, 255, 255))
+			flashHitMarker(markerColor, critical and 1.32 or (killConfirmed and 1.2 or 1), critical and 0.2 or (killConfirmed and 0.18 or 0.14))
+			queueCameraKick(critical and 0.012 or 0, critical and -0.07 or -0.04)
+			playCombatSound(weaponId, true, killConfirmed)
+			if state == "Mission" then
+				local damage = math.max(1, tonumber(payload.damage) or 0)
+				local damageColor = critical and Color3.fromRGB(255, 212, 104)
+					or (killConfirmed and Color3.fromRGB(255, 236, 148) or Color3.fromRGB(238, 242, 255))
+				local anchor = getWorldVectorAnchorPosition(payload.hitPosition, critical and 4.8 or 4.2, UDim2.new(0.58, 0, 0.44, 0))
+				if damage > 0 then
+					spawnFloatingRewardText(tostring(damage), damageColor, {
+						position = anchor,
+						textSize = critical and 27 or (killConfirmed and 24 or 21),
+						rise = critical and 62 or 48,
+						lifetime = critical and 0.82 or 0.66,
+					})
+				end
+				if critical then
+					spawnFloatingRewardText("CRIT", Color3.fromRGB(255, 162, 76), {
+						position = anchor,
+						textSize = 18,
+						rise = 84,
+						lifetime = 0.9,
+					})
+				elseif killConfirmed then
+					spawnFloatingRewardText("DOWN", Color3.fromRGB(255, 226, 128), {
+						position = anchor,
+						textSize = 16,
+						rise = 74,
+						lifetime = 0.74,
+					})
+				end
 			end
-			if critical then
-				spawnFloatingRewardText("CRIT", Color3.fromRGB(255, 162, 76), {
-					position = anchor,
-					textSize = 18,
-					rise = 84,
-					lifetime = 0.9,
-				})
-			elseif killConfirmed then
-				spawnFloatingRewardText("DOWN", Color3.fromRGB(255, 226, 128), {
-					position = anchor,
-					textSize = 16,
-					rise = 74,
-					lifetime = 0.74,
-				})
-			end
+		elseif kind == "reload_start" then
+			queueCameraKick(0, -0.03)
+			playUiSound(SOUND_IDS.Alert, 0.16, 1.12)
+			flashHitMarker(Color3.fromRGB(244, 206, 128), 0.92, 0.12)
+			spawnFloatingRewardText("RELOADING", Color3.fromRGB(244, 206, 128), {
+				position = UDim2.new(0.82, 0, 0.78, 0),
+				textSize = 16,
+				rise = 28,
+				lifetime = 0.54,
+			})
+		elseif kind == "reload_insert" then
+			local currentAmmo = tonumber(payload.currentAmmo) or 0
+			local reserveAmmo = tonumber(payload.reserveAmmo) or 0
+			playUiSound(SOUND_IDS.UiOpen, 0.08, 1.22)
+			queueCameraKick(0.006, -0.014)
+			flashHitMarker(Color3.fromRGB(188, 220, 244), 0.86, 0.1)
+			spawnFloatingRewardText(("+1  %d/%d"):format(currentAmmo, reserveAmmo), Color3.fromRGB(188, 220, 244), {
+				position = UDim2.new(0.84, 0, 0.8, 0),
+				textSize = 14,
+				rise = 22,
+				lifetime = 0.36,
+			})
+		elseif kind == "reload_complete" then
+			playUiSound(SOUND_IDS.Success, 0.14, 1.18)
+			queueCameraKick(0, -0.02)
+			flashHitMarker(Color3.fromRGB(174, 236, 168), 1, 0.12)
+			spawnFloatingRewardText("READY", Color3.fromRGB(174, 236, 168), {
+				position = UDim2.new(0.82, 0, 0.78, 0),
+				textSize = 15,
+				rise = 26,
+				lifetime = 0.48,
+			})
+		elseif kind == "low_ammo" then
+			flashHitMarker(Color3.fromRGB(244, 178, 118), 1.05, 0.16)
+			playUiSound(SOUND_IDS.Alert, 0.14, 1.04)
+			spawnFloatingRewardText("LOW AMMO", Color3.fromRGB(244, 178, 118), {
+				position = UDim2.new(0.82, 0, 0.78, 0),
+				textSize = 15,
+				rise = 24,
+				lifetime = 0.44,
+			})
+		elseif kind == "dry_fire" then
+			flashHitMarker(Color3.fromRGB(255, 122, 122), 1.12, 0.18)
+			queueCameraKick(0, -0.01)
+			playUiSound(SOUND_IDS.Alert, 0.18, 0.86)
+			spawnFloatingRewardText("EMPTY", Color3.fromRGB(255, 132, 132), {
+				position = UDim2.new(0.82, 0, 0.78, 0),
+				textSize = 15,
+				rise = 20,
+				lifetime = 0.42,
+			})
 		end
-	elseif kind == "reload_start" then
-		queueCameraKick(0, -0.02)
-		playUiSound(SOUND_IDS.Alert, 0.16, 1.12)
-		spawnFloatingRewardText("RELOADING", Color3.fromRGB(244, 206, 128), {
-			position = UDim2.new(0.82, 0, 0.78, 0),
-			textSize = 16,
-			rise = 28,
-			lifetime = 0.54,
-		})
-	elseif kind == "reload_insert" then
-		local currentAmmo = tonumber(payload.currentAmmo) or 0
-		local reserveAmmo = tonumber(payload.reserveAmmo) or 0
-		playUiSound(SOUND_IDS.UiOpen, 0.08, 1.22)
-		spawnFloatingRewardText(("+1  %d/%d"):format(currentAmmo, reserveAmmo), Color3.fromRGB(188, 220, 244), {
-			position = UDim2.new(0.84, 0, 0.8, 0),
-			textSize = 14,
-			rise = 22,
-			lifetime = 0.36,
-		})
-	elseif kind == "reload_complete" then
-		playUiSound(SOUND_IDS.Success, 0.14, 1.18)
-		spawnFloatingRewardText("READY", Color3.fromRGB(174, 236, 168), {
-			position = UDim2.new(0.82, 0, 0.78, 0),
-			textSize = 15,
-			rise = 26,
-			lifetime = 0.48,
-		})
-	elseif kind == "low_ammo" then
-		flashHitMarker(Color3.fromRGB(244, 178, 118))
-		playUiSound(SOUND_IDS.Alert, 0.14, 1.04)
-		spawnFloatingRewardText("LOW AMMO", Color3.fromRGB(244, 178, 118), {
-			position = UDim2.new(0.82, 0, 0.78, 0),
-			textSize = 15,
-			rise = 24,
-			lifetime = 0.44,
-		})
-	elseif kind == "dry_fire" then
-		flashHitMarker(Color3.fromRGB(255, 122, 122))
-		queueCameraKick(0, -0.01)
-		playUiSound(SOUND_IDS.Alert, 0.18, 0.86)
-		spawnFloatingRewardText("EMPTY", Color3.fromRGB(255, 132, 132), {
-			position = UDim2.new(0.82, 0, 0.78, 0),
-			textSize = 15,
-			rise = 20,
-			lifetime = 0.42,
-		})
 	end
-end
 
 	local updateLobbyZoneVisibility
 
 	RunService.RenderStepped:Connect(function(dt)
+		if state == "Mission" and player:GetAttribute("MissionEliminated") == true then
+			spectateSampleTimer += dt
+			if spectateSampleTimer >= 0.2 then
+				spectateSampleTimer = 0
+				spectateMissionTarget(player)
+			end
+		else
+			if state == "Mission" then
+				local camera = Workspace.CurrentCamera
+				local character = player.Character
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				if camera and humanoid and camera.CameraSubject ~= humanoid then
+					restoreCameraToPlayer(player)
+				end
+			end
+			spectateSampleTimer = 0
+		end
+
 		lobbyZoneSampleTimer += dt
 		if lobbyZoneSampleTimer >= 0.2 then
 			lobbyZoneSampleTimer = 0
@@ -2732,7 +5015,7 @@ end
 		end
 
 		camera.CFrame *= CFrame.Angles(math.rad(-cameraKick.Y), math.rad(cameraKick.X), 0)
-		local decay = math.clamp(dt * 14, 0, 1)
+		local decay = math.clamp(dt * 18, 0, 1)
 		cameraKick = cameraKick:Lerp(Vector2.zero, decay)
 	end)
 
@@ -2823,7 +5106,12 @@ end
 			nearArchiveLane = nextNearArchiveLane
 			nearCentralCommand = nextNearCentralCommand
 			nearDeployPad = nextNearDeployPad
-			if ui and ui.Lobby and ui.Lobby.MissionPanel and ui.Lobby.MissionPanel.Visible and not nearDeployPad then
+			if ui
+				and ui.Lobby
+				and ui.Lobby.MissionPanel
+				and ui.Lobby.MissionPanel.Visible
+				and not nearDeployPad
+				and not missionPanelPinned then
 				ui.Lobby.MissionPanel.Visible = false
 			end
 			updateHudVisibility()
@@ -3150,11 +5438,21 @@ end
 		local equippedWeapon = MissionConfig.getWeaponDefinition(progression.equippedWeapon)
 		local previewCosmetic = previewCosmeticId and MissionConfig.getCosmeticDefinition(previewCosmeticId) or nil
 		local category = Theme.ShopTabToCategory[currentShopTab]
+		local previewState = previewItem and getShopItemState(category, previewItem) or nil
 
 		if ui and ui.Lobby then
 			ui.Lobby.ShopPreviewTitle.Text = previewItem and (previewItem.DisplayName or previewItem.Id) or (previewWeapon and previewWeapon.DisplayName or "Weapon Preview")
 			if category == Theme.ShopTabToCategory.Weapons and previewItem then
-				ui.Lobby.ShopPreviewBody.Text = tostring(previewItem.Description or "Quartermaster stock preview.")
+				local priceText = previewItem.CostType == "Tokens"
+					and ("%d Tokens"):format(tonumber(previewItem.Cost) or 0)
+					or (previewState and previewState.isGamePassItem and "Game Pass"
+					or (previewState and previewState.isSubscriptionItem and "Supporter Access"
+					or (previewState and previewState.isDropOnly and "Mission Drop"
+					or (previewState and previewState.isSeasonLocked and "Season Locked" or "Robux Purchase"))))
+				ui.Lobby.ShopPreviewBody.Text = ("%s  |  %s"):format(
+					tostring(previewItem.Description or "Quartermaster stock preview."),
+					priceText
+				)
 			elseif category == Theme.ShopTabToCategory.Cosmetics and previewItem then
 				ui.Lobby.ShopPreviewBody.Text = ("Previewing %s on %s."):format(
 					tostring(previewItem.DisplayName or previewItem.Id),
@@ -3166,19 +5464,30 @@ end
 
 			if previewWeapon then
 				local ammoText = previewWeapon.MagazineSize and ("%d/%d"):format(previewWeapon.MagazineSize or 0, previewWeapon.ReserveAmmo or 0) or "MELEE"
-				ui.Lobby.ShopPreviewStats.Text = ("DMG %d  |  RNG %d  |  RATE %.2fs  |  AMMO %s"):format(
+				local laneText = getInventoryWeaponLane({
+					Id = previewWeapon.Id,
+				})
+				local fireRateText = previewWeapon.Cooldown and previewWeapon.Cooldown > 0
+					and ("%.2fs cycle"):format(previewWeapon.Cooldown)
+					or "instant cycle"
+				ui.Lobby.ShopPreviewStats.Text = ("%s WEAPON  |  AMMO %s\nDMG %d  |  RNG %d  |  %s"):format(
+					string.upper(laneText),
+					ammoText,
 					previewWeapon.Damage or 0,
 					previewWeapon.Range or 0,
-					previewWeapon.Cooldown or 0,
-					ammoText
+					fireRateText
 				)
 			else
-				ui.Lobby.ShopPreviewStats.Text = "DMG -- | RNG -- | RATE -- | AMMO --"
+				ui.Lobby.ShopPreviewStats.Text = "WEAPON TYPE -- | AMMO --\nDMG -- | RNG -- | RATE --"
 			end
-			ui.Lobby.ShopPreviewCosmetic.Text = ("Preview Cosmetic: %s"):format(previewCosmetic and previewCosmetic.DisplayName or "None")
-			ui.Lobby.ShopPreviewHint.Text = category == Theme.ShopTabToCategory.Cosmetics
+			ui.Lobby.ShopPreviewCosmetic.Text = previewState
+				and ("State: %s | %s"):format(previewState.stateLabel, previewState.detailText)
+				or ("Preview Cosmetic: %s"):format(previewCosmetic and previewCosmetic.DisplayName or "None")
+			ui.Lobby.ShopPreviewHint.Text = previewState
+				and previewState.detailText
+				or (category == Theme.ShopTabToCategory.Cosmetics
 				and "Cosmetics preview on your equipped weapon."
-				or "Hover or open a stock card to inspect the weapon build."
+				or "Hover or open a stock card to inspect the weapon build.")
 			local compareRows = ui.Lobby.ShopPreviewCompareRows or {}
 			local function updateCompareRow(rowKey, previewValue, equippedValue, maxValue)
 				local row = compareRows[rowKey]
@@ -3191,13 +5500,13 @@ end
 				row.BarFill.Size = UDim2.new(math.clamp(previewNumber / normalizedMax, 0, 1), 0, 1, 0)
 				row.Value.Text = tostring(math.floor(previewNumber * 100 + 0.5) / 100)
 				if previewNumber > equippedNumber then
-					row.Delta.Text = "+"
+					row.Delta.Text = ("+%s"):format(tostring(math.floor((previewNumber - equippedNumber) * 100 + 0.5) / 100))
 					row.Delta.TextColor3 = Color3.fromRGB(144, 222, 154)
 				elseif previewNumber < equippedNumber then
-					row.Delta.Text = "-"
+					row.Delta.Text = tostring(math.floor((previewNumber - equippedNumber) * 100 + 0.5) / 100)
 					row.Delta.TextColor3 = Color3.fromRGB(236, 138, 118)
 				else
-					row.Delta.Text = "="
+					row.Delta.Text = "EVEN"
 					row.Delta.TextColor3 = Color3.fromRGB(236, 244, 255)
 				end
 			end
@@ -3279,17 +5588,35 @@ end
 			)
 		else
 			local previewModifier = tostring(nextMissionPreview.modifierName or "Standard Ops")
+			local rewardBonus = tonumber(nextMissionPreview.rewardBonus) or 0
+			local threatLabel = tostring(nextMissionPreview.threatLabel or "STANDARD")
 			ui.Lobby.MissionStatus.Text = ("Next Run: %s\n%s [%s]"):format(
 				tostring(nextMissionPreview.layoutName or "Breach Yard"),
 				tostring(nextMissionPreview.scenarioName or "Hold The Core"),
 				previewModifier
 			)
-			ui.Lobby.MissionMeta.Text = ("%s\nYour squad launches into its own run instance."):format(
+			ui.Lobby.MissionMeta.Text = ("Threat: %s | Route Bonus: +%dT\n%s"):format(
+				threatLabel,
+				rewardBonus,
 				tostring(nextMissionPreview.modifierDescription or nextMissionPreview.layoutDescription or nextMissionPreview.scenarioDescription or "Mission preview pending.")
+			)
+			ui.Lobby.MissionLoadout.Text = ("Deploys as a private squad run. Reward tier: %s"):format(
+				rewardBonus >= 12 and "Premium"
+					or (rewardBonus >= 8 and "High" or (rewardBonus >= 4 and "Elevated" or "Standard"))
 			)
 		end
 		ui.Lobby.SocialBody.Text = currentSocialMessage
-		ui.Lobby.ShopBody.Text = Theme.ShopCopy[currentShopTab] or Theme.ShopCopy["Deploy Tokens"]
+		do
+			local category = Theme.ShopTabToCategory[currentShopTab]
+			local totalStock, ownedStock, actionableStock, lockedStock = getShopCategorySummary(category)
+			ui.Lobby.ShopBody.Text = ("%s  Stock %d | Owned %d | Ready %d | Locked %d"):format(
+				Theme.ShopCopy[currentShopTab] or Theme.ShopCopy["Deploy Tokens"],
+				totalStock,
+				ownedStock,
+				actionableStock,
+				lockedStock
+			)
+		end
 		updateShopPreview()
 		local weaponName = findShopItem(Theme.ShopTabToCategory.Weapons, progression.equippedWeapon)
 		local cosmeticName = progression.equippedCosmetic and findShopItem(Theme.ShopTabToCategory.Cosmetics, progression.equippedCosmetic) or nil
@@ -3381,24 +5708,59 @@ end
 			ui.Lobby.CombatWeapon.Text = string.upper(trimLabel(missionTelemetry.weaponName or (weaponName and weaponName.DisplayName) or "Training Blade", 24))
 		end
 		if ui.Lobby.CombatAmmo then
-			if missionTelemetry.weaponType == "Melee" or missionTelemetry.ammo == nil then
+			if player.Character and player.Character:GetAttribute("Downed") == true then
+				ui.Lobby.CombatAmmo.Text = "DOWNED  |  AWAIT REVIVE"
+				ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(255, 208, 164)
+			elseif player:GetAttribute("MissionEliminated") == true then
+				ui.Lobby.CombatAmmo.Text = "SPECTATING  |  B TO BUNKER"
+				ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(196, 214, 244)
+			elseif player.Character and player.Character:GetAttribute("MissionDashing") == true then
+				ui.Lobby.CombatAmmo.Text = "DASH ACTIVE"
+				ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(132, 224, 255)
+			elseif missionTelemetry.weaponType == "Melee" or missionTelemetry.ammo == nil then
 				ui.Lobby.CombatAmmo.Text = "MELEE READY"
 				ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(188, 228, 248)
 			else
 				ui.Lobby.CombatAmmo.Text = ("AMMO %d/%d"):format(missionTelemetry.ammo or 0, missionTelemetry.reserveAmmo or 0)
-				ui.Lobby.CombatAmmo.TextColor3 = (missionTelemetry.ammo or 0) <= 0 and Color3.fromRGB(244, 148, 118) or Color3.fromRGB(236, 196, 112)
+				local ammo = missionTelemetry.ammo or 0
+				local reserve = missionTelemetry.reserveAmmo or 0
+				if ammo <= 0 then
+					ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(244, 148, 118)
+				elseif ammo <= 3 or reserve <= 6 then
+					ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(255, 188, 126)
+				else
+					ui.Lobby.CombatAmmo.TextColor3 = Color3.fromRGB(236, 196, 112)
+				end
 			end
 		end
 		if ui.Lobby.CombatStatus then
-			if missionTelemetry.reloading then
+			if player.Character and player.Character:GetAttribute("Downed") == true then
+				ui.Lobby.CombatStatus.Text = "TEAMMATE HOLD TO REVIVE"
+				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(255, 188, 148)
+			elseif player:GetAttribute("MissionEliminated") == true then
+				ui.Lobby.CombatStatus.Text = "AWAIT REVIVE OR LEAVE"
+				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(244, 198, 164)
+			elseif player.Character and player.Character:GetAttribute("MissionDashing") == true then
+				ui.Lobby.CombatStatus.Text = "BURST MOVING"
+				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(132, 224, 255)
+			elseif missionTelemetry.reloading then
 				ui.Lobby.CombatStatus.Text = "RELOADING"
 				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(244, 206, 128)
+			elseif missionTelemetry.phase == "Extraction" then
+				ui.Lobby.CombatStatus.Text = "EXTRACT NOW"
+				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(148, 236, 178)
 			elseif missionTelemetry.weaponType == "Melee" then
 				ui.Lobby.CombatStatus.Text = "STRIKE READY"
 				ui.Lobby.CombatStatus.TextColor3 = Theme.Colors.AccentSoft
 			elseif missionTelemetry.ammo ~= nil and (missionTelemetry.ammo or 0) <= 0 then
 				ui.Lobby.CombatStatus.Text = "RELOAD / EMPTY"
 				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(244, 148, 118)
+			elseif missionTelemetry.ammo ~= nil and ((missionTelemetry.ammo or 0) <= 3 or (missionTelemetry.reserveAmmo or 0) <= 6) then
+				ui.Lobby.CombatStatus.Text = "LOW AMMO"
+				ui.Lobby.CombatStatus.TextColor3 = Color3.fromRGB(255, 188, 126)
+			elseif missionTelemetry.status and missionTelemetry.status ~= "" then
+				ui.Lobby.CombatStatus.Text = string.upper(trimLabel(missionTelemetry.status, 28))
+				ui.Lobby.CombatStatus.TextColor3 = Theme.Colors.AccentSoft
 			else
 				ui.Lobby.CombatStatus.Text = "WEAPON READY"
 				ui.Lobby.CombatStatus.TextColor3 = Theme.Colors.AccentSoft
@@ -3416,11 +5778,15 @@ end
 					local isSelected = option.optionId == currentVoteOptionId
 					local accentColor = isSelected and Color3.fromRGB(228, 178, 96) or (isLeading and Color3.fromRGB(96, 144, 216) or Theme.Colors.Backdrop)
 					local modifierName = trimLabel(option.modifierName or "Standard Ops", 18)
+					local rewardBonus = tonumber(option.rewardBonus) or 0
+					local threatLabel = tostring(option.threatLabel or "STANDARD")
 					local voteCount = tonumber(option.voteCount) or 0
-					button.Text = ("%s\n%s\n%s\n%d vote%s%s"):format(
+					button.Text = ("%s\n%s\n%s | %s +%dT\n%d vote%s%s"):format(
 						trimLabel(option.layoutName or "Map", 18),
 						trimLabel(option.scenarioName or "Directive", 22),
 						modifierName,
+						threatLabel,
+						rewardBonus,
 						voteCount,
 						voteCount == 1 and "" or "s",
 						isSelected and " | YOUR PICK" or (isLeading and " | LEADING" or "")
@@ -3643,6 +6009,24 @@ end
 				setButtonEnabled(button, true, currentInventoryRarityFilter == filterName and (filterName == "All" and Theme.Colors.AccentWarm or color) or Theme.Colors.Backdrop)
 			end
 		end
+		if ui.Lobby.InventoryTypeButtons then
+			for filterName, button in pairs(ui.Lobby.InventoryTypeButtons) do
+				local activeColor = filterName == "All"
+					and Theme.Colors.AccentWarm
+					or (filterName == "Melee" and Color3.fromRGB(188, 126, 96)
+					or (filterName == "Sidearm" and Color3.fromRGB(104, 144, 196)
+					or (filterName == "Primary" and Color3.fromRGB(102, 176, 132)
+					or Color3.fromRGB(176, 144, 98))))
+				setButtonEnabled(button, true, currentInventoryTypeFilter == filterName and activeColor or Theme.Colors.Backdrop)
+			end
+		end
+		if ui.Lobby.InventorySortButtons then
+			for filterName, button in pairs(ui.Lobby.InventorySortButtons) do
+				local activeColor = filterName == "Power" and Color3.fromRGB(206, 154, 96)
+					or (filterName == "Name" and Color3.fromRGB(102, 148, 196) or Theme.Colors.AccentWarm)
+				setButtonEnabled(button, true, currentInventorySortMode == filterName and activeColor or Theme.Colors.Backdrop)
+			end
+		end
 		if ui.Lobby.SkillTreeFilterButtons then
 			for filterName, button in pairs(ui.Lobby.SkillTreeFilterButtons) do
 				local branchTheme = Theme.SkillTreeBranches[filterName]
@@ -3733,36 +6117,56 @@ end
 
 		missionToastNonce += 1
 		local toastId = missionToastNonce
+		local compact = compactMissionToastsEnabled == true
+		local toastHeight = compact and (isComplete and 46 or 42) or 62
+		local toastLifetime = compact and 2.5 or 3.6
 		local card = new("Frame", {
 			Name = "Toast_" .. toastId,
-			BackgroundColor3 = isComplete and Color3.fromRGB(34, 42, 28) or Color3.fromRGB(20, 24, 30),
+			BackgroundColor3 = isComplete and Color3.fromRGB(30, 40, 30) or Color3.fromRGB(18, 24, 32),
 			BackgroundTransparency = 0.04,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 54),
+			Size = UDim2.new(1, 0, 0, toastHeight),
 			Parent = ui.Lobby.MissionToastStack,
 		})
 		addCorner(card, UDim.new(0, 14))
 		addStroke(card, accentColor or Theme.Colors.AccentWarm, 0.16, 1)
+		local cardGradient = Instance.new("UIGradient")
+		cardGradient.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, card.BackgroundColor3:Lerp(Color3.fromRGB(255, 255, 255), 0.06)),
+			ColorSequenceKeypoint.new(1, card.BackgroundColor3:Lerp(Color3.fromRGB(0, 0, 0), 0.16)),
+		})
+		cardGradient.Rotation = 0
+		cardGradient.Parent = card
 
 		local rail = new("Frame", {
 			Name = "AccentRail",
 			BackgroundColor3 = accentColor or Theme.Colors.AccentWarm,
 			BorderSizePixel = 0,
 			Position = UDim2.new(0, 0, 0, 0),
-			Size = UDim2.new(0, 4, 1, 0),
+			Size = UDim2.new(0, 5, 1, 0),
 			Parent = card,
 		})
 		addCorner(rail, UDim.new(0, 4))
+		local topRule = new("Frame", {
+			Name = "TopRule",
+			BackgroundColor3 = accentColor or Theme.Colors.AccentWarm,
+			BackgroundTransparency = 0.4,
+			BorderSizePixel = 0,
+			Position = UDim2.new(0, 12, 0, 8),
+			Size = UDim2.new(0, compact and 42 or 56, 0, 2),
+			Parent = card,
+		})
+		addCorner(topRule, UDim.new(0, 4))
 
 		local title = new("TextLabel", {
 			Name = "Title",
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0, 12, 0, 7),
-			Size = UDim2.new(1, -24, 0, 16),
+			Position = UDim2.new(0, 14, 0, compact and 9 or 12),
+			Size = UDim2.new(1, -28, 0, 16),
 			Text = titleText,
 			TextColor3 = Theme.Colors.Text,
 			TextScaled = false,
-			TextSize = 13,
+			TextSize = compact and 12 or 14,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Font = Theme.Fonts.Heading,
 			Parent = card,
@@ -3771,12 +6175,12 @@ end
 		local body = new("TextLabel", {
 			Name = "Body",
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0, 12, 0, 24),
-			Size = UDim2.new(1, isComplete and -98 or -24, 0, 18),
-			Text = bodyText,
+			Position = UDim2.new(0, 14, 0, compact and 24 or 32),
+			Size = UDim2.new(1, isComplete and -108 or -28, 0, compact and 14 or 20),
+			Text = compact and "" or bodyText,
 			TextColor3 = Theme.Colors.Muted,
 			TextScaled = false,
-			TextSize = 10,
+			TextSize = compact and 9 or 11,
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Font = Theme.Fonts.Body,
@@ -3789,16 +6193,17 @@ end
 				BackgroundColor3 = accentColor or Theme.Colors.AccentWarm,
 				BorderSizePixel = 0,
 				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.new(1, -8, 0.5, 0),
-				Size = UDim2.new(0, 74, 0, 22),
+				Position = UDim2.new(1, -10, 0.5, 0),
+				Size = UDim2.new(0, compact and 72 or 84, 0, compact and 20 or 24),
 				Text = rewardText,
 				TextColor3 = Color3.fromRGB(18, 22, 18),
 				TextScaled = false,
-				TextSize = 9,
+				TextSize = compact and 8 or 10,
 				Font = Theme.Fonts.Heading,
 				Parent = card,
 			})
 			addCorner(rewardChip, UDim.new(0, 10))
+			addStroke(rewardChip, accentColor or Theme.Colors.AccentWarm, 0.18, 1)
 		end
 
 		card.BackgroundTransparency = 1
@@ -3837,7 +6242,7 @@ end
 			end)
 		end
 
-		task.delay(3.6, function()
+		task.delay(toastLifetime, function()
 			if not card.Parent then
 				return
 			end
@@ -3866,6 +6271,83 @@ end
 			if cards[1] and cards[1] ~= card then
 				cards[1]:Destroy()
 			end
+		end
+	end
+
+	local function pushImportantMissionAlert(statusText)
+		if type(statusText) ~= "string" or statusText == "" then
+			return
+		end
+
+		local now = os.clock()
+		if statusText == lastMissionAlertStatus and now - lastMissionAlertAt < 1.4 then
+			return
+		end
+
+		local title = nil
+		local body = statusText
+		local accent = Color3.fromRGB(204, 214, 236)
+		local complete = false
+		local shouldFloat = false
+
+		if string.find(statusText, " downed", 1, true) then
+			title = "TEAMMATE DOWN"
+			accent = Color3.fromRGB(255, 172, 132)
+		elseif string.find(statusText, " revived", 1, true) then
+			title = "REVIVE COMPLETE"
+			accent = Color3.fromRGB(164, 236, 178)
+			complete = true
+		elseif string.find(statusText, "Core integrity:", 1, true) then
+			title = "OBJECTIVE HIT"
+			accent = Color3.fromRGB(255, 154, 132)
+		elseif string.find(statusText, "Objective: regroup on extraction", 1, true) then
+			title = "GET TO EXTRACTION"
+			body = "More squadmates need to stand on the pad."
+			accent = Color3.fromRGB(156, 238, 204)
+			shouldFloat = true
+		elseif string.find(statusText, "Objective: reach extraction", 1, true) then
+			title = "EXTRACTION OPEN"
+			body = "Regroup on the pad and hold the final push."
+			accent = Color3.fromRGB(146, 238, 204)
+			complete = true
+			shouldFloat = true
+		elseif string.find(statusText, "Power cell", 1, true) or string.find(statusText, "relay node", 1, true) or string.find(statusText, "checkpoint", 1, true) or string.find(statusText, "Nest destroyed", 1, true) then
+			title = "OBJECTIVE PROGRESS"
+			accent = Color3.fromRGB(188, 220, 255)
+		elseif string.find(statusText, "commander", 1, true) and string.find(statusText, "eliminated", 1, true) then
+			title = "TARGET ELIMINATED"
+			accent = Color3.fromRGB(255, 218, 148)
+			complete = true
+			shouldFloat = true
+		elseif string.find(statusText, "Extraction under pressure", 1, true) or string.find(statusText, "Extraction breach detected", 1, true) then
+			title = "EXTRACTION BREACH"
+			body = "Final infected push incoming. Hold the pad."
+			accent = Color3.fromRGB(255, 176, 126)
+			shouldFloat = true
+		elseif string.find(statusText, "critical at", 1, true) then
+			title = "CORE CRITICAL"
+			accent = Color3.fromRGB(255, 142, 118)
+			shouldFloat = true
+		elseif string.find(statusText, "Eliminated.", 1, true) then
+			title = "SPECTATING"
+			body = "You are out. Spectate the squad or press B to return."
+			accent = Color3.fromRGB(180, 206, 248)
+		end
+
+		if not title then
+			return
+		end
+
+		lastMissionAlertStatus = statusText
+		lastMissionAlertAt = now
+		pushMissionToast(title, body, accent, complete, nil)
+		if shouldFloat then
+			spawnFloatingRewardText(title, accent, {
+				force = true,
+				rise = 34,
+				lifetime = 0.78,
+				textSize = 18,
+			})
 		end
 	end
 
@@ -3900,6 +6382,7 @@ end
 			return
 		end
 		setActivePopup(nil)
+		missionPanelPinned = true
 		ui.Lobby.MissionPanel.Visible = true
 		updateHudVisibility()
 		updateLobbyText()
@@ -3911,6 +6394,7 @@ end
 			return
 		end
 		if ui.Lobby.MissionPanel.Visible then
+			missionPanelPinned = false
 			ui.Lobby.MissionPanel.Visible = false
 			updateHudVisibility()
 			updateLobbyText()
@@ -3928,23 +6412,80 @@ end
 			return
 		end
 		pendingResults = payload
+		local modifierName = tostring(payload.modifierName or "Standard Ops")
+		local finaleLabel = tostring(payload.finaleLabel or "Extraction breach detected")
+		local objectiveType = tostring(payload.objectiveType or "CoreDefense")
+		local bossName = payload.bossName and tostring(payload.bossName) or nil
+		local routeLine = ("Contract: %s | %s"):format(tostring(payload.scenarioName or "--"), modifierName)
+		if bossName and bossName ~= "" then
+			routeLine ..= (" | Boss: %s"):format(bossName)
+		end
 		ui.Lobby.ResultsOutcome.Text = payload.success and "SUCCESS" or "FAILED"
 		ui.Lobby.ResultsOutcome.TextColor3 = payload.success and Theme.Colors.Accent or Color3.fromRGB(255, 132, 132)
+		ui.Lobby.ResultsTag.Text = routeLine
 		ui.Lobby.ResultsSummary.Text = tostring(payload.summary or "Run complete.")
 		ui.Lobby.ResultsReward.Text = ("+%d Deploy Tokens"):format(tonumber(payload.rewardTokens) or 0)
-		ui.Lobby.ResultsStats.Scenario.Text = "Scenario: " .. tostring(payload.scenarioName or "--")
-		ui.Lobby.ResultsStats.Layout.Text = "Layout: " .. tostring(payload.layoutName or "--")
-		ui.Lobby.ResultsStats.Waves.Text = ("Waves: %d/%d"):format(tonumber(payload.wave) or 0, tonumber(payload.totalWaves) or 0)
+		ui.Lobby.ResultsStats.Scenario.Text = "Contract: " .. tostring(payload.scenarioName or "--")
+		ui.Lobby.ResultsStats.Layout.Text = ("Zone: %s | Directive: %s"):format(tostring(payload.layoutName or "--"), objectiveType)
+		ui.Lobby.ResultsStats.Waves.Text = ("%s | Waves: %d/%d"):format(finaleLabel, tonumber(payload.wave) or 0, tonumber(payload.totalWaves) or 0)
 		ui.Lobby.ResultsStats.Kills.Text = "Kills: " .. tostring(payload.kills or 0)
 		ui.Lobby.ResultsStats.Tokens.Text = "Tokens: +" .. tostring(payload.rewardTokens or 0)
 		ui.Lobby.ResultsStats.XP.Text = "XP: +" .. tostring(payload.xpGained or 0)
 		ui.Lobby.ResultsStats.Level.Text = ("Level: %d | Points Ready: %d"):format(tonumber(payload.level) or 1, tonumber(payload.skillPoints) or 0)
 		local breakdown = type(payload.xpBreakdown) == "table" and payload.xpBreakdown or {}
-		ui.Lobby.ResultsXpBreakdown.Text = ("XP Breakdown:\nKills: +%d XP\nWaves: +%d XP\nSuccess/Fail: +%d XP"):format(
-			tonumber(breakdown.ZombieKill) or 0,
-			tonumber(breakdown.WaveClear) or 0,
-			(tonumber(breakdown.MissionComplete) or 0) + (tonumber(breakdown.MissionFailure) or 0)
-		)
+		local rewardBreakdown = type(payload.rewardBreakdown) == "table" and payload.rewardBreakdown or {}
+		local specialKills = type(payload.specialKills) == "table" and payload.specialKills or {}
+		local rewardLines = {
+			("XP Breakdown:"),
+			("Directive: %s"):format(objectiveType),
+			("Finale: %s"):format(finaleLabel),
+			("Kills: +%d XP"):format(tonumber(breakdown.ZombieKill) or 0),
+			("Waves: +%d XP"):format(tonumber(breakdown.WaveClear) or 0),
+			("Success/Fail: +%d XP"):format((tonumber(breakdown.MissionComplete) or 0) + (tonumber(breakdown.MissionFailure) or 0)),
+		}
+		if (tonumber(breakdown.SeasonalEvent) or 0) > 0 then
+			table.insert(
+				rewardLines,
+				("%s XP: +%d XP"):format(
+					tostring(rewardBreakdown.seasonalEventName or "Seasonal Event"),
+					tonumber(breakdown.SeasonalEvent) or 0
+				)
+			)
+		end
+		if (tonumber(breakdown.BossKill) or 0) > 0 and bossName then
+			table.insert(
+				rewardLines,
+				("%s XP: +%d XP"):format(
+					bossName,
+					tonumber(breakdown.BossKill) or 0
+				)
+			)
+		end
+		if (tonumber(rewardBreakdown.scenarioBonus) or 0) > 0 or (tonumber(rewardBreakdown.modifierBonus) or 0) > 0 then
+			table.insert(rewardLines, ("Route Bonus: +%dT"):format((tonumber(rewardBreakdown.scenarioBonus) or 0) + (tonumber(rewardBreakdown.modifierBonus) or 0)))
+		end
+		if (tonumber(rewardBreakdown.seasonalBonus) or 0) > 0 then
+			table.insert(
+				rewardLines,
+				("%s Bonus: +%dT"):format(
+					tostring(rewardBreakdown.seasonalEventName or "Seasonal Event"),
+					tonumber(rewardBreakdown.seasonalBonus) or 0
+				)
+			)
+		end
+		if (tonumber(rewardBreakdown.bossBonus) or 0) > 0 and bossName then
+			table.insert(rewardLines, ("%s Bonus: +%dT"):format(bossName, tonumber(rewardBreakdown.bossBonus) or 0))
+		end
+		if (tonumber(specialKills.Spitter) or 0) > 0 or (tonumber(specialKills.Bruiser) or 0) > 0 then
+			table.insert(rewardLines, ("Specials: %d Spitters | %d Bruisers"):format(tonumber(specialKills.Spitter) or 0, tonumber(specialKills.Bruiser) or 0))
+		end
+		if (tonumber(specialKills.Exploder) or 0) > 0 then
+			table.insert(rewardLines, ("Exploders Disarmed: %d"):format(tonumber(specialKills.Exploder) or 0))
+		end
+		if (tonumber(specialKills.Artillery) or 0) > 0 then
+			table.insert(rewardLines, ("Artillery Fiends Downed: %d"):format(tonumber(specialKills.Artillery) or 0))
+		end
+		ui.Lobby.ResultsXpBreakdown.Text = table.concat(rewardLines, "\n")
 		local dailyOpsEntries = type(payload.dailyOps) == "table" and payload.dailyOps or {}
 		local dailyOpsLines = {}
 		for _, entry in ipairs(dailyOpsEntries) do
@@ -4027,6 +6568,7 @@ end
 		setFullscreenMode()
 		CinematicController.stop(ui.Root)
 		restoreCameraToPlayer(player)
+		stopLobbyAmbientTweens()
 		setActivePopup(nil)
 		currentDeployStatus = Theme.StatusCopy.Home
 		ui.Lobby.MissionPanel.Visible = false
@@ -4035,6 +6577,14 @@ end
 			promptTween:Cancel()
 			promptTween = nil
 		end
+		if loadingProgressTween then
+			loadingProgressTween:Cancel()
+			loadingProgressTween = nil
+		end
+		for _, tween in ipairs(loadingAmbientTweens) do
+			tween:Cancel()
+		end
+		table.clear(loadingAmbientTweens)
 		setPageVisibility(ui, "Home")
 		animateHomeScreen(true)
 		updateHudVisibility()
@@ -4046,6 +6596,7 @@ end
 		setFullscreenMode()
 		CinematicController.stop(ui.Root)
 		cancelHomeAnimations()
+		stopLobbyAmbientTweens()
 		setActivePopup(nil)
 		loadingStartedAt = os.clock()
 		awaitingContinuePrompt = waitForInput == true
@@ -4053,14 +6604,74 @@ end
 		ui.Lobby.MissionPanel.Visible = false
 		ui.Loading.Prompt.Text = awaitingContinuePrompt and Theme.LoadingPrompt or "Synchronizing deployment..."
 		ui.Loading.Status.Text = currentDeployStatus
+		if ui.Loading.Tag then
+			ui.Loading.Tag.Text = awaitingContinuePrompt
+				and "Bunker handshake complete. Opening the command deck and finalizing operator presence."
+				or "Streaming mission geometry, syncing operator data, and preparing bunker systems."
+		end
 		ui.Lobby.LobbyStatus.Text = currentDeployStatus
 		if promptTween then
 			promptTween:Cancel()
 		end
+		if loadingProgressTween then
+			loadingProgressTween:Cancel()
+			loadingProgressTween = nil
+		end
+		for _, tween in ipairs(loadingAmbientTweens) do
+			tween:Cancel()
+		end
+		table.clear(loadingAmbientTweens)
 		promptTween = TweenService:Create(ui.Loading.Prompt, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
 			TextTransparency = 0.2,
 		})
 		promptTween:Play()
+		local stageChip = ui.Loading.Panel:FindFirstChild("StageChip")
+		if stageChip and stageChip:IsA("TextLabel") then
+			stageChip.BackgroundTransparency = 0.08
+			local stageTween = TweenService:Create(stageChip, TweenInfo.new(1.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				BackgroundTransparency = 0.18,
+				Position = UDim2.new(0, 38, 0, 72),
+			})
+			stageTween:Play()
+			table.insert(loadingAmbientTweens, stageTween)
+		end
+		local headerAccent = ui.Loading.Panel:FindFirstChild("HeaderAccent")
+		if headerAccent and headerAccent:IsA("Frame") then
+			headerAccent.Size = UDim2.new(0, 188, 0, 4)
+			local accentTween = TweenService:Create(headerAccent, TweenInfo.new(1.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				Size = UDim2.new(0, 224, 0, 4),
+				BackgroundTransparency = 0.16,
+			})
+			accentTween:Play()
+			table.insert(loadingAmbientTweens, accentTween)
+		end
+		local promptPlate = ui.Loading.Panel:FindFirstChild("PromptPlate")
+		if promptPlate and promptPlate:IsA("Frame") then
+			promptPlate.BackgroundTransparency = 0.06
+			local promptPlateTween = TweenService:Create(promptPlate, TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				BackgroundTransparency = 0.14,
+			})
+			promptPlateTween:Play()
+			table.insert(loadingAmbientTweens, promptPlateTween)
+		end
+		local loadingStatusPlate = ui.Loading.Panel:FindFirstChild("StatusPlate")
+		if loadingStatusPlate and loadingStatusPlate:IsA("Frame") then
+			loadingStatusPlate.BackgroundTransparency = 0.08
+			local statusTween = TweenService:Create(loadingStatusPlate, TweenInfo.new(1.55, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				BackgroundTransparency = 0.16,
+			})
+			statusTween:Play()
+			table.insert(loadingAmbientTweens, statusTween)
+		end
+		local progressTrack = loadingStatusPlate and loadingStatusPlate:FindFirstChild("ProgressTrack")
+		local progressFill = progressTrack and progressTrack:FindFirstChild("ProgressFill")
+		if progressFill and progressFill:IsA("Frame") then
+			progressFill.Size = UDim2.new(0.18, 0, 1, 0)
+			loadingProgressTween = TweenService:Create(progressFill, TweenInfo.new(1.15, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				Size = UDim2.new(0.82, 0, 1, 0),
+			})
+			loadingProgressTween:Play()
+		end
 		setPageVisibility(ui, "Loading")
 		updateHudVisibility()
 		playUiSound(SOUND_IDS.Deploy, 0.35, 1)
@@ -4090,18 +6701,32 @@ end
 		setWorldHudMode()
 		CinematicController.stop(ui.Root)
 		cancelHomeAnimations()
+		stopLobbyAmbientTweens()
 		restoreCameraToPlayer(player)
 		setActivePopup(nil)
 		awaitingContinuePrompt = false
+		missionPanelPinned = false
 		currentDeployStatus = message or Theme.StatusCopy.Lobby
 		ui.Lobby.MissionPanel.Visible = false
 		ui.Loading.Status.Text = currentDeployStatus
+		if ui.Loading.Tag then
+			ui.Loading.Tag.Text = "Deployment corridor online. Command deck standing by."
+		end
 		ui.Lobby.LobbyStatus.Text = currentDeployStatus
 		if promptTween then
 			promptTween:Cancel()
 			promptTween = nil
 		end
+		if loadingProgressTween then
+			loadingProgressTween:Cancel()
+			loadingProgressTween = nil
+		end
+		for _, tween in ipairs(loadingAmbientTweens) do
+			tween:Cancel()
+		end
+		table.clear(loadingAmbientTweens)
 		setPageVisibility(ui, "Lobby")
+		startLobbyAmbientTweens()
 		updateHudVisibility()
 		updateLobbyText()
 		if pendingResults then
@@ -4116,12 +6741,22 @@ end
 	local function enterMission(message)
 		state = "Mission"
 		awaitingContinuePrompt = false
+		missionPanelPinned = false
 		currentDeployStatus = message or "Mission staging ready."
+		stopLobbyAmbientTweens()
 		setActivePopup(nil)
 		if promptTween then
 			promptTween:Cancel()
 			promptTween = nil
 		end
+		if loadingProgressTween then
+			loadingProgressTween:Cancel()
+			loadingProgressTween = nil
+		end
+		for _, tween in ipairs(loadingAmbientTweens) do
+			tween:Cancel()
+		end
+		table.clear(loadingAmbientTweens)
 		ui.Root.Visible = true
 		setWorldHudMode()
 		cancelHomeAnimations()
@@ -4182,9 +6817,12 @@ end
 			return
 		end
 		currentInventoryTab = tabName
+		if currentInventoryTab ~= "Weapons" then
+			currentInventoryTypeFilter = "All"
+		end
 		currentInventoryStatus = tabName == "Weapons"
-			and "Owned weapons are listed here. Equip the one you want for the next run."
-			or "Owned cosmetics are listed here. Equip one to change your bunker look."
+			and "Owned weapons are listed here. Filter by rarity, role, or sort mode to tune the locker."
+			or "Owned cosmetics are listed here. Sort by rarity or name, then equip the look you want."
 		updateLobbyText()
 	end
 
@@ -4404,6 +7042,7 @@ end
 		end
 
 		missionTelemetry.phase = tostring(payload.missionPhase or missionTelemetry.phase)
+		missionTelemetry.status = tostring(payload.status or missionTelemetry.status)
 		missionTelemetry.scenarioName = tostring(payload.scenarioName or missionTelemetry.scenarioName)
 		missionTelemetry.scenarioDescription = tostring(payload.scenarioDescription or missionTelemetry.scenarioDescription)
 		missionTelemetry.wave = tonumber(payload.wave or missionTelemetry.wave) or 0
@@ -4428,6 +7067,7 @@ end
 		if string.find(statusText, "Core integrity", 1, true) or string.find(statusText, "Warning", 1, true) then
 			playUiSound(SOUND_IDS.Alert, 0.28, 0.98)
 		end
+		pushImportantMissionAlert(statusText)
 		updateLobbyText()
 	end
 
@@ -4468,84 +7108,6 @@ end
 		if refreshInviteablePlayers then
 			task.defer(refreshInviteablePlayers)
 		end
-	end
-
-	local function describeDailyRewardError(code)
-		if code == "already_claimed" then
-			return "Daily reward already claimed. Wait for the next reset."
-		end
-		return "Daily reward unavailable right now."
-	end
-
-	local function describeWeeklyRewardError(code)
-		if code == "inactive" then
-			return "Weekly crate requires active supporter access."
-		elseif code == "already_claimed" then
-			return "Weekly crate already collected. Return next cycle."
-		elseif code == "busy" then
-			return "Weekly crate is already being processed."
-		end
-		return "Weekly crate unavailable right now."
-	end
-
-	local function describeDailyOpsError(code)
-		if code == "missing_task" then
-			return "That daily op is no longer active."
-		elseif code == "not_ready" then
-			return "Finish the daily op before claiming its reward."
-		elseif code == "already_claimed" then
-			return "That daily op reward is already collected."
-		end
-		return "Daily op reward unavailable."
-	end
-
-	local function describeShopError(code)
-		if code == "missing_item" then
-			return "That shop item no longer exists on the server."
-		elseif code == "drop_only_item" then
-			return "That item is recovered from mission drops, not bought in the shop."
-		elseif code == "season_locked" then
-			return "That seasonal item is locked until its event goes live."
-		elseif code == "insufficient_tokens" then
-			return "Not enough deploy tokens for that purchase."
-		elseif code == "deploy_token_purchase_is_reward_flow" then
-			return "Deploy token packs need linked Robux products or reward hooks."
-		elseif code == "invalid_currency" then
-			return "The selected currency is not valid for that item."
-		end
-		return "Purchase failed."
-	end
-
-	local function describeSquadError(code)
-		if code == "missing_squad" then
-			return "That squad is no longer available."
-		elseif code == "locked" then
-			return "That squad is already locked for deployment."
-		elseif code == "full" then
-			return "That squad is already full."
-		elseif code == "not_leader" then
-			return "Only the squad leader can do that."
-		elseif code == "missing_invite" then
-			return "That invite expired or is no longer valid."
-		elseif code == "same_squad" then
-			return "That survivor is already in your fireteam."
-		end
-		return "Unable to join squad."
-	end
-
-	local function describeDuelError(code)
-		if code == "corner_taken" then
-			return "That duel corner is already occupied."
-		elseif code == "already_in_match" then
-			return "You are already in an active duel."
-		elseif code == "cooldown" then
-			return "Duel cooldown active. Give it a few seconds before requeueing."
-		elseif code == "not_in_lobby" then
-			return "Duel ring is only available from the lobby."
-		elseif code == "invalid_corner" then
-			return "That duel entry is offline."
-		end
-		return "Unable to join the duel ring."
 	end
 
 	refreshDailyRewardState = function()
@@ -4771,9 +7333,17 @@ end
 	end
 
 	local function requestDeploy()
+		local fired, fireCode = Remotes.fire(RemoteNames.Events.DeployRequested)
+		if fired then
+			currentDeployStatus = "Deploy request sent..."
+			updateLobbyText()
+			return
+		end
+
 		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.RequestDeploy)
 		if not callOk then
 			currentDeployStatus = "Deploy request failed."
+			warn("[FlowController] RequestDeploy call failed before server response.")
 			updateLobbyText()
 			return
 		end
@@ -4783,8 +7353,31 @@ end
 			currentDeployStatus = "Need more deploy tokens to start."
 		elseif resultOrCode == "busy" then
 			currentDeployStatus = "Squad launch already in progress."
+		elseif resultOrCode == "missing_squad" then
+			currentDeployStatus = "No active squad found. Reopen the bunker panel and try again."
+		elseif resultOrCode == "mission_unavailable" then
+			currentDeployStatus = "Mission staging is offline right now."
 		else
-			currentDeployStatus = "Unable to deploy right now."
+			currentDeployStatus = ("Unable to deploy right now. [%s|%s]"):format(tostring(resultOrCode), tostring(fireCode))
+		end
+		if not success then
+			warn(("[FlowController] RequestDeploy rejected with code: %s"):format(tostring(resultOrCode)))
+		end
+		updateLobbyText()
+	end
+
+	local function requestLeaveMission()
+		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.LeaveMission)
+		if not callOk then
+			currentDeployStatus = "Lobby return request failed."
+		elseif success then
+			currentDeployStatus = "Returning to bunker..."
+			hideResultsPopup()
+		elseif resultOrCode == "not_in_mission" then
+			currentDeployStatus = "Already in the bunker."
+			hideResultsPopup()
+		else
+			currentDeployStatus = "Unable to return to bunker right now."
 		end
 		updateLobbyText()
 	end
@@ -5093,6 +7686,24 @@ end
 		else
 			currentShopStatus = describeShopError(payloadOrCode)
 		end
+		currentInventoryStatus = currentShopStatus
+		updateLobbyText()
+	end
+
+	local function requestActivityTransit(activityKey)
+		local callOk, success, resultOrCode = safeInvoke(RemoteNames.Functions.RequestActivityTransit, activityKey)
+		if not callOk then
+			currentSocialMessage = "Activity transit request failed."
+		elseif success then
+			currentSocialMessage = ("Transit routed to %s."):format(tostring(resultOrCode or activityKey))
+			setActivePopup(nil)
+		elseif resultOrCode == "activity_missing" or resultOrCode == "entry_missing" then
+			currentSocialMessage = "That activity lane is still offline."
+		elseif resultOrCode == "unavailable" then
+			currentSocialMessage = "Activities are only available from the bunker lobby."
+		else
+			currentSocialMessage = "Unable to route to that activity right now."
+		end
 		updateLobbyText()
 	end
 
@@ -5210,6 +7821,11 @@ end
 			end
 		end
 		table.sort(items, function(a, b)
+			local stateA = getShopItemState(category, a)
+			local stateB = getShopItemState(category, b)
+			if stateA.sortPriority ~= stateB.sortPriority then
+				return stateA.sortPriority < stateB.sortPriority
+			end
 			local rarityA = getRarityWeight(a.Rarity)
 			local rarityB = getRarityWeight(b.Rarity)
 			if rarityA ~= rarityB then
@@ -5231,12 +7847,14 @@ end
 			updateShopPreview()
 		end
 
+		local isPremiumLane = currentShopTab == "Deploy Tokens"
 		for index, item in ipairs(items) do
-			local card = makeListCard(ui.Lobby.ShopItemsFrame, "Item_" .. index, 156)
+			local card = makeListCard(ui.Lobby.ShopItemsFrame, "Item_" .. index, 128)
 			card.LayoutOrder = index
-			local isSubscriptionItem = type(item.SubscriptionId) == "string" and item.SubscriptionId ~= ""
-			local isGamePassItem = type(item.GamePassId) == "number" and item.GamePassId > 0
-			local isPremiumPack = not isSubscriptionItem and not isGamePassItem and (item.CostType == "Robux" or category == Theme.ShopTabToCategory["Deploy Tokens"])
+			local itemState = getShopItemState(category, item)
+			local isSubscriptionItem = itemState.isSubscriptionItem
+			local isGamePassItem = itemState.isGamePassItem
+			local isPremiumPack = not isSubscriptionItem and not isGamePassItem and itemState.isRobuxItem
 			local premiumAccent = isSubscriptionItem and Color3.fromRGB(214, 182, 96)
 				or (isGamePassItem and Color3.fromRGB(104, 168, 232) or (isPremiumPack and Color3.fromRGB(104, 214, 164) or Theme.Colors.AccentWarm))
 			local premiumPanel = isSubscriptionItem and Color3.fromRGB(60, 54, 40)
@@ -5262,8 +7880,9 @@ end
 			})
 			addCorner(accentBar, UDim.new(0, 4))
 			addStroke(card, premiumAccent, 0.14, 1)
+			setCardFocusState(card, currentShopPreviewItemId == item.Id, premiumAccent)
 
-			local featuredEvent = item.SeasonalEvent and seasonalEventState and seasonalEventState.Id == item.SeasonalEvent
+			local featuredEvent = itemState.isFeaturedEvent
 			local eventRibbonText = featuredEvent and ((seasonalEventState and seasonalEventState.DisplayName) or "EVENT LIVE")
 				or (item.SeasonalEvent and "SEASONAL CACHE" or (item.DropOnly and "MISSION DROP" or nil))
 			if eventRibbonText then
@@ -5288,35 +7907,227 @@ end
 				addStroke(ribbon, ribbonColor, 0.12, 1)
 			end
 
+			if isPremiumLane then
+				card.Size = UDim2.new(1, 0, 0, 104)
+				local premiumPriceText
+				local premiumRarityLabel, premiumRarityColor = getRarityStyle(item.Rarity or (isSubscriptionItem and "Supporter" or "Common"))
+				if isSubscriptionItem then
+					premiumPriceText = itemState.isOwned and "Supporter active" or "Subscription"
+				elseif isGamePassItem then
+					premiumPriceText = itemState.isOwned and "Pass owned" or "Game Pass"
+				elseif item.DropOnly then
+					premiumPriceText = "Mission drop"
+				elseif itemState.isSeasonLocked then
+					premiumPriceText = "Season locked"
+				elseif item.CostType == "Tokens" then
+					premiumPriceText = ("%d Tokens"):format(tonumber(item.Cost) or 0)
+				else
+					premiumPriceText = "Robux product"
+				end
+
+				local premiumInfoPane = new("Frame", {
+					Name = "PremiumInfoPane",
+					BackgroundTransparency = 1,
+					Position = UDim2.new(0, 24, 0, 14),
+					Size = UDim2.new(1, -176, 1, -28),
+					Parent = card,
+				})
+				local premiumTitle = new("TextLabel", {
+					Name = "Title",
+					BackgroundTransparency = 1,
+					Position = UDim2.new(0, 0, 0, 0),
+					Size = UDim2.new(1, -2, 0, 20),
+					Text = tostring(item.DisplayName or item.Id),
+					TextColor3 = Theme.Colors.Text,
+					TextScaled = false,
+					TextSize = 18,
+					TextWrapped = true,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					Font = Theme.Fonts.Heading,
+					Parent = premiumInfoPane,
+				})
+				local premiumLaneTag = new("TextLabel", {
+					Name = "LaneTag",
+					BackgroundTransparency = 1,
+					Position = UDim2.new(0, 0, 0, 22),
+					Size = UDim2.new(1, 0, 0, 14),
+					Text = string.upper(premiumLabel or "PREMIUM STOCK"),
+					TextColor3 = premiumAccent,
+					TextScaled = false,
+					TextSize = 10,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					Font = Theme.Fonts.Heading,
+					Parent = premiumInfoPane,
+				})
+				local premiumDetails = new("TextLabel", {
+					Name = "Details",
+					BackgroundTransparency = 1,
+					Position = UDim2.new(0, 0, 0, 40),
+					Size = UDim2.new(1, -4, 0, 28),
+					Text = tostring(item.Description or "No description set."),
+					TextColor3 = Color3.fromRGB(194, 204, 216),
+					TextScaled = false,
+					TextSize = 10,
+					TextWrapped = true,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Top,
+					Font = Theme.Fonts.Body,
+					Parent = premiumInfoPane,
+				})
+				local premiumBadge = new("TextLabel", {
+					Name = "CategoryBadge",
+					BackgroundColor3 = premiumRarityColor,
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 0, 1, -18),
+					Size = UDim2.new(0, 74, 0, 18),
+					Text = string.upper(premiumRarityLabel),
+					TextColor3 = Theme.Colors.Text,
+					TextScaled = false,
+					TextSize = 10,
+					Font = Theme.Fonts.Heading,
+					Parent = premiumInfoPane,
+				})
+				addCorner(premiumBadge, UDim.new(0, 8))
+				local premiumMetaBadge = new("TextLabel", {
+					Name = "TypeBadge",
+					BackgroundColor3 = Color3.fromRGB(46, 56, 70),
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 82, 1, -18),
+					Size = UDim2.new(0, 108, 0, 18),
+					Text = item.SeasonalEvent and "EVENT ITEM" or (item.DropOnly and "DROP ONLY" or "PREMIUM"),
+					TextColor3 = Theme.Colors.Text,
+					TextScaled = false,
+					TextSize = 10,
+					Font = Theme.Fonts.Heading,
+					Parent = premiumInfoPane,
+				})
+				addCorner(premiumMetaBadge, UDim.new(0, 8))
+
+				local premiumActionPane = new("Frame", {
+					Name = "PremiumActionPane",
+					BackgroundColor3 = Color3.fromRGB(24, 30, 38),
+					BackgroundTransparency = 0.14,
+					BorderSizePixel = 0,
+					Position = UDim2.new(1, -152, 0, 12),
+					Size = UDim2.new(0, 138, 1, -24),
+					Parent = card,
+				})
+				addCorner(premiumActionPane, UDim.new(0, 12))
+				addStroke(premiumActionPane, premiumAccent, 0.18, 1)
+				local premiumStateColor = getShopStateColor(itemState.stateLabel)
+				local premiumStateChip = new("TextLabel", {
+					Name = "StateChip",
+					BackgroundColor3 = premiumStateColor,
+					BackgroundTransparency = 0.06,
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, -10, 0, 10),
+					Size = UDim2.new(0, 76, 0, 18),
+					Text = itemState.stateLabel,
+					TextColor3 = Theme.Colors.Text,
+					TextScaled = false,
+					TextSize = 9,
+					Font = Theme.Fonts.Heading,
+					Parent = premiumActionPane,
+				})
+				addCorner(premiumStateChip, UDim.new(0, 8))
+				addStroke(premiumStateChip, premiumStateColor, 0.18, 1)
+				local premiumPrice = new("TextLabel", {
+					Name = "Price",
+					BackgroundTransparency = 1,
+					Position = UDim2.new(0, 12, 0, 12),
+					Size = UDim2.new(1, -100, 0, 20),
+					Text = premiumPriceText,
+					TextColor3 = premiumAccent:Lerp(Theme.Colors.Text, 0.26),
+					TextScaled = false,
+					TextSize = 12,
+					TextWrapped = true,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					Font = Theme.Fonts.Heading,
+					Parent = premiumActionPane,
+				})
+				local premiumActionStatus = new("TextLabel", {
+					Name = "ActionStatus",
+					BackgroundTransparency = 1,
+					Position = UDim2.new(0, 12, 0, 36),
+					Size = UDim2.new(1, -24, 0, 28),
+					Text = itemState.detailText,
+					TextColor3 = (itemState.isOwned or itemState.isEquipped) and Color3.fromRGB(168, 218, 180) or Color3.fromRGB(190, 202, 218),
+					TextScaled = false,
+					TextSize = 9,
+					TextWrapped = true,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Top,
+					Font = Theme.Fonts.Body,
+					Parent = premiumActionPane,
+				})
+				local premiumButton = makeListButton(
+					premiumActionPane,
+					"PurchaseButton",
+					itemState.actionText,
+					UDim2.new(1, -12, 1, -12),
+					UDim2.new(0, 114, 0, 28),
+					itemState.actionColor
+				)
+				premiumButton.TextSize = 12
+				setButtonEnabled(premiumButton, itemState.canAct or itemState.isRobuxItem or itemState.isSubscriptionItem or itemState.isGamePassItem, itemState.actionColor)
+				premiumButton.MouseEnter:Connect(function()
+					currentShopPreviewItemId = item.Id
+					setCardFocusState(card, true, premiumAccent)
+					updateShopPreview()
+				end)
+				card.MouseEnter:Connect(function()
+					currentShopPreviewItemId = item.Id
+					setCardFocusState(card, true, premiumAccent)
+					updateShopPreview()
+				end)
+				premiumButton.MouseButton1Click:Connect(function()
+					currentShopPreviewItemId = item.Id
+					updateShopPreview()
+					requestShopPurchase(category, item)
+				end)
+				continue
+			end
+
 			local infoPane = new("Frame", {
 				Name = "InfoPane",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 28, 0, 16),
-				Size = UDim2.new(1, -206, 1, -32),
+				Position = UDim2.new(0, 24, 0, 14),
+				Size = UDim2.new(1, -200, 1, -28),
 				Parent = card,
 			})
 
 			local rightPane = new("Frame", {
 				Name = "RightPane",
 				BackgroundColor3 = Color3.fromRGB(26, 32, 40),
-				BackgroundTransparency = 0.1,
+				BackgroundTransparency = 0.16,
 				BorderSizePixel = 0,
-				Position = UDim2.new(1, -174, 0, 14),
-				Size = UDim2.new(0, 156, 1, -28),
+				Position = UDim2.new(1, -160, 0, 12),
+				Size = UDim2.new(0, 144, 1, -24),
 				Parent = card,
 			})
 			addCorner(rightPane, UDim.new(0, 14))
 			addStroke(rightPane, premiumAccent, 0.18, 1)
+			local rightPaneRule = new("Frame", {
+				Name = "Rule",
+				BackgroundColor3 = premiumAccent,
+				BackgroundTransparency = 0.22,
+				BorderSizePixel = 0,
+				Position = UDim2.new(0, 12, 0, 10),
+				Size = UDim2.new(0, 36, 0, 2),
+				Parent = rightPane,
+			})
+			addCorner(rightPaneRule, UDim.new(0, 4))
 
 			local title = new("TextLabel", {
 				Name = "Title",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 0, 0, 0),
-				Size = UDim2.new(1, 0, 0, 26),
+				Size = UDim2.new(1, 0, 0, 20),
 				Text = tostring(item.DisplayName or item.Id),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
-				TextSize = 21,
+				TextSize = 17,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Theme.Fonts.Heading,
@@ -5324,6 +8135,7 @@ end
 			})
 			card.MouseEnter:Connect(function()
 				currentShopPreviewItemId = item.Id
+				setCardFocusState(card, true, premiumAccent)
 				updateShopPreview()
 			end)
 			local laneText = premiumLabel
@@ -5334,7 +8146,7 @@ end
 			local laneTag = new("TextLabel", {
 				Name = "LaneTag",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 0, 0, 28),
+				Position = UDim2.new(0, 0, 0, 22),
 				Size = UDim2.new(1, 0, 0, 14),
 				Text = laneText,
 				TextColor3 = premiumAccent,
@@ -5347,12 +8159,12 @@ end
 			local details = new("TextLabel", {
 				Name = "Details",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 0, 0, 52),
-				Size = UDim2.new(1, 0, 0, 54),
+				Position = UDim2.new(0, 0, 0, 40),
+				Size = UDim2.new(1, 0, 0, 32),
 				Text = tostring(item.Description or "No description set."),
 				TextColor3 = Color3.fromRGB(194, 204, 216),
 				TextScaled = false,
-				TextSize = 12,
+				TextSize = 10,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextYAlignment = Enum.TextYAlignment.Top,
@@ -5362,12 +8174,12 @@ end
 			local intelLine = new("TextLabel", {
 				Name = "DropChance",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 0, 1, -44),
-				Size = UDim2.new(1, 0, 0, 22),
+				Position = UDim2.new(0, 0, 1, -34),
+				Size = UDim2.new(1, 0, 0, 16),
 				Text = getDropChanceText(item, seasonalEventState),
 				TextColor3 = Color3.fromRGB(150, 200, 170),
 				TextScaled = false,
-				TextSize = 10,
+				TextSize = 9,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextWrapped = false,
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -5377,12 +8189,12 @@ end
 			local priceText
 			local rarityLabel, rarityColor = getRarityStyle(item.Rarity or (isSubscriptionItem and "Supporter" or "Common"))
 			if isSubscriptionItem then
-				priceText = "Subscription"
+				priceText = itemState.isOwned and "Supporter active" or "Subscription"
 			elseif isGamePassItem then
-				priceText = "Game Pass"
+				priceText = itemState.isOwned and "Pass owned" or "Game Pass"
 			elseif item.DropOnly then
 				priceText = "Mission drop"
-			elseif item.SeasonalEvent and (not seasonalEventState or seasonalEventState.Id ~= item.SeasonalEvent) then
+			elseif itemState.isSeasonLocked then
 				priceText = "Season locked"
 			elseif item.CostType == "Tokens" then
 				priceText = ("%d Tokens"):format(tonumber(item.Cost) or 0)
@@ -5395,12 +8207,12 @@ end
 				Name = "CategoryBadge",
 				BackgroundColor3 = rarityColor,
 				BorderSizePixel = 0,
-				Position = UDim2.new(0, 0, 1, -20),
-				Size = UDim2.new(0, 86, 0, 20),
+				Position = UDim2.new(0, 0, 1, -18),
+				Size = UDim2.new(0, 74, 0, 18),
 				Text = badgeText,
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
-				TextSize = 11,
+				TextSize = 10,
 				Font = Theme.Fonts.Heading,
 				Parent = infoPane,
 			})
@@ -5409,12 +8221,12 @@ end
 				Name = "TypeBadge",
 				BackgroundColor3 = Color3.fromRGB(46, 56, 70),
 				BorderSizePixel = 0,
-				Position = UDim2.new(0, 100, 1, -20),
-				Size = UDim2.new(0, premiumLabel and 112 or 96, 0, 20),
+				Position = UDim2.new(0, 82, 1, -18),
+				Size = UDim2.new(0, premiumLabel and 104 or 88, 0, 18),
 				Text = string.upper(premiumLabel or ((category == Theme.ShopTabToCategory.Weapons and "ARMORY") or (category == Theme.ShopTabToCategory.Upgrades and "UPGRADE") or (category == Theme.ShopTabToCategory.Cosmetics and "COSMETIC") or "TOKEN")),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
-				TextSize = 11,
+				TextSize = 10,
 				Font = Theme.Fonts.Heading,
 				Parent = infoPane,
 			})
@@ -5423,114 +8235,97 @@ end
 			local price = new("TextLabel", {
 				Name = "Price",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 14, 0, 16),
-				Size = UDim2.new(1, -28, 0, 28),
+				Position = UDim2.new(0, 12, 0, 12),
+				Size = UDim2.new(1, -82, 0, 24),
 				Text = priceText,
 				TextColor3 = premiumAccent:Lerp(Theme.Colors.Text, 0.26),
 				TextScaled = false,
-				TextSize = 15,
+				TextSize = 13,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Theme.Fonts.Heading,
 				Parent = rightPane,
 			})
+			local stateChipColor = getShopStateColor(itemState.stateLabel)
+			local stateChip = new("TextLabel", {
+				Name = "StateChip",
+				BackgroundColor3 = stateChipColor,
+				BackgroundTransparency = 0.06,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, -10, 0, 10),
+				Size = UDim2.new(0, 76, 0, 18),
+				Text = itemState.stateLabel,
+				TextColor3 = Theme.Colors.Text,
+				TextScaled = false,
+				TextSize = 9,
+				Font = Theme.Fonts.Heading,
+				Parent = rightPane,
+			})
+			addCorner(stateChip, UDim.new(0, 8))
+			addStroke(stateChip, stateChipColor, 0.18, 1)
 			local priceMeta = new("TextLabel", {
 				Name = "PriceMeta",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 14, 0, 42),
-				Size = UDim2.new(1, -28, 0, 24),
+				Position = UDim2.new(0, 12, 0, 34),
+				Size = UDim2.new(1, -24, 0, 20),
 				Text = premiumLabel and "Premium access item" or (item.DropOnly and "Mission reward only" or "Quartermaster stock"),
 				TextColor3 = Theme.Colors.Muted,
 				TextScaled = false,
-				TextSize = 10,
+				TextSize = 9,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextWrapped = true,
 				Font = Theme.Fonts.Body,
 				Parent = rightPane,
 			})
-			local ownedAttribute = ("ShopUnlocked_%s_%s"):format(category, item.Id)
-			local isOwned = (isGamePassItem and player:GetAttribute("GamePassOwned_" .. tostring(item.GamePassKey or "")) == true)
-				or player:GetAttribute(ownedAttribute) == true
-			local isRobuxItem = item.CostType == "Robux" or category == Theme.ShopTabToCategory["Deploy Tokens"]
-			local buttonText = "Buy"
-			local buttonColor = Theme.Colors.Accent
-			local canPurchase = true
-
-			if purchasingItemId == item.Id then
-				buttonText = "Buying..."
-				canPurchase = false
-			elseif equippingItemId == item.Id then
-				buttonText = "Equipping..."
-				buttonColor = Theme.Colors.AccentWarm
-				canPurchase = false
-			elseif isGamePassItem and isOwned then
-				buttonText = "Owned"
-				buttonColor = Theme.Colors.Backdrop
-				canPurchase = false
-			elseif item.DropOnly then
-				buttonText = "Drop Only"
-				buttonColor = Theme.Colors.Backdrop
-				canPurchase = false
-			elseif item.SeasonalEvent and (not seasonalEventState or seasonalEventState.Id ~= item.SeasonalEvent) then
-				buttonText = "Season Locked"
-				buttonColor = Theme.Colors.Backdrop
-				canPurchase = false
-			elseif isOwned and not isRobuxItem then
-				if category == Theme.ShopTabToCategory.Weapons then
-					if progression.equippedWeapon == item.Id then
-						buttonText = "Equipped"
-						buttonColor = Theme.Colors.Backdrop
-						canPurchase = false
-					else
-						buttonText = "Equip"
-						buttonColor = Theme.Colors.AccentWarm
-					end
-				elseif category == Theme.ShopTabToCategory.Cosmetics then
-					if progression.equippedCosmetic == item.Id then
-						buttonText = "Equipped"
-						buttonColor = Theme.Colors.Backdrop
-						canPurchase = false
-					else
-						buttonText = "Equip"
-						buttonColor = Theme.Colors.AccentWarm
-					end
-				else
-					buttonText = "Owned"
-					buttonColor = Theme.Colors.Backdrop
-					canPurchase = false
-				end
-			elseif isSubscriptionItem then
-				buttonText = "Subscribe"
-				buttonColor = Theme.Colors.AccentWarm
-			elseif isRobuxItem then
-				buttonText = "Robux"
-				buttonColor = Theme.Colors.AccentWarm
-			elseif (tonumber(item.Cost) or 0) > tokenBalance then
-				buttonText = "Need Tokens"
-				buttonColor = Theme.Colors.Backdrop
-				canPurchase = false
-			else
-				buttonText = "Buy"
-			end
+			local actionLabel = new("TextLabel", {
+				Name = "ActionLabel",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 12, 1, -62),
+				Size = UDim2.new(1, -28, 0, 14),
+				Text = "NEXT ACTION",
+				TextColor3 = premiumAccent,
+				TextScaled = false,
+				TextSize = 9,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Theme.Fonts.Heading,
+				Parent = rightPane,
+			})
+			local actionStatus = new("TextLabel", {
+				Name = "ActionStatus",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 12, 1, -48),
+				Size = UDim2.new(1, -24, 0, 16),
+				Text = itemState.detailText,
+				TextColor3 = (itemState.isOwned or itemState.isEquipped) and Color3.fromRGB(168, 218, 180) or Color3.fromRGB(190, 202, 218),
+				TextScaled = false,
+				TextSize = 9,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				Font = Theme.Fonts.Body,
+				Parent = rightPane,
+			})
 
 			local button = makeListButton(
-				card,
+				rightPane,
 				"PurchaseButton",
-				buttonText,
-				UDim2.new(1, -18, 1, -18),
-				UDim2.new(0, 124, 0, 34),
-				buttonColor
+				itemState.actionText,
+				UDim2.new(1, -12, 1, -12),
+				UDim2.new(0, 112, 0, 28),
+				itemState.actionColor
 			)
-			button.TextSize = 14
-			setButtonEnabled(button, canPurchase or isRobuxItem, buttonColor)
+			button.TextSize = 12
+			setButtonEnabled(button, itemState.canAct or itemState.isRobuxItem or itemState.isSubscriptionItem or itemState.isGamePassItem, itemState.actionColor)
 			button.MouseEnter:Connect(function()
 				currentShopPreviewItemId = item.Id
+				setCardFocusState(card, true, premiumAccent)
 				updateShopPreview()
 			end)
 			button.MouseButton1Click:Connect(function()
 				currentShopPreviewItemId = item.Id
 				updateShopPreview()
-				if isOwned and (category == Theme.ShopTabToCategory.Weapons or category == Theme.ShopTabToCategory.Cosmetics) then
+				if itemState.isOwned and (category == Theme.ShopTabToCategory.Weapons or category == Theme.ShopTabToCategory.Cosmetics) then
 					requestEquipItem(category, item)
 				else
 					requestShopPurchase(category, item)
@@ -5544,23 +8339,82 @@ end
 		local category = currentInventoryTab == "Cosmetics" and Theme.ShopTabToCategory.Cosmetics or Theme.ShopTabToCategory.Weapons
 		local items = {}
 		for _, item in ipairs(shopCatalog[category] or {}) do
-			if playerOwnsItem(category, item) and matchesRarityFilter(item.Rarity, currentInventoryRarityFilter) then
+			if playerOwnsItem(category, item)
+				and matchesRarityFilter(item.Rarity, currentInventoryRarityFilter)
+				and matchesInventoryTypeFilter(category, item, currentInventoryTypeFilter) then
 				table.insert(items, item)
 			end
 		end
 		table.sort(items, function(a, b)
-			local rarityA = getRarityWeight(a.Rarity)
-			local rarityB = getRarityWeight(b.Rarity)
-			if rarityA ~= rarityB then
-				return rarityA > rarityB
+			if currentInventorySortMode == "Name" then
+				return tostring(a.DisplayName or a.Id) < tostring(b.DisplayName or b.Id)
+			elseif currentInventorySortMode == "Power" then
+				local powerA = getInventoryPowerScore(a)
+				local powerB = getInventoryPowerScore(b)
+				if powerA ~= powerB then
+					return powerA > powerB
+				end
+			else
+				local rarityA = getRarityWeight(a.Rarity)
+				local rarityB = getRarityWeight(b.Rarity)
+				if rarityA ~= rarityB then
+					return rarityA > rarityB
+				end
 			end
 			return tostring(a.DisplayName or a.Id) < tostring(b.DisplayName or b.Id)
 		end)
 
 		ui.Lobby.InventoryEmptyLabel.Visible = #items == 0
 
-		for index, item in ipairs(items) do
-			local card = makeListCard(ui.Lobby.InventoryItemsFrame, "InventoryItem_" .. index, 122)
+		local displayEntries = {}
+		if category == Theme.ShopTabToCategory.Weapons and currentInventoryTypeFilter == "All" then
+			local laneOrder = { "Primary", "CQB", "Sidearm", "Melee" }
+			for _, laneName in ipairs(laneOrder) do
+				local laneItems = {}
+				for _, item in ipairs(items) do
+					if getInventoryWeaponLane(item) == laneName then
+						table.insert(laneItems, item)
+					end
+				end
+				if #laneItems > 0 then
+					table.insert(displayEntries, {
+						header = laneName,
+					})
+					for _, laneItem in ipairs(laneItems) do
+						table.insert(displayEntries, {
+							item = laneItem,
+						})
+					end
+				end
+			end
+		else
+			for _, item in ipairs(items) do
+				table.insert(displayEntries, {
+					item = item,
+				})
+			end
+		end
+
+		for index, entry in ipairs(displayEntries) do
+			if entry.header then
+				local header = new("TextLabel", {
+					Name = "InventoryHeader_" .. index,
+					BackgroundTransparency = 1,
+					Size = UDim2.new(1, -8, 0, 18),
+					Text = string.upper(entry.header),
+					TextColor3 = Color3.fromRGB(164, 190, 228),
+					TextScaled = false,
+					TextSize = 11,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					Font = Theme.Fonts.Heading,
+					LayoutOrder = index,
+					Parent = ui.Lobby.InventoryItemsFrame,
+				})
+				continue
+			end
+
+			local item = entry.item
+			local card = makeListCard(ui.Lobby.InventoryItemsFrame, "InventoryItem_" .. index, 128)
 			card.LayoutOrder = index
 			card.BackgroundColor3 = Color3.fromRGB(58, 70, 88)
 			local rarityLabel, rarityColor = getRarityStyle(item.Rarity or "Common")
@@ -5578,20 +8432,42 @@ end
 			local infoPane = new("Frame", {
 				Name = "InfoPane",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0.06, 0, 0.12, 0),
-				Size = UDim2.new(0.62, 0, 0.76, 0),
+				Position = UDim2.new(0, 28, 0, 16),
+				Size = UDim2.new(1, -204, 1, -32),
 				Parent = card,
 			})
+
+			local rightPane = new("Frame", {
+				Name = "RightPane",
+				BackgroundColor3 = Color3.fromRGB(34, 42, 56),
+				BackgroundTransparency = 0.12,
+				BorderSizePixel = 0,
+				Position = UDim2.new(1, -164, 0, 14),
+				Size = UDim2.new(0, 146, 1, -28),
+				Parent = card,
+			})
+			addCorner(rightPane, UDim.new(0, 14))
+			addStroke(rightPane, rarityColor, 0.16, 1)
+			local rightPaneRule = new("Frame", {
+				Name = "Rule",
+				BackgroundColor3 = rarityColor,
+				BackgroundTransparency = 0.22,
+				BorderSizePixel = 0,
+				Position = UDim2.new(0, 14, 0, 12),
+				Size = UDim2.new(0, 44, 0, 2),
+				Parent = rightPane,
+			})
+			addCorner(rightPaneRule, UDim.new(0, 4))
 
 			new("TextLabel", {
 				Name = "Title",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 0, 0, 0),
-				Size = UDim2.new(1, 0, 0, 24),
+				Size = UDim2.new(1, 0, 0, 22),
 				Text = tostring(item.DisplayName or item.Id),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
-				TextSize = 19,
+				TextSize = 17,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Theme.Fonts.Heading,
@@ -5600,12 +8476,12 @@ end
 			new("TextLabel", {
 				Name = "Details",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 0, 0, 30),
-				Size = UDim2.new(1, 0, 0, 34),
+				Position = UDim2.new(0, 0, 0, 24),
+				Size = UDim2.new(1, 0, 0, 26),
 				Text = tostring(item.Description or "Owned item."),
 				TextColor3 = Theme.Colors.Muted,
 				TextScaled = false,
-				TextSize = 13,
+				TextSize = 12,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextYAlignment = Enum.TextYAlignment.Top,
@@ -5615,28 +8491,128 @@ end
 			new("TextLabel", {
 				Name = "DropChance",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0, 0, 0, 66),
-				Size = UDim2.new(1, 0, 0, 14),
+				Position = UDim2.new(0, 0, 0, 52),
+				Size = UDim2.new(1, 0, 0, 12),
 				Text = getDropChanceText(item, seasonalEventState),
 				TextColor3 = Theme.Colors.AccentSoft,
 				TextScaled = false,
-				TextSize = 11,
+				TextSize = 10,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Theme.Fonts.Body,
+				Parent = infoPane,
+			})
+			local statText = "Cosmetic skin"
+			if category == Theme.ShopTabToCategory.Weapons then
+				local weapon = MissionConfig.Weapons[item.Id]
+				if weapon then
+					local ammoText = weapon.WeaponType == "Melee" and "Melee" or tostring(weapon.MagazineSize or "--")
+					statText = ("%s | DMG %d | RNG %d | AMMO %s"):format(
+						getInventoryWeaponLane(item),
+						math.floor(weapon.Damage or 0),
+						math.floor(weapon.Range or 0),
+						ammoText
+					)
+				end
+			end
+			new("TextLabel", {
+				Name = "StatLine",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 0, 0, 66),
+				Size = UDim2.new(1, 0, 0, 12),
+				Text = statText,
+				TextColor3 = Color3.fromRGB(214, 224, 238),
+				TextScaled = false,
+				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Theme.Fonts.Body,
 				Parent = infoPane,
 			})
 			local equipped = (category == Theme.ShopTabToCategory.Weapons and progression.equippedWeapon == item.Id)
 				or (category == Theme.ShopTabToCategory.Cosmetics and progression.equippedCosmetic == item.Id)
+			setCardFocusState(card, equipped, rarityColor)
+			local lockerTitle = new("TextLabel", {
+				Name = "LockerTitle",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 14, 0, 16),
+				Size = UDim2.new(1, -92, 0, 16),
+				Text = equipped and "ACTIVE LOADOUT" or "LOCKER STATUS",
+				TextColor3 = rarityColor,
+				TextScaled = false,
+				TextSize = 10,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Theme.Fonts.Heading,
+				Parent = rightPane,
+			})
+			local lockerStateChip = new("TextLabel", {
+				Name = "LockerStateChip",
+				BackgroundColor3 = equipped and Theme.Colors.AccentWarm or Color3.fromRGB(88, 132, 188),
+				BackgroundTransparency = 0.06,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, -12, 0, 12),
+				Size = UDim2.new(0, equipped and 72 or 62, 0, 18),
+				Text = equipped and "EQUIPPED" or "OWNED",
+				TextColor3 = Theme.Colors.Text,
+				TextScaled = false,
+				TextSize = 9,
+				Font = Theme.Fonts.Heading,
+				Parent = rightPane,
+			})
+			addCorner(lockerStateChip, UDim.new(0, 8))
+			addStroke(lockerStateChip, equipped and Theme.Colors.AccentWarm or Color3.fromRGB(88, 132, 188), 0.18, 1)
+			local lockerBody = new("TextLabel", {
+				Name = "LockerBody",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 14, 0, 38),
+				Size = UDim2.new(1, -28, 0, 26),
+				Text = equipped and "This item is currently assigned to your bunker loadout." or "Owned and ready to assign when needed.",
+				TextColor3 = Theme.Colors.Muted,
+				TextScaled = false,
+				TextSize = 9,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				Font = Theme.Fonts.Body,
+				Parent = rightPane,
+			})
+			local lockerActionLabel = new("TextLabel", {
+				Name = "LockerActionLabel",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 14, 1, -74),
+				Size = UDim2.new(1, -28, 0, 12),
+				Text = "LOADOUT ACTION",
+				TextColor3 = rarityColor,
+				TextScaled = false,
+				TextSize = 9,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Theme.Fonts.Heading,
+				Parent = rightPane,
+			})
+			local lockerActionBody = new("TextLabel", {
+				Name = "LockerActionBody",
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 14, 1, -60),
+				Size = UDim2.new(1, -28, 0, 20),
+				Text = equipped and "Already assigned to this operator build." or "Assign this owned gear to your active bunker loadout.",
+				TextColor3 = equipped and Color3.fromRGB(198, 214, 236) or Color3.fromRGB(190, 202, 218),
+				TextScaled = false,
+				TextSize = 9,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				Font = Theme.Fonts.Body,
+				Parent = rightPane,
+			})
 			local badge = new("TextLabel", {
 				Name = "OwnedBadge",
 				BackgroundColor3 = equipped and Theme.Colors.AccentWarm or Color3.fromRGB(70, 94, 126),
 				BorderSizePixel = 0,
 				Position = UDim2.new(0, 0, 1, -22),
-				Size = UDim2.new(0, 110, 0, 20),
+				Size = UDim2.new(0, 84, 0, 16),
 				Text = equipped and "EQUIPPED" or "OWNED",
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
-				TextSize = 11,
+				TextSize = 9,
 				Font = Theme.Fonts.Heading,
 				Parent = infoPane,
 			})
@@ -5645,12 +8621,12 @@ end
 				Name = "RarityBadge",
 				BackgroundColor3 = rarityColor,
 				BorderSizePixel = 0,
-				Position = UDim2.new(0, 118, 1, -22),
-				Size = UDim2.new(0, 88, 0, 20),
+				Position = UDim2.new(0, 92, 1, -22),
+				Size = UDim2.new(0, 72, 0, 16),
 				Text = string.upper(rarityLabel),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
-				TextSize = 11,
+				TextSize = 9,
 				Font = Theme.Fonts.Heading,
 				Parent = infoPane,
 			})
@@ -5659,9 +8635,15 @@ end
 			local buttonText = equipped and "Equipped" or (equippingItemId == item.Id and "Equipping..." or "Equip")
 			local buttonColor = equipped and Theme.Colors.Backdrop or Theme.Colors.AccentWarm
 			local canEquip = not equipped and equippingItemId == nil
-			local button = makeListButton(card, "EquipButton", buttonText, UDim2.new(0.91, 0, 0.7, 0), UDim2.new(0.22, 0, 0.32, 0), buttonColor)
-			button.TextSize = 16
+			local button = makeListButton(rightPane, "EquipButton", buttonText, UDim2.new(1, -14, 1, -18), UDim2.new(0, 118, 0, 30), buttonColor)
+			button.TextSize = 14
 			setButtonEnabled(button, canEquip, buttonColor)
+			button.MouseEnter:Connect(function()
+				setCardFocusState(card, true, rarityColor)
+			end)
+			card.MouseEnter:Connect(function()
+				setCardFocusState(card, true, rarityColor)
+			end)
 			button.MouseButton1Click:Connect(function()
 				requestEquipItem(category, item)
 				currentInventoryStatus = ("Equipping %s..."):format(item.DisplayName or item.Id)
@@ -5935,10 +8917,32 @@ end
 					local infoPane = new("Frame", {
 						Name = "InfoPane",
 						BackgroundTransparency = 1,
-						Position = UDim2.new(0.06, 0, 0.1, 0),
-						Size = UDim2.new(0.6, 0, 0.8, 0),
+						Position = UDim2.new(0, 28, 0, 12),
+						Size = UDim2.new(1, -202, 1, -24),
 						Parent = card,
 					})
+
+					local actionPane = new("Frame", {
+						Name = "ActionPane",
+						BackgroundColor3 = Color3.fromRGB(24, 30, 40),
+						BackgroundTransparency = 0.14,
+						BorderSizePixel = 0,
+						Position = UDim2.new(1, -158, 0, 12),
+						Size = UDim2.new(0, 146, 1, -24),
+						Parent = card,
+					})
+					addCorner(actionPane, UDim.new(0, 12))
+					addStroke(actionPane, branchColor, 0.18, 1)
+					local actionRule = new("Frame", {
+						Name = "Rule",
+						BackgroundColor3 = branchColor,
+						BackgroundTransparency = 0.18,
+						BorderSizePixel = 0,
+						Position = UDim2.new(0, 12, 0, 10),
+						Size = UDim2.new(0, 42, 0, 2),
+						Parent = actionPane,
+					})
+					addCorner(actionRule, UDim.new(0, 4))
 
 					new("TextLabel", {
 						Name = "Title",
@@ -5985,12 +8989,13 @@ end
 						Name = "Prerequisite",
 						BackgroundTransparency = 1,
 						Position = UDim2.new(0, 0, 0, 74),
-						Size = UDim2.new(1, 0, 0, 14),
+						Size = UDim2.new(1, 0, 0, 16),
 						Text = prereqName and ("Requires: " .. prereqName) or "Root node",
 						TextColor3 = prereqMet and Theme.Colors.AccentSoft or Color3.fromRGB(255, 168, 140),
 						TextScaled = false,
 						TextSize = 10,
 						TextXAlignment = Enum.TextXAlignment.Left,
+						TextWrapped = true,
 						Font = Theme.Fonts.Body,
 						Parent = infoPane,
 					})
@@ -5998,8 +9003,8 @@ end
 						Name = "Bonus",
 						BackgroundColor3 = Color3.fromRGB(112, 84, 54),
 						BorderSizePixel = 0,
-						Position = UDim2.new(0, 0, 1, -20),
-						Size = UDim2.new(0, 168, 0, 18),
+						Position = UDim2.new(0, 0, 1, -22),
+						Size = UDim2.new(0, 176, 0, 18),
 						Text = skill.BonusLabel,
 						TextColor3 = Theme.Colors.Text,
 						TextScaled = false,
@@ -6012,16 +9017,31 @@ end
 					new("TextLabel", {
 						Name = "Rank",
 						BackgroundTransparency = 1,
-						Position = UDim2.new(0.7, 0, 0.34, 0),
-						Size = UDim2.new(0.14, 0, 0.16, 0),
+						Position = UDim2.new(0, 12, 0, 18),
+						Size = UDim2.new(1, -24, 0, 16),
 						Text = ("Rank %d/%d"):format(currentRank, maxRank),
 						TextColor3 = Theme.Colors.AccentSoft,
 						TextScaled = false,
 						TextSize = 11,
-						TextWrapped = true,
-						TextXAlignment = Enum.TextXAlignment.Right,
+						TextWrapped = false,
+						TextXAlignment = Enum.TextXAlignment.Left,
 						Font = Theme.Fonts.Heading,
-						Parent = card,
+						Parent = actionPane,
+					})
+					new("TextLabel", {
+						Name = "ActionMeta",
+						BackgroundTransparency = 1,
+						Position = UDim2.new(0, 12, 0, 38),
+						Size = UDim2.new(1, -24, 0, 28),
+						Text = canUnlock and "Ready to invest a bunker point." or stateText,
+						TextColor3 = canUnlock and Color3.fromRGB(170, 218, 176) or Theme.Colors.Muted,
+						TextScaled = false,
+						TextSize = 9,
+						TextWrapped = true,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						TextYAlignment = Enum.TextYAlignment.Top,
+						Font = Theme.Fonts.Body,
+						Parent = actionPane,
 					})
 
 					local inspectButton = new("TextButton", {
@@ -6029,7 +9049,7 @@ end
 						BackgroundTransparency = 1,
 						BorderSizePixel = 0,
 						Position = UDim2.new(0, 0, 0, 0),
-						Size = UDim2.new(0.78, 0, 1, 0),
+						Size = UDim2.new(1, -170, 1, 0),
 						Text = "",
 						AutoButtonColor = false,
 						Parent = card,
@@ -6054,7 +9074,7 @@ end
 						buttonColor = Theme.Colors.Backdrop
 					end
 
-					local button = makeListButton(card, "SpendButton", buttonText, UDim2.new(0.88, 0, 0.72, 0), UDim2.new(0.16, 0, 0.24, 0), buttonColor)
+					local button = makeListButton(actionPane, "SpendButton", buttonText, UDim2.new(1, -12, 1, -12), UDim2.new(0, 122, 0, 28), buttonColor)
 					button.TextSize = 13
 					setButtonEnabled(button, canUnlock, buttonColor)
 					button.MouseButton1Click:Connect(function()
@@ -6142,10 +9162,21 @@ end
 			local infoPane = new("Frame", {
 				Name = "InfoPane",
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0.06, 0, 0.1, 0),
-				Size = UDim2.new(0.58, 0, 0.8, 0),
+				Position = UDim2.new(0, 28, 0, 12),
+				Size = UDim2.new(1, -202, 1, -24),
 				Parent = card,
 			})
+			local actionPane = new("Frame", {
+				Name = "ActionPane",
+				BackgroundColor3 = Color3.fromRGB(30, 40, 42),
+				BackgroundTransparency = 0.12,
+				BorderSizePixel = 0,
+				Position = UDim2.new(1, -158, 0, 12),
+				Size = UDim2.new(0, 146, 1, -24),
+				Parent = card,
+			})
+			addCorner(actionPane, UDim.new(0, 12))
+			addStroke(actionPane, entry.isCurrentSquad and Theme.Colors.AccentWarm or Color3.fromRGB(88, 174, 154), 0.16, 1)
 
 			local title = new("TextLabel", {
 				Name = "Title",
@@ -6226,11 +9257,11 @@ end
 			end
 
 			local button = makeListButton(
-				card,
+				actionPane,
 				"JoinButton",
 				buttonText,
-				UDim2.new(0.88, 0, 0.68, 0),
-				UDim2.new(0.22, 0, 0.3, 0),
+				UDim2.new(1, -12, 1, -12),
+				UDim2.new(0, 122, 0, 28),
 				buttonColor
 			)
 			button.TextSize = 15
@@ -6274,6 +9305,18 @@ end
 			})
 			addCorner(accentBar, UDim.new(0, 4))
 
+			local actionPane = new("Frame", {
+				Name = "ActionPane",
+				BackgroundColor3 = Color3.fromRGB(34, 30, 24),
+				BackgroundTransparency = 0.12,
+				BorderSizePixel = 0,
+				Position = UDim2.new(1, -104, 0, 10),
+				Size = UDim2.new(0, 88, 1, -20),
+				Parent = card,
+			})
+			addCorner(actionPane, UDim.new(0, 12))
+			addStroke(actionPane, Color3.fromRGB(196, 166, 108), 0.16, 1)
+
 			local selectButton = new("TextButton", {
 				Name = "SelectButton",
 				BackgroundTransparency = 1,
@@ -6289,7 +9332,7 @@ end
 				Name = "Title",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 18, 0, 10),
-				Size = UDim2.new(0.62, 0, 0, 22),
+				Size = UDim2.new(1, -126, 0, 22),
 				Text = candidate == player and ("Self • " .. tostring(candidate.DisplayName or candidate.Name)) or tostring(candidate.DisplayName or candidate.Name),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
@@ -6302,7 +9345,7 @@ end
 				Name = "Meta",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 18, 0, 34),
-				Size = UDim2.new(0.62, 0, 0, 16),
+				Size = UDim2.new(1, -126, 0, 16),
 				Text = ("%s | Lv.%d"):format(identityTitle, levelValue),
 				TextColor3 = Color3.fromRGB(214, 196, 172),
 				TextScaled = false,
@@ -6316,14 +9359,14 @@ end
 				BackgroundColor3 = selected and Color3.fromRGB(132, 98, 52) or Color3.fromRGB(58, 48, 36),
 				BackgroundTransparency = 0.08,
 				BorderSizePixel = 0,
-				Position = UDim2.new(1, -92, 0.5, -14),
-				Size = UDim2.new(0, 76, 0, 28),
+				Position = UDim2.new(0, 10, 0.5, -14),
+				Size = UDim2.new(1, -20, 0, 28),
 				Text = selected and "Selected" or "Target",
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
 				TextSize = 13,
 				Font = Theme.Fonts.Heading,
-				Parent = card,
+				Parent = actionPane,
 			})
 			addCorner(stateChip, UDim.new(0, 10))
 			addStroke(stateChip, Color3.fromRGB(196, 166, 108), 0.2, 1)
@@ -6362,11 +9405,22 @@ end
 			})
 			addCorner(accentBar, UDim.new(0, 4))
 
+			local actionPane = new("Frame", {
+				Name = "ActionPane",
+				BackgroundColor3 = Color3.fromRGB(28, 38, 38),
+				BackgroundTransparency = 0.12,
+				BorderSizePixel = 0,
+				Position = UDim2.new(1, -158, 0, 12),
+				Size = UDim2.new(0, 146, 1, -24),
+				Parent = card,
+			})
+			addCorner(actionPane, UDim.new(0, 12))
+			addStroke(actionPane, entry.canInvite and Theme.Colors.AccentWarm or Color3.fromRGB(88, 174, 154), 0.16, 1)
 			local title = new("TextLabel", {
 				Name = "Title",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 18, 0, 12),
-				Size = UDim2.new(1, -150, 0, 20),
+				Size = UDim2.new(1, -178, 0, 20),
 				Text = trimLabel(entry.displayName, 20),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
@@ -6380,7 +9434,7 @@ end
 				Name = "Subtitle",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 18, 0, 38),
-				Size = UDim2.new(1, -150, 0, 18),
+				Size = UDim2.new(1, -178, 0, 18),
 				Text = entry.isSameSquad and "Already in your fireteam" or "Available for invite",
 				TextColor3 = entry.isSameSquad and Theme.Colors.Muted or Theme.Colors.AccentSoft,
 				TextScaled = false,
@@ -6392,7 +9446,7 @@ end
 
 			local buttonText = entry.canInvite and "Invite" or "In Squad"
 			local buttonColor = entry.canInvite and Theme.Colors.AccentWarm or Theme.Colors.Backdrop
-			local button = makeListButton(card, "InviteButton", buttonText, UDim2.new(0.9, 0, 0.66, 0), UDim2.new(0.22, 0, 0.34, 0), buttonColor)
+			local button = makeListButton(actionPane, "InviteButton", buttonText, UDim2.new(1, -12, 1, -12), UDim2.new(0, 122, 0, 28), buttonColor)
 			button.TextSize = 14
 			setButtonEnabled(button, entry.canInvite and not isRefreshingInvitePlayers, buttonColor)
 			button.MouseButton1Click:Connect(function()
@@ -6410,12 +9464,23 @@ end
 			local card = makeListCard(ui.Lobby.QuestOpsList, "DailyOp_" .. index, 72)
 			card.LayoutOrder = index
 			card.BackgroundColor3 = entry.claimed and Color3.fromRGB(52, 66, 52) or Color3.fromRGB(50, 56, 46)
+			local actionPane = new("Frame", {
+				Name = "ActionPane",
+				BackgroundColor3 = Color3.fromRGB(34, 40, 32),
+				BackgroundTransparency = 0.12,
+				BorderSizePixel = 0,
+				Position = UDim2.new(1, -148, 0, 10),
+				Size = UDim2.new(0, 136, 1, -20),
+				Parent = card,
+			})
+			addCorner(actionPane, UDim.new(0, 12))
+			addStroke(actionPane, entry.claimed and Color3.fromRGB(124, 194, 116) or Color3.fromRGB(198, 214, 128), 0.16, 1)
 
 			local title = new("TextLabel", {
 				Name = "Title",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 14, 0, 8),
-				Size = UDim2.new(1, -152, 0, 18),
+				Size = UDim2.new(1, -170, 0, 18),
 				Text = trimLabel(entry.displayName, 28),
 				TextColor3 = Theme.Colors.Text,
 				TextScaled = false,
@@ -6429,7 +9494,7 @@ end
 				Name = "Body",
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 14, 0, 28),
-				Size = UDim2.new(1, -172, 0, 14),
+				Size = UDim2.new(1, -188, 0, 14),
 				Text = trimLabel(entry.description, 54),
 				TextColor3 = Theme.Colors.Muted,
 				TextScaled = false,
@@ -6444,7 +9509,7 @@ end
 				BackgroundColor3 = Color3.fromRGB(32, 36, 30),
 				BorderSizePixel = 0,
 				Position = UDim2.new(0, 14, 1, -18),
-				Size = UDim2.new(1, -168, 0, 8),
+				Size = UDim2.new(1, -182, 0, 8),
 				Parent = card,
 			})
 			addCorner(track, UDim.new(0, 8))
@@ -6461,14 +9526,13 @@ end
 			local progressLabel = new("TextLabel", {
 				Name = "ProgressLabel",
 				BackgroundTransparency = 1,
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, -94, 0, 10),
-				Size = UDim2.new(0, 80, 0, 16),
+				Position = UDim2.new(0, 12, 0, 12),
+				Size = UDim2.new(1, -24, 0, 16),
 				Text = ("%d/%d"):format(entry.progress or 0, entry.goal or 1),
 				TextColor3 = entry.claimed and Color3.fromRGB(196, 240, 184) or Theme.Colors.AccentSoft,
 				TextScaled = false,
 				TextSize = 12,
-				TextXAlignment = Enum.TextXAlignment.Right,
+				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Theme.Fonts.Body,
 				Parent = card,
 			})
@@ -6476,21 +9540,20 @@ end
 			local rewardLabel = new("TextLabel", {
 				Name = "RewardLabel",
 				BackgroundTransparency = 1,
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, -94, 0, 28),
-				Size = UDim2.new(0, 80, 0, 14),
+				Position = UDim2.new(0, 12, 0, 30),
+				Size = UDim2.new(1, -24, 0, 14),
 				Text = ("+%dT +%dXP"):format(entry.rewardTokens or 0, entry.rewardExperience or 0),
 				TextColor3 = Color3.fromRGB(232, 220, 164),
 				TextScaled = false,
 				TextSize = 10,
-				TextXAlignment = Enum.TextXAlignment.Right,
+				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Theme.Fonts.Body,
 				Parent = card,
 			})
 
 			local buttonColor = entry.claimed and Theme.Colors.Backdrop or Color3.fromRGB(176, 154, 88)
 			local buttonText = entry.claimed and "Claimed" or (entry.canClaim and "Claim" or "Locked")
-			local button = makeListButton(card, "ClaimButton", buttonText, UDim2.new(0.9, 0, 0.72, 0), UDim2.new(0.16, 0, 0.14, 0), buttonColor)
+			local button = makeListButton(actionPane, "ClaimButton", buttonText, UDim2.new(1, -12, 1, -10), UDim2.new(0, 112, 0, 26), buttonColor)
 			button.TextSize = 13
 			setButtonEnabled(button, entry.canClaim and not entry.claimed, buttonColor)
 			button.MouseButton1Click:Connect(function()
@@ -6499,931 +9562,282 @@ end
 		end
 	end
 
-	local function setDeployValue(value)
-		if typeof(value) == "string" then
-			currentDeployStatus = value
-		elseif type(value) == "table" then
-			if value.userId and value.userId ~= player.UserId then
-				return
-			end
-			currentDeployStatus = tostring(value.message or value.status or currentDeployStatus)
-			if value.message then
-				currentSocialMessage = tostring(value.message)
-			end
-			if value.stage == "Loading" then
-				enterLoading(currentDeployStatus, false)
-				return
-			elseif value.stage == "Deployment" then
-				enterLoading(currentDeployStatus, false)
-				task.defer(function()
-					CinematicController.play(ui.Gui, ui.Root, value)
-				end)
-				return
-			elseif value.stage == "Lobby" then
-				CinematicController.stop(ui.Root)
-				enterLobby(currentDeployStatus)
-				refreshSquadDirectory()
-				refreshDailyRewardState()
-				refreshDailyOpsState()
-				refreshWeeklyRewardState()
-				return
-			elseif value.stage == "Mission" then
-				setMissionTelemetryValue(value)
-				CinematicController.stop(ui.Root)
-				enterMission(currentDeployStatus)
-				return
-			end
-		end
-		updateLobbyText()
-	end
-
-	setLobbyValue = function(payload)
-		if type(payload) ~= "table" then
-			return
-		end
-
-		if payload.tokens ~= nil or payload.balance ~= nil or payload.amount ~= nil then
-			tokenBalance = tonumber(payload.tokens or payload.balance or payload.amount) or tokenBalance
-		end
-
-		if payload.status or payload.deployStatus then
-			currentDeployStatus = tostring(payload.status or payload.deployStatus)
-		end
-
-		if payload.social or payload.announcement then
-			currentSocialMessage = tostring(payload.social or payload.announcement)
-		end
-
-		if type(payload.nextMissionPreview) == "table" then
-			nextMissionPreview = {
-				scenarioName = tostring(payload.nextMissionPreview.scenarioName or nextMissionPreview.scenarioName),
-				scenarioDescription = tostring(payload.nextMissionPreview.scenarioDescription or nextMissionPreview.scenarioDescription),
-				layoutName = tostring(payload.nextMissionPreview.layoutName or nextMissionPreview.layoutName),
-				layoutDescription = tostring(payload.nextMissionPreview.layoutDescription or nextMissionPreview.layoutDescription),
-				modifierName = tostring(payload.nextMissionPreview.modifierName or nextMissionPreview.modifierName),
-				modifierDescription = tostring(payload.nextMissionPreview.modifierDescription or nextMissionPreview.modifierDescription),
-			}
-		end
-		if type(payload.nextMissionVote) == "table" then
-			local incomingSessionId = tonumber(payload.nextMissionVote.sessionId) or 0
-			if incomingSessionId ~= currentVoteSessionId then
-				currentVoteSessionId = incomingSessionId
-				currentVoteOptionId = nil
-			end
-			nextMissionVoteOptions = {}
-			leadingMissionVoteOptionId = type(payload.nextMissionVote.leadingOptionId) == "string" and payload.nextMissionVote.leadingOptionId or nil
-			for index, option in ipairs(payload.nextMissionVote.options or {}) do
-				nextMissionVoteOptions[index] = {
-					optionId = tostring(option.optionId or ("map_" .. tostring(index))),
-					scenarioName = tostring(option.scenarioName or "Hold The Core"),
-					layoutName = tostring(option.layoutName or "Breach Yard"),
-					modifierName = tostring(option.modifierName or "Standard Ops"),
-					modifierDescription = tostring(option.modifierDescription or ""),
-					voteCount = tonumber(option.voteCount) or 0,
-				}
-			end
-			if currentVoteOptionId then
-				local voteStillExists = false
-				for _, option in ipairs(nextMissionVoteOptions) do
-					if option.optionId == currentVoteOptionId then
-						voteStillExists = true
-						break
-					end
-				end
-				if not voteStillExists then
-					currentVoteOptionId = nil
-				end
-			end
-		end
-
-		local shopTab = normalizeShopTab(payload.shopTab)
-		if shopTab and Theme.ShopCopy[shopTab] then
-			currentShopTab = shopTab
-		end
-
-		if payload.squad or payload.members then
-			setSquadValue(payload.squad or payload.members)
-		end
-
-		if payload.stage == "Loading" then
-			enterLoading(currentDeployStatus, false)
-			return
-		elseif payload.stage == "Lobby" then
-			CinematicController.stop(ui.Root)
-			enterLobby(currentDeployStatus)
-			return
-		elseif payload.stage == "Mission" or payload.phase == "Mission" then
-			CinematicController.stop(ui.Root)
-			enterMission(currentDeployStatus)
-			return
-		end
-
-		updateLobbyText()
-	end
-
-	setPageVisibility(ui, "Home")
-	animateHomeScreen(true)
-	for _, popup in pairs(ui.Lobby.Popups) do
-		popup.Visible = false
-	end
-	ui.Loading.Prompt.TextTransparency = 0
-	updateLobbyText()
-
-	styleButton(ui.Home.PlayButton, Theme.Colors.Accent)
-	styleButton(ui.Lobby.ClaimDailyButton, Theme.Colors.Accent)
-	styleButton(ui.Lobby.RefreshSquadsButton, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.InviteSquadButton, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.PrivacySquadButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.LeaveSquadButton, Theme.Colors.Accent)
-	styleButton(ui.Lobby.RefreshBoardButton, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.ShopQuickButton, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.InventoryQuickButton, Color3.fromRGB(86, 122, 176))
-	styleButton(ui.Lobby.SkillTreeQuickButton, Color3.fromRGB(118, 132, 166))
-	styleButton(ui.Lobby.SquadQuickButton, Color3.fromRGB(92, 146, 214))
-	styleButton(ui.Lobby.InviteQuickButton, Color3.fromRGB(76, 158, 136))
-	styleButton(ui.Lobby.SettingsQuickButton, Theme.Colors.Backdrop)
-	for _, quickButton in ipairs(getQuickAccessButtons()) do
-		setQuickAccessButtonExpanded(quickButton, false)
-		quickButton.MouseEnter:Connect(function()
-			setQuickAccessButtonExpanded(quickButton, true)
-		end)
-		quickButton.MouseLeave:Connect(function()
-			setQuickAccessButtonExpanded(quickButton, false)
-		end)
-	end
-	ui.Lobby.QuickAccessBar.MouseEnter:Connect(function()
-		setQuickAccessExpanded(true)
-	end)
-	ui.Lobby.QuickAccessBar.MouseLeave:Connect(function()
-		setQuickAccessExpanded(false)
-		setQuickAccessButtonsExpanded(false)
-	end)
-	styleButton(ui.Lobby.CloseShopButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.InventoryWeaponTab, Color3.fromRGB(92, 122, 176))
-	styleButton(ui.Lobby.InventoryCosmeticTab, Color3.fromRGB(84, 128, 184))
-	styleButton(ui.Lobby.CloseInventoryButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.CloseSkillTreeButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.RespecSkillTreeButton, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.RespecConfirmAccept, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.RespecConfirmCancel, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.CloseSquadButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.CloseSocialButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.ToggleUiAudioButton, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.ToggleScreenShakeButton, Color3.fromRGB(86, 122, 176))
-	styleButton(ui.Lobby.CloseSettingsButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.NpcDialogueActionButton, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.NpcDialogueCloseButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.ClaimDailyQuestButton, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.ClaimWeeklyQuestButton, Color3.fromRGB(180, 154, 86))
-	styleButton(ui.Lobby.CloseQuestBoardButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.OpenActivitiesButton, Color3.fromRGB(88, 132, 188))
-	styleButton(ui.Lobby.BackToOpsButton, Color3.fromRGB(88, 132, 188))
-	styleButton(ui.Lobby.CloseActivitiesButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.AcceptInviteButton, Theme.Colors.Accent)
-	styleButton(ui.Lobby.DeclineInviteButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.DeployButton, Theme.Colors.AccentWarm)
-	styleButton(ui.Lobby.MissionCloseButton, Theme.Colors.Backdrop)
-	styleButton(ui.Lobby.MissionLaunchButton, Theme.Colors.AccentWarm)
-	if ui.Lobby.MissionVoteButtons then
-		for _, button in ipairs(ui.Lobby.MissionVoteButtons) do
-			styleButton(button, Theme.Colors.Backdrop)
-		end
-	end
-	if ui.Lobby.SkillTreeFilterButtons then
-		for filterName, button in pairs(ui.Lobby.SkillTreeFilterButtons) do
-			local branchTheme = Theme.SkillTreeBranches[filterName]
-			styleButton(button, filterName == "All" and Theme.Colors.AccentWarm or ((branchTheme and branchTheme.Color) or Theme.Colors.Backdrop))
-		end
-	end
-	if ui.Lobby.ShopRarityButtons then
-		for filterName, button in pairs(ui.Lobby.ShopRarityButtons) do
-			local _, color = getRarityStyle(filterName == "All" and "Epic" or filterName)
-			styleButton(button, filterName == "All" and Theme.Colors.AccentWarm or color)
-		end
-	end
-	if ui.Lobby.ShopPremiumButtons then
-		for filterName, button in pairs(ui.Lobby.ShopPremiumButtons) do
-			local color = filterName == "Packs" and Color3.fromRGB(104, 214, 164)
-				or (filterName == "Passes" and Color3.fromRGB(104, 168, 232)
-				or (filterName == "Supporter" and Color3.fromRGB(214, 182, 96) or Theme.Colors.AccentWarm))
-			styleButton(button, color)
-		end
-	end
-	if ui.Lobby.InventoryRarityButtons then
-		for filterName, button in pairs(ui.Lobby.InventoryRarityButtons) do
-			local _, color = getRarityStyle(filterName == "All" and "Epic" or filterName)
-			styleButton(button, filterName == "All" and Theme.Colors.AccentWarm or color)
-		end
-	end
-	for tabName, button in pairs(ui.Lobby.ShopTabs) do
-		styleButton(button, tabName == currentShopTab and Theme.Colors.AccentWarm or Theme.Colors.Backdrop)
-	end
-
-	ui.Home.PlayButton.MouseButton1Click:Connect(function()
-		if state == "Home" then
-			enterLoading("Preparing lobby...", true)
-		end
-	end)
-
-	ui.Lobby.ClaimDailyButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			requestDailyReward()
-		end
-	end)
-
-	ui.Lobby.RefreshSquadsButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			refreshSquadDirectory()
-		end
-	end)
-
-	ui.Lobby.RefreshBoardButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			refreshSquadDirectory()
-		end
-	end)
-
-	ui.Lobby.ShopQuickButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setActivePopup("Shop")
-			currentShopStatus = Theme.ShopCopy[currentShopTab] or currentShopStatus
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.InventoryQuickButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setInventoryTab("Weapons")
-			setActivePopup("Inventory")
-		end
-	end)
-
-	ui.Lobby.SkillTreeQuickButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setActivePopup("SkillTree")
-			currentSkillTreeStatus = "Allocate points to unlock deeper branch nodes."
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.SquadQuickButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setActivePopup("Squad")
-			refreshSquadDirectory()
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.InviteQuickButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setActivePopup("Social")
-			refreshSquadDirectory()
-			refreshInviteablePlayers()
-			currentSocialMessage = "Pick a survivor from the roster and send the invite."
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.SettingsQuickButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setActivePopup("Settings")
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.CloseShopButton.MouseButton1Click:Connect(function()
-		setActivePopup(nil)
-	end)
-
-	ui.Lobby.DeployButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			openMissionPanel()
-		end
-	end)
-	ui.Lobby.MissionCloseButton.MouseButton1Click:Connect(function()
-		closeMissionPanel()
-	end)
-	ui.Lobby.MissionLaunchButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			requestDeploy()
-		end
-	end)
-	if ui.Lobby.MissionVoteButtons then
-		for _, button in ipairs(ui.Lobby.MissionVoteButtons) do
-			button.MouseButton1Click:Connect(function()
-				if state == "Lobby" then
-					local optionId = button:GetAttribute("VoteOptionId")
-					if type(optionId) == "string" and optionId ~= "" then
-						requestMapVote(optionId)
-					end
-				end
-			end)
-		end
-	end
-
-	ui.Lobby.InventoryWeaponTab.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setInventoryTab("Weapons")
-		end
-	end)
-
-	ui.Lobby.InventoryCosmeticTab.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setInventoryTab("Cosmetics")
-		end
-	end)
-
-	ui.Lobby.CloseInventoryButton.MouseButton1Click:Connect(function()
-		setActivePopup(nil)
-	end)
-
-	ui.Lobby.CloseSkillTreeButton.MouseButton1Click:Connect(function()
-		setActivePopup(nil)
-	end)
-	if ui.Lobby.SkillTreeFilterButtons then
-		for filterName, button in pairs(ui.Lobby.SkillTreeFilterButtons) do
-			button.MouseButton1Click:Connect(function()
-				if state == "Lobby" then
-					currentSkillTreeBranchFilter = filterName
-					updateLobbyText()
-				end
-			end)
-		end
-	end
-	ui.Lobby.RespecConfirmCancel.MouseButton1Click:Connect(function()
-		pendingRespecConfirmation = false
-		updateLobbyText()
-	end)
-	ui.Lobby.RespecConfirmAccept.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			requestRespecSkillTree()
-		end
-	end)
-
-	ui.Lobby.CloseSquadButton.MouseButton1Click:Connect(function()
-		setActivePopup(nil)
-	end)
-
-	ui.Lobby.CloseSocialButton.MouseButton1Click:Connect(function()
-		setActivePopup(nil)
-	end)
-
-	ui.Lobby.NpcDialogueActionButton.MouseButton1Click:Connect(function()
-		if state ~= "Lobby" or not pendingNpcDialogue then
-			return
-		end
-		local actionPanel = pendingNpcDialogue.actionPanel
-		local panelName = normalizeStationPanelName(actionPanel)
-		pendingNpcDialogue = nil
-		if actionPanel == "QuestBoard" then
-			setActivePopup("QuestBoard")
-			refreshDailyRewardState()
-			refreshDailyOpsState()
-			refreshWeeklyRewardState()
-			refreshSubscriptionState()
-		elseif panelName == "Activities" then
-			setActivePopup("Activities")
-		elseif panelName == "Social" then
-			setActivePopup("Social")
-			refreshSquadDirectory()
-			refreshInviteablePlayers()
-		elseif panelName == "Inventory" then
-			setInventoryTab("Weapons")
-			setActivePopup("Inventory")
-		elseif panelName == "SkillTree" then
-			setActivePopup("SkillTree")
-			currentSkillTreeStatus = "Allocate points to unlock deeper branch nodes."
-		elseif panelName == "Squad" then
-			setActivePopup("Squad")
-			refreshSquadDirectory()
-		elseif panelName == "Shop" then
-			setActivePopup("Shop")
-		else
-			setActivePopup(nil)
-		end
-		updateLobbyText()
-	end)
-
-	ui.Lobby.NpcDialogueCloseButton.MouseButton1Click:Connect(function()
-		pendingNpcDialogue = nil
-		if activePopup == "NpcDialogue" then
-			setActivePopup(nil)
-		end
-		updateLobbyText()
-	end)
-
-	ui.Lobby.ClaimDailyQuestButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			requestDailyReward()
-		end
-	end)
-
-	ui.Lobby.ClaimWeeklyQuestButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			requestWeeklyReward()
-		end
-	end)
-
-	ui.Lobby.CloseQuestBoardButton.MouseButton1Click:Connect(function()
-		setActivePopup(nil)
-	end)
-
-	ui.Lobby.OpenActivitiesButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setActivePopup("Activities")
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.BackToOpsButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setActivePopup("QuestBoard")
-			refreshDailyRewardState()
-			refreshDailyOpsState()
-			refreshWeeklyRewardState()
-			refreshSubscriptionState()
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.CloseActivitiesButton.MouseButton1Click:Connect(function()
-		setActivePopup(nil)
-	end)
-
-	ui.Lobby.ToggleUiAudioButton.MouseButton1Click:Connect(function()
-		uiAudioEnabled = not uiAudioEnabled
-		SoundService:SetAttribute("UiAudioEnabled", uiAudioEnabled)
-		updateLobbyText()
-	end)
-
-	ui.Lobby.ToggleScreenShakeButton.MouseButton1Click:Connect(function()
-		screenShakeEnabled = not screenShakeEnabled
-		if not screenShakeEnabled then
-			cameraKick = Vector2.zero
-		end
-		updateLobbyText()
-	end)
-
-	ui.Lobby.CloseSettingsButton.MouseButton1Click:Connect(function()
-		setActivePopup(nil)
-	end)
-
-	ui.Lobby.AdminButton.MouseButton1Click:Connect(function()
-		if progression.identity and (progression.identity.isModerator == true or progression.identity.isAdmin == true or progression.identity.isOwner == true) then
-			setAdminTab("Session")
-			setActivePopup("Admin")
-			requestAdminCommand({
-				commandId = "get_panel_state",
-			})
-			if renderAdminTargetList then
-				renderAdminTargetList()
-			end
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.AdminHealButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("heal_self")
-	end)
-
-	ui.Lobby.AdminHealSquadButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("heal_squad")
-	end)
-
-	ui.Lobby.AdminTokensButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("grant_tokens")
-	end)
-
-	ui.Lobby.AdminTokensLargeButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("grant_tokens_large")
-	end)
-
-	ui.Lobby.AdminXpButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("grant_xp")
-	end)
-
-	ui.Lobby.AdminXpLargeButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("grant_xp_large")
-	end)
-
-	ui.Lobby.AdminReviveSquadButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("revive_squad")
-	end)
-
-	ui.Lobby.AdminReturnButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("return_to_lobby")
-	end)
-
-	ui.Lobby.AdminRefreshButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("refresh_access")
-	end)
-
-	ui.Lobby.AdminGrantTokensTargetButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("grant_tokens_target")
-	end)
-
-	ui.Lobby.AdminGrantXpTargetButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("grant_xp_target")
-	end)
-
-	ui.Lobby.AdminHealTargetButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("heal_target")
-	end)
-
-	ui.Lobby.AdminGrantWeaponsButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("unlock_all_weapons_target")
-	end)
-
-	ui.Lobby.AdminGrantCosmeticsButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("unlock_all_cosmetics_target")
-	end)
-
-	ui.Lobby.AdminTerminateButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("terminate_player")
-	end)
-
-	ui.Lobby.AdminRoleModButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("promote_moderator")
-	end)
-
-	ui.Lobby.AdminRoleAdminButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("promote_admin")
-	end)
-
-	ui.Lobby.AdminRoleClearButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("clear_access")
-	end)
-
-	ui.Lobby.AdminBanButton.MouseButton1Click:Connect(function()
-		requestAdminTargetCommand("ban_player")
-	end)
-
-	ui.Lobby.AdminEventAutoButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("event_auto")
-	end)
-
-	ui.Lobby.AdminEventOffButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("event_none")
-	end)
-
-	ui.Lobby.AdminEventSpringButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("event_spring")
-	end)
-
-	ui.Lobby.AdminEventHarvestButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("event_harvest")
-	end)
-
-	ui.Lobby.AdminEventWinterButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("event_winter")
-	end)
-
-	ui.Lobby.AdminSkipWaveButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("skip_wave")
-	end)
-
-	ui.Lobby.AdminForceBossButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("force_boss")
-	end)
-
-	ui.Lobby.AdminRefillAmmoButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("refill_ammo")
-	end)
-
-	ui.Lobby.AdminTeleportSquadButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("teleport_squad")
-	end)
-
-	ui.Lobby.AdminSpawnBruteButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("spawn_brute")
-	end)
-
-	ui.Lobby.AdminSpawnRunnerButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("spawn_runner")
-	end)
-
-	ui.Lobby.AdminGiveDropsButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("give_all_drops")
-	end)
-
-	ui.Lobby.AdminSpawnSupportBotsButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("spawn_support_bots")
-	end)
-
-	ui.Lobby.AdminToggleSupportBotsButton.MouseButton1Click:Connect(function()
-		requestAdminCommand("toggle_support_bots_auto")
-	end)
-
-	if ui.Lobby.AdminTabs then
-		for tabKey, tabButton in pairs(ui.Lobby.AdminTabs) do
-			tabButton.MouseButton1Click:Connect(function()
-				setAdminTab(tabKey)
-			end)
-		end
-	end
-
-	ui.Lobby.CloseAdminButton.MouseButton1Click:Connect(function()
-		setActivePopup(nil)
-	end)
-
-	Players.PlayerAdded:Connect(function()
-		if renderAdminTargetList then
-			renderAdminTargetList()
-		end
-	end)
-
-	Players.PlayerRemoving:Connect(function(leavingPlayer)
-		if selectedAdminTargetUserId == leavingPlayer.UserId then
-			selectedAdminTargetUserId = nil
-		end
-		if renderAdminTargetList then
-			renderAdminTargetList()
-		end
-	end)
-
-	ui.Lobby.AcceptInviteButton.MouseButton1Click:Connect(function()
-		respondToInvite(true)
-	end)
-
-	ui.Lobby.DeclineInviteButton.MouseButton1Click:Connect(function()
-		respondToInvite(false)
-	end)
-
-	ui.Lobby.RespecSkillTreeButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			pendingRespecConfirmation = true
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.ResultsContinue.MouseButton1Click:Connect(function()
-		pendingResults = nil
-		hideResultsPopup()
-	end)
-
-	ui.Lobby.LeaveSquadButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			requestLeaveSquad()
-		end
-	end)
-
-	ui.Lobby.InviteSquadButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			setActivePopup("Social")
-			refreshInviteablePlayers()
-			currentSocialMessage = "Pick a survivor from the roster and send the invite."
-			updateLobbyText()
-		end
-	end)
-
-	ui.Lobby.PrivacySquadButton.MouseButton1Click:Connect(function()
-		if state == "Lobby" then
-			requestSetSquadPrivacy(not (player:GetAttribute("SquadLocked") == true))
-		end
-	end)
-
-	for tabName, button in pairs(ui.Lobby.ShopTabs) do
-		button.MouseButton1Click:Connect(function()
-			currentShopStatus = Theme.ShopCopy[tabName] or currentShopStatus
-			setShopTab(tabName)
-		end)
-	end
-	if ui.Lobby.ShopRarityButtons then
-		for filterName, button in pairs(ui.Lobby.ShopRarityButtons) do
-			button.MouseButton1Click:Connect(function()
-				if state == "Lobby" then
-					currentShopRarityFilter = filterName
-					updateLobbyText()
-				end
-			end)
-		end
-	end
-	if ui.Lobby.ShopPremiumButtons then
-		for filterName, button in pairs(ui.Lobby.ShopPremiumButtons) do
-			button.MouseButton1Click:Connect(function()
-				if state == "Lobby" then
-					currentShopPremiumFilter = filterName
-					updateLobbyText()
-				end
-			end)
-		end
-	end
-	if ui.Lobby.InventoryRarityButtons then
-		for filterName, button in pairs(ui.Lobby.InventoryRarityButtons) do
-			button.MouseButton1Click:Connect(function()
-				if state == "Lobby" then
-					currentInventoryRarityFilter = filterName
-					updateLobbyText()
-				end
-			end)
-		end
-	end
-
-	local inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then
-			return
-		end
-
-		if state == "Loading" and awaitingContinuePrompt and os.clock() - loadingStartedAt > 0.15 then
-			if input.UserInputType ~= Enum.UserInputType.MouseMovement then
-				enterLobby()
-				refreshDailyRewardState()
-				refreshDailyOpsState()
-				refreshWeeklyRewardState()
-				refreshShopCatalog()
-				refreshSquadDirectory()
-				refreshInviteablePlayers()
-			end
-		end
-	end)
-
-	local gamePassPromptConnection = MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(finishedPlayer, gamePassId, wasPurchased)
-		if finishedPlayer ~= player then
-			return
-		end
-
-		if wasPurchased then
-			local purchasedVip = false
-			for _, item in ipairs(TokenEconomy.ShopItems) do
-				if item.GamePassId == gamePassId and item.GamePassKey == "vip_operation" then
-					purchasedVip = true
-					break
-				end
-			end
-			currentShopStatus = purchasedVip
-				and "VIP unlocked. Access granted to VIP Operations."
-				or ("Game pass granted: %d. Refreshing entitlements."):format(tonumber(gamePassId) or 0)
-			currentSocialMessage = currentShopStatus
-			if purchasedVip then
-				showPremiumUnlockBanner(
-					"VIP ACCESS UNLOCKED",
-					"VIP Operations is now open and your access badge has been updated.",
-					Color3.fromRGB(132, 182, 244),
-					"VIP ACTIVE"
-				)
-			else
-				showPremiumUnlockBanner(
-					"GAME PASS UNLOCKED",
-					currentShopStatus,
-					Color3.fromRGB(188, 214, 128),
-					"OWNED"
-				)
-			end
-			playUiSound(SOUND_IDS.Success, 0.36, 1.02)
-			if ui and ui.Lobby then
-				if ui.Lobby.SubscriptionValue then
-					pulseGuiObject(ui.Lobby.SubscriptionValue.Parent, purchasedVip and Color3.fromRGB(132, 182, 244) or Color3.fromRGB(188, 214, 128))
-				end
-				if ui.Lobby.IdentityValue then
-					pulseGuiObject(ui.Lobby.IdentityValue.Parent, purchasedVip and Color3.fromRGB(132, 182, 244) or Color3.fromRGB(188, 214, 128))
-				end
-			end
-			refreshEntitlements()
-		else
-			currentShopStatus = "Game pass purchase canceled."
-		end
-		updateLobbyText()
-	end)
-
-	local subscriptionPromptConnection = MarketplaceService.PromptSubscriptionPurchaseFinished:Connect(function(finishedPlayer, subscriptionId, wasPurchased)
-		if finishedPlayer ~= player then
-			return
-		end
-
-		if wasPurchased then
-			currentShopStatus = "Supporter activated. VIP access and supporter rewards are now enabled."
-			currentSocialMessage = currentShopStatus
-			showPremiumUnlockBanner(
-				"SUPPORTER STATUS ACTIVE",
-				"VIP access, supporter rewards, and the premium lounge are now available.",
-				Color3.fromRGB(214, 194, 122),
-				"SUPPORTER"
-			)
-			playUiSound(SOUND_IDS.Success, 0.38, 1.02)
-			if ui and ui.Lobby then
-				if ui.Lobby.SubscriptionValue then
-					pulseGuiObject(ui.Lobby.SubscriptionValue.Parent, Color3.fromRGB(214, 194, 122))
-				end
-				if ui.Lobby.IdentityValue then
-					pulseGuiObject(ui.Lobby.IdentityValue.Parent, Color3.fromRGB(214, 194, 122))
-				end
-			end
-			refreshEntitlements()
-		else
-			currentShopStatus = ("Subscription purchase canceled for %s."):format(tostring(subscriptionId or "supporter"))
-		end
-		updateLobbyText()
-	end)
-
-	local promptConnection = ProximityPromptService.PromptTriggered:Connect(function(prompt)
-		if state ~= "Lobby" or not prompt then
-			return
-		end
-
-		if prompt:GetAttribute("RequiresSupporter") == true and not (subscriptionState and subscriptionState.isActive == true) then
-			pendingNpcDialogue = {
-				title = "Supporter Access",
-				role = "Premium bunker lane",
-				body = "Supporter access is required for this lounge. Activate Bunker Supporter to use the lounge, weekly crate terminal, and premium reward lane.",
-				actionLabel = "Close",
-				actionPanel = "",
-			}
-			setActivePopup("NpcDialogue")
-			updateLobbyText()
-			return
-		end
-
-		if prompt:GetAttribute("RequiresVip") == true and player:GetAttribute("GamePassVipOperation") ~= true then
-			pendingNpcDialogue = {
-				title = "VIP Access",
-				role = "Operator fast lane",
-				body = "VIP access is required for this lane. VIP Operation owners and active supporters can both use this area.",
-				actionLabel = "Close",
-				actionPanel = "",
-			}
-			setActivePopup("NpcDialogue")
-			updateLobbyText()
-			return
-		end
-
-		local duelAction = prompt:GetAttribute("DuelAction")
-		if duelAction ~= nil then
-			requestDuel(duelAction)
-			return
-		end
-
-		if prompt.Name == "LobbyNpcPrompt" or prompt:GetAttribute("NpcDialogueTitle") ~= nil then
-			pendingNpcDialogue = {
-				title = prompt:GetAttribute("NpcDialogueTitle"),
-				role = prompt:GetAttribute("NpcDialogueRole"),
-				body = prompt:GetAttribute("NpcDialogueBody"),
-				actionLabel = prompt:GetAttribute("NpcActionLabel"),
-				actionPanel = prompt:GetAttribute("NpcActionPanel"),
-			}
-			setActivePopup("NpcDialogue")
-			updateLobbyText()
-			return
-		end
-
-		local panelName = normalizeStationPanelName(prompt.ObjectText)
-			or normalizeStationPanelName(prompt.ActionText)
-			or normalizeStationPanelName(prompt.Parent and prompt.Parent.Name)
-		if panelName then
-			openStationPanel(panelName)
-		end
-	end)
-
-	local promptShownConnection = ProximityPromptService.PromptShown:Connect(function(prompt)
-		if not prompt then
-			return
-		end
-
-		if prompt:GetAttribute("RequiresSupporter") == true then
-			local unlocked = subscriptionState and subscriptionState.isActive == true
-			prompt.ActionText = tostring(prompt:GetAttribute(unlocked and "UnlockedActionText" or "LockedActionText") or prompt.ActionText)
-			prompt.ObjectText = tostring(prompt:GetAttribute(unlocked and "UnlockedObjectText" or "LockedObjectText") or prompt.ObjectText)
-		elseif prompt:GetAttribute("RequiresVip") == true then
-			local unlocked = player:GetAttribute("GamePassVipOperation") == true
-			prompt.ActionText = tostring(prompt:GetAttribute(unlocked and "UnlockedActionText" or "LockedActionText") or prompt.ActionText)
-			prompt.ObjectText = tostring(prompt:GetAttribute(unlocked and "UnlockedObjectText" or "LockedObjectText") or prompt.ObjectText)
-		end
-
-		local inMission = state == "Mission" or player:GetAttribute("InMission") == true
-		if inMission and prompt:GetAttribute("MissionPrompt") ~= true then
-			suppressedMissionPrompts[prompt] = true
-			prompt.Enabled = false
-		end
-	end)
-
-	local leaderboardPlayerConnections, leaderboardPlayerAddedConnection, leaderboardPlayerRemovingConnection, unbindLeaderboardPlayer =
-		createLeaderboardPlayerBindings(updateLobbyText)
-
-	local remoteCleanup = bindFlowRemoteHandlers({
-		player = player,
-		progression = progression,
-		setLobbyValue = setLobbyValue,
-		setTokenValue = setTokenValue,
-		setSquadValue = setSquadValue,
-		setDeployValue = setDeployValue,
-		handleCombatFeedback = handleCombatFeedback,
-		showResultsPopup = showResultsPopup,
-		pushMissionToast = pushMissionToast,
-		playUiSound = playUiSound,
-		updateLobbyText = updateLobbyText,
-		setPendingInvite = function(value)
-			pendingInvite = value
+	setLobbyValue = createLobbyValueHandler({
+		getTokenBalance = function()
+			return tokenBalance
 		end,
-		getCurrentSocialMessage = function()
-			return currentSocialMessage
+		setTokenBalance = function(value)
+			tokenBalance = value
+		end,
+		getCurrentDeployStatus = function()
+			return currentDeployStatus
+		end,
+		setCurrentDeployStatus = function(value)
+			currentDeployStatus = value
 		end,
 		setCurrentSocialMessage = function(value)
 			currentSocialMessage = value
 		end,
+		getNextMissionPreview = function()
+			return nextMissionPreview
+		end,
+		setNextMissionPreview = function(value)
+			nextMissionPreview = value
+		end,
+		getCurrentVoteSessionId = function()
+			return currentVoteSessionId
+		end,
+		setCurrentVoteSessionId = function(value)
+			currentVoteSessionId = value
+		end,
+		getCurrentVoteOptionId = function()
+			return currentVoteOptionId
+		end,
+		setCurrentVoteOptionId = function(value)
+			currentVoteOptionId = value
+		end,
+		setNextMissionVoteOptions = function(value)
+			nextMissionVoteOptions = value
+		end,
+		setLeadingMissionVoteOptionId = function(value)
+			leadingMissionVoteOptionId = value
+		end,
 		setCurrentShopTab = function(value)
 			currentShopTab = value
 		end,
+		setSquadValue = setSquadValue,
+		enterLoading = enterLoading,
+		enterLobby = enterLobby,
+		enterMission = enterMission,
+		stopCinematic = function()
+			CinematicController.stop(ui.Root)
+		end,
+		updateLobbyText = updateLobbyText,
+	})
+
+	return finishFlowStartup({
+		ui = ui,
+		setPageVisibility = setPageVisibility,
+		animateHomeScreen = animateHomeScreen,
+		styleCoreLobbyButtons = styleCoreLobbyButtons,
+		bindPrimaryLobbyButtons = bindPrimaryLobbyButtons,
+		bindSecondaryLobbyButtons = bindSecondaryLobbyButtons,
+		bindAdminAndShopButtons = bindAdminAndShopButtons,
+		getQuickAccessButtons = getQuickAccessButtons,
+		setQuickAccessExpanded = setQuickAccessExpanded,
+		setQuickAccessButtonsExpanded = setQuickAccessButtonsExpanded,
+		setQuickAccessButtonExpanded = setQuickAccessButtonExpanded,
+		getCurrentShopTab = function()
+			return currentShopTab
+		end,
+		stateRef = function()
+			return state
+		end,
+		enterLoading = enterLoading,
+		enterLobby = enterLobby,
+		requestDailyReward = requestDailyReward,
+		refreshSquadDirectory = refreshSquadDirectory,
+		setActivePopup = setActivePopup,
 		setCurrentShopStatus = function(value)
 			currentShopStatus = value
+		end,
+		getCurrentShopStatus = function()
+			return currentShopStatus
+		end,
+		updateLobbyText = updateLobbyText,
+		setInventoryTab = setInventoryTab,
+		setCurrentSkillTreeStatus = function(value)
+			currentSkillTreeStatus = value
+		end,
+		refreshInviteablePlayers = refreshInviteablePlayers,
+		setCurrentSocialMessage = function(value)
+			currentSocialMessage = value
+		end,
+		openMissionPanel = openMissionPanel,
+		closeMissionPanel = closeMissionPanel,
+		requestDeploy = requestDeploy,
+		requestMapVote = requestMapVote,
+		getCurrentInventoryTab = function()
+			return currentInventoryTab
+		end,
+		setInventoryRarityFilter = function(value)
+			currentInventoryRarityFilter = value
+		end,
+		setInventoryTypeFilter = function(value)
+			currentInventoryTypeFilter = value
+		end,
+		setInventorySortMode = function(value)
+			currentInventorySortMode = value
+		end,
+		setSkillTreeBranchFilter = function(value)
+			currentSkillTreeBranchFilter = value
+		end,
+		setPendingRespecConfirmation = function(value)
+			pendingRespecConfirmation = value
+		end,
+		requestRespecSkillTree = requestRespecSkillTree,
+		getPendingNpcDialogue = function()
+			return pendingNpcDialogue
+		end,
+		setPendingNpcDialogue = function(value)
+			pendingNpcDialogue = value
+		end,
+		refreshDailyRewardState = refreshDailyRewardState,
+		refreshDailyOpsState = refreshDailyOpsState,
+		refreshWeeklyRewardState = refreshWeeklyRewardState,
+		refreshSubscriptionState = refreshSubscriptionState,
+		getActivePopup = function()
+			return activePopup
+		end,
+		requestWeeklyReward = requestWeeklyReward,
+		requestActivityTransit = requestActivityTransit,
+		getUiAudioEnabled = function()
+			return uiAudioEnabled
+		end,
+		setUiAudioEnabled = function(value)
+			uiAudioEnabled = value
+		end,
+		getScreenShakeEnabled = function()
+			return screenShakeEnabled
+		end,
+		setScreenShakeEnabled = function(value)
+			screenShakeEnabled = value
+		end,
+		resetCameraKick = function()
+			cameraKick = Vector2.zero
+		end,
+		getCombatFloatsEnabled = function()
+			return combatFloatsEnabled
+		end,
+		setCombatFloatsEnabled = function(value)
+			combatFloatsEnabled = value
+		end,
+		getCompactMissionToastsEnabled = function()
+			return compactMissionToastsEnabled
+		end,
+		setCompactMissionToastsEnabled = function(value)
+			compactMissionToastsEnabled = value
+		end,
+		getProgression = function()
+			return progression
+		end,
+		setAdminTab = setAdminTab,
+		requestAdminCommand = requestAdminCommand,
+		requestAdminTargetCommand = requestAdminTargetCommand,
+		refreshAdminTargets = function()
+			if renderAdminTargetList then
+				renderAdminTargetList()
+			end
+		end,
+		getSelectedAdminTargetUserId = function()
+			return selectedAdminTargetUserId
+		end,
+		setSelectedAdminTargetUserId = function(value)
+			selectedAdminTargetUserId = value
+		end,
+		respondToInvite = respondToInvite,
+		isPlayerInMission = function()
+			return player:GetAttribute("InMission") == true
+		end,
+		requestLeaveMission = requestLeaveMission,
+		setPendingResults = function(value)
+			pendingResults = value
+		end,
+		hideResultsPopup = hideResultsPopup,
+		requestLeaveSquad = requestLeaveSquad,
+		requestSetSquadPrivacy = requestSetSquadPrivacy,
+		isSquadLocked = function()
+			return player:GetAttribute("SquadLocked") == true
+		end,
+		setShopTab = setShopTab,
+		setShopRarityFilter = function(value)
+			currentShopRarityFilter = value
+		end,
+		setShopPremiumFilter = function(value)
+			currentShopPremiumFilter = value
+		end,
+		isMissionEliminated = function()
+			return player:GetAttribute("MissionEliminated") == true
+		end,
+		isAwaitingContinuePrompt = function()
+			return awaitingContinuePrompt
+		end,
+		getLoadingStartedAt = function()
+			return loadingStartedAt
+		end,
+		player = player,
+		progression = progression,
+		suppressedMissionPrompts = suppressedMissionPrompts,
+		isSupporterActive = function()
+			return subscriptionState and subscriptionState.isActive == true
+		end,
+		hasVipAccess = function()
+			return player:GetAttribute("GamePassVipOperation") == true
+		end,
+		isInMission = function()
+			return player:GetAttribute("InMission") == true
+		end,
+		requestDuel = requestDuel,
+		openStationPanel = openStationPanel,
+		showPremiumUnlockBanner = showPremiumUnlockBanner,
+		playUiSound = playUiSound,
+		refreshEntitlements = refreshEntitlements,
+		pulsePremiumStatus = function(color)
+			if ui and ui.Lobby then
+				if ui.Lobby.SubscriptionValue then
+					pulseGuiObject(ui.Lobby.SubscriptionValue.Parent, color)
+				end
+				if ui.Lobby.IdentityValue then
+					pulseGuiObject(ui.Lobby.IdentityValue.Parent, color)
+				end
+			end
+		end,
+		getPromptTween = function()
+			return promptTween
+		end,
+		setLobbyValue = setLobbyValue,
+		setTokenValue = setTokenValue,
+		setSquadValue = setSquadValue,
+		setDeployValue = createDeployValueHandler({
+			playerUserId = player.UserId,
+			getCurrentDeployStatus = function()
+				return currentDeployStatus
+			end,
+			setCurrentDeployStatus = function(value)
+				currentDeployStatus = value
+			end,
+			setCurrentSocialMessage = function(value)
+				currentSocialMessage = value
+			end,
+			enterLoading = enterLoading,
+			enterLobby = enterLobby,
+			enterMission = enterMission,
+			refreshSquadDirectory = refreshSquadDirectory,
+			refreshDailyRewardState = refreshDailyRewardState,
+			refreshDailyOpsState = refreshDailyOpsState,
+			refreshWeeklyRewardState = refreshWeeklyRewardState,
+			setMissionTelemetryValue = setMissionTelemetryValue,
+			stopCinematic = function()
+				CinematicController.stop(ui.Root)
+			end,
+			playCinematic = function(value)
+				task.defer(function()
+					CinematicController.play(ui.Gui, ui.Root, value)
+				end)
+			end,
+			updateLobbyText = updateLobbyText,
+		}),
+		handleCombatFeedback = handleCombatFeedback,
+		showResultsPopup = showResultsPopup,
+		pushMissionToast = pushMissionToast,
+		getCurrentSocialMessage = function()
+			return currentSocialMessage
+		end,
+		setPendingInvite = function(value)
+			pendingInvite = value
+		end,
+		setCurrentShopTab = function(value)
+			currentShopTab = value
 		end,
 		setCurrentInventoryStatus = function(value)
 			currentInventoryStatus = value
@@ -7431,97 +9845,25 @@ end
 		setCurrentInventoryTab = function(value)
 			currentInventoryTab = value
 		end,
-		getActivePopup = function()
-			return activePopup
-		end,
-		setActivePopup = setActivePopup,
 		setProgressionValue = setProgressionValue,
 		setSubscriptionStateValue = setSubscriptionStateValue,
 		setPersistenceStateValue = setPersistenceStateValue,
+		enterHome = enterHome,
+		setSquadDirectoryValue = setSquadDirectoryValue,
+		setInviteablePlayersValue = setInviteablePlayersValue,
+		setDailyRewardValue = setDailyRewardValue,
+		setDailyOpsValue = setDailyOpsValue,
+		setWeeklyRewardValue = setWeeklyRewardValue,
+		setSeasonalEventValue = setSeasonalEventValue,
+		setShopCatalogValue = setShopCatalogValue,
+		isUiMounted = function()
+			return ui.Gui.Parent ~= nil
+		end,
+		isPlayerMounted = function()
+			return player.Parent ~= nil
+		end,
+		enforceUiState = enforceUiState,
 	})
-
-	local function applyBootstrap(bootstrap)
-		if bootstrap.tokenBalance ~= nil then
-			setTokenValue(bootstrap.tokenBalance)
-		end
-		if bootstrap.squadSnapshot ~= nil then
-			setSquadValue(bootstrap.squadSnapshot)
-		end
-		if bootstrap.squadDirectory ~= nil then
-			setSquadDirectoryValue(bootstrap.squadDirectory)
-		end
-		if bootstrap.inviteablePlayers ~= nil then
-			setInviteablePlayersValue(bootstrap.inviteablePlayers)
-		end
-		if bootstrap.dailyRewardState ~= nil then
-			setDailyRewardValue(bootstrap.dailyRewardState)
-		end
-		if bootstrap.dailyOpsState ~= nil then
-			setDailyOpsValue(bootstrap.dailyOpsState)
-		end
-		if bootstrap.weeklyRewardState ~= nil then
-			setWeeklyRewardValue(bootstrap.weeklyRewardState)
-		end
-		if bootstrap.subscriptionState ~= nil then
-			setSubscriptionStateValue(bootstrap.subscriptionState)
-		end
-		if bootstrap.seasonalEventState ~= nil then
-			setSeasonalEventValue(bootstrap.seasonalEventState)
-		end
-		if bootstrap.shopCatalog ~= nil then
-			setShopCatalogValue(bootstrap.shopCatalog)
-		end
-		if bootstrap.progression ~= nil then
-			setProgressionValue(bootstrap.progression)
-		end
-		if bootstrap.persistenceState ~= nil then
-			setPersistenceStateValue(bootstrap.persistenceState)
-		end
-		if bootstrap.lobbyState ~= nil then
-			setLobbyValue(bootstrap.lobbyState)
-		end
-	end
-
-	enterHome()
-	task.defer(function()
-		for _ = 1, 20 do
-			local callOk, bootstrap = safeInvoke(RemoteNames.Functions.GetBootstrapData)
-			if callOk and type(bootstrap) == "table" then
-				applyBootstrap(bootstrap)
-				return
-			end
-			task.wait(0.25)
-		end
-
-		refreshDailyRewardState()
-		refreshDailyOpsState()
-		refreshWeeklyRewardState()
-		refreshSubscriptionState()
-		refreshShopCatalog()
-		refreshSquadDirectory()
-		refreshInviteablePlayers()
-		updateLobbyText()
-	end)
-
-	task.spawn(function()
-		while ui.Gui.Parent and player.Parent do
-			enforceUiState()
-			task.wait(0.75)
-		end
-	end)
-
-	return createFlowCleanup(
-		inputConnection,
-		promptConnection,
-		promptShownConnection,
-		leaderboardPlayerAddedConnection,
-		leaderboardPlayerRemovingConnection,
-		leaderboardPlayerConnections,
-		unbindLeaderboardPlayer,
-		promptTween,
-		subscriptionPromptConnection,
-		remoteCleanup
-	)
 end
 
 return FlowController

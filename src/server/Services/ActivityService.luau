@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local LobbyWorld = require(script.Parent.Parent:WaitForChild("LobbyWorld"))
 
 local ActivityService = {}
 ActivityService.__index = ActivityService
@@ -57,6 +58,50 @@ local SECRET_REWARDS = {
 		tokens = 3,
 	},
 }
+local ACTIVITY_COLORS = {
+	parkour = Color3.fromRGB(178, 202, 255),
+	training = Color3.fromRGB(242, 210, 156),
+	range = Color3.fromRGB(182, 236, 206),
+	salvage = Color3.fromRGB(244, 212, 154),
+	reward = Color3.fromRGB(214, 168, 255),
+}
+
+local ACTIVITY_PART_ALIASES = {
+	ParkourCourse = { "ParkourCourse", "Parkour", "ParkourLane", "Course" },
+	TrainingYard = { "TrainingYard", "Training", "TrainingLane", "Yard" },
+	TargetRange = { "TargetRange", "Range", "ShootingRange" },
+	SalvageRun = { "SalvageRun", "Salvage", "SalvageLane" },
+	StartPad = { "StartPad", "Start", "StartLine", "EntryPad", "LaunchPad" },
+	FinishPad = { "FinishPad", "Finish", "EndPad", "ExitPad", "ExtractPad" },
+	EntryPad = { "EntryPad", "StartPad", "Entry", "Start", "TrainingPad" },
+	FiringLine = { "FiringLine", "StartPad", "Line", "RangeLine" },
+}
+local ACTIVITY_TRANSIT_TARGETS = {
+	Training = { area = "TrainingYard", entry = "EntryPad" },
+	Parkour = { area = "ParkourCourse", entry = "StartPad" },
+	Range = { area = "TargetRange", entry = "FiringLine" },
+	Salvage = { area = "SalvageRun", entry = "StartPad" },
+}
+local ACTIVITY_START_HANDLERS = {
+	Training = "_startTraining",
+	Parkour = "_startParkour",
+	Range = "_startRange",
+	Salvage = "_startSalvage",
+}
+local ACTIVITY_TRANSIT_PROMPTS = {
+	Training = { model = "TrainingTransit", prompt = "TrainingTransitPrompt" },
+	Parkour = { model = "ParkourTransit", prompt = "ParkourTransitPrompt" },
+	Range = { model = "RangeTransit", prompt = "RangeTransitPrompt" },
+	Salvage = { model = "SalvageTransit", prompt = "SalvageTransitPrompt" },
+}
+
+local function normalizeName(value)
+	return string.lower((tostring(value or ""):gsub("[%s%p_]+", "")))
+end
+
+local function warnMissingActivityContent(areaName, entryName)
+	warn(("[ActivityService] %s is missing %s. That activity will be partially or fully inactive until the content is added."):format(areaName, entryName))
+end
 
 function ActivityService.new(context)
 	local self = setmetatable({}, ActivityService)
@@ -73,6 +118,8 @@ function ActivityService.new(context)
 	self._rangeSessions = {}
 	self._salvageSessions = {}
 	self._touchDebounces = {}
+	self._activitiesBound = false
+	self._boundActivityKeys = {}
 	return self
 end
 
@@ -86,7 +133,14 @@ function ActivityService:Start()
 	end)
 
 	task.defer(function()
-		self:_bindLobbyActivities()
+		for attempt = 1, 8 do
+			LobbyWorld.ensureActivityContent()
+			if self:_bindLobbyActivities() then
+				return
+			end
+			task.wait(1)
+		end
+		warn("[ActivityService] Lobby activities never fully bound after startup retries.")
 	end)
 end
 
@@ -97,6 +151,22 @@ function ActivityService:_notify(player, message)
 	self._remotes:FireEventFor(player, self._remoteNames.Events.Notification, {
 		userId = player.UserId,
 		message = tostring(message),
+	})
+end
+
+function ActivityService:_notifyActivity(player, title, body, accent, complete, rewardText)
+	if not self._remotes or not player then
+		return
+	end
+	self._remotes:FireEventFor(player, self._remoteNames.Events.Notification, {
+		userId = player.UserId,
+		kind = "Activity",
+		title = tostring(title or "Activity"),
+		body = tostring(body or ""),
+		message = tostring(body or title or "Activity"),
+		accent = accent,
+		complete = complete == true,
+		rewardText = rewardText ~= nil and tostring(rewardText) or nil,
 	})
 end
 
@@ -117,12 +187,60 @@ function ActivityService:_canUseLobbyActivity(player)
 end
 
 function ActivityService:_getLobbyRoot()
-	return Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
+	local lobby = Workspace:FindFirstChild(self._gameFlowConfig.LobbyName)
+	if lobby then
+		return lobby
+	end
+
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if child:GetAttribute("WorldType") == "LobbyHub" then
+			return child
+		end
+	end
+
+	return Workspace:FindFirstChild("OpenSkyLobby")
 end
 
 function ActivityService:_getPlaza()
 	local lobby = self:_getLobbyRoot()
-	return lobby and lobby:FindFirstChild("OpenSkyLobby")
+	if not lobby then
+		return nil
+	end
+	if lobby:IsA("Model") then
+		return lobby
+	end
+	return lobby:FindFirstChild("OpenSkyLobby") or lobby:FindFirstChildWhichIsA("Model")
+end
+
+function ActivityService:_resolveNamedDescendant(root, childName)
+	if not root or not childName or childName == "" then
+		return nil
+	end
+
+	local exact = root:FindFirstChild(childName, true)
+	if exact then
+		return exact
+	end
+
+	local aliases = ACTIVITY_PART_ALIASES[childName] or { childName }
+	for _, alias in ipairs(aliases) do
+		local aliasExact = root:FindFirstChild(alias, true)
+		if aliasExact then
+			return aliasExact
+		end
+	end
+
+	for _, descendant in ipairs(root:GetDescendants()) do
+		local descendantName = normalizeName(descendant.Name)
+		for _, alias in ipairs(aliases) do
+			local aliasName = normalizeName(alias)
+			if descendantName == aliasName or string.find(descendantName, aliasName, 1, true) then
+				return descendant
+			end
+		end
+	end
+
+	return nil
 end
 
 function ActivityService:_resolvePlayerFromHit(hit)
@@ -131,6 +249,71 @@ function ActivityService:_resolvePlayerFromHit(hit)
 		return nil
 	end
 	return Players:GetPlayerFromCharacter(character)
+end
+
+function ActivityService:_teleportPlayerToPart(player, targetPart, offset)
+	local character = player and player.Character
+	if not (character and character.Parent and targetPart and targetPart:IsA("BasePart")) then
+		return false
+	end
+	local rootPart = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 2)
+	if not rootPart then
+		return false
+	end
+	character:PivotTo(targetPart.CFrame + (offset or Vector3.new(0, 4, 0)))
+	return true
+end
+
+function ActivityService:_beginActivityFromKey(player, activityKey)
+	local handlerName = ACTIVITY_START_HANDLERS[tostring(activityKey or "")]
+	local handler = handlerName and self[handlerName]
+	if type(handler) == "function" then
+		handler(self, player)
+		return true
+	end
+	return false
+end
+
+function ActivityService:_bindTransitPrompt(plaza, activityKey, transitInfo)
+	local boundKey = "transit_" .. string.lower(tostring(activityKey or ""))
+	if self._boundActivityKeys[boundKey] then
+		return true
+	end
+
+	local transitModel = plaza and self:_resolveNamedDescendant(plaza, transitInfo.model)
+	if not transitModel then
+		return false
+	end
+
+	local prompt = self:_resolveNamedDescendant(transitModel, transitInfo.prompt)
+	if not (prompt and prompt:IsA("ProximityPrompt")) then
+		return false
+	end
+
+	prompt.Triggered:Connect(function(player)
+		if not player or not self:_canUseLobbyActivity(player) then
+			return
+		end
+		task.defer(function()
+			if player and player.Parent == Players then
+				task.wait(0.15)
+				self:_beginActivityFromKey(player, activityKey)
+			end
+		end)
+	end)
+
+	self._boundActivityKeys[boundKey] = true
+	return true
+end
+
+function ActivityService:_bindTransitPrompts(plaza)
+	local allBound = true
+	for activityKey, transitInfo in pairs(ACTIVITY_TRANSIT_PROMPTS) do
+		if not self:_bindTransitPrompt(plaza, activityKey, transitInfo) then
+			allBound = false
+		end
+	end
+	return allBound
 end
 
 function ActivityService:_isTouchReady(player, key, cooldown)
@@ -239,6 +422,7 @@ function ActivityService:_unlockActivityAchievement(player, achievementKey, labe
 	end
 	self._persistenceService:SetActivityFlag(player, "achievements", achievementKey, true)
 	self:_notify(player, ("Badge unlocked: %s"):format(label))
+	self:_notifyActivity(player, "BADGE UNLOCKED", tostring(label), ACTIVITY_COLORS.reward, true, nil)
 	return true
 end
 
@@ -263,6 +447,7 @@ function ActivityService:_applyActivityProgression(player, activityKey, currentV
 				local tokens = self:_awardActivityTokens(player, reward.tokens, activityKey .. "_level_reward")
 				if tokens > 0 then
 					self:_notify(player, ("%s +%d tokens"):format(reward.message or "Milestone reward", tokens))
+					self:_notifyActivity(player, "ACTIVITY REWARD", tostring(reward.message or "Milestone reward"), ACTIVITY_COLORS.reward, true, ("+%dT"):format(tokens))
 				end
 			end
 		end
@@ -297,6 +482,7 @@ function ActivityService:_claimSecret(player, secretName)
 	local tokens = self:_awardActivityTokens(player, secretInfo.tokens, "activity_secret")
 	self:_unlockActivityAchievement(player, "secret_" .. secretInfo.key, secretInfo.label)
 	self:_notify(player, ("%s found. +%d tokens"):format(secretInfo.label, tokens))
+	self:_notifyActivity(player, "SECRET FOUND", tostring(secretInfo.label), ACTIVITY_COLORS.reward, true, ("+%dT"):format(tokens))
 	self:_checkSecretMastery(player)
 end
 
@@ -330,6 +516,7 @@ function ActivityService:_startParkour(player)
 		nextCheckpoint = 1,
 	}
 	self:_notify(player, "Parkour run started. Hit every platform in order, then reach the roof.")
+	self:_notifyActivity(player, "PARKOUR LIVE", "Hit every platform in order, then reach the roof.", ACTIVITY_COLORS.parkour, false, nil)
 end
 
 function ActivityService:_hitParkourCheckpoint(player, checkpointIndex)
@@ -344,6 +531,7 @@ function ActivityService:_hitParkourCheckpoint(player, checkpointIndex)
 	session.nextCheckpoint += 1
 	if checkpointIndex < PARKOUR_CHECKPOINT_COUNT then
 		self:_notify(player, ("Parkour checkpoint %d/%d."):format(checkpointIndex, PARKOUR_CHECKPOINT_COUNT))
+		self:_notifyActivity(player, "PARKOUR CHECKPOINT", ("%d/%d platforms linked"):format(checkpointIndex, PARKOUR_CHECKPOINT_COUNT), ACTIVITY_COLORS.parkour, false, nil)
 	end
 end
 
@@ -380,6 +568,7 @@ function ActivityService:_finishParkour(player)
 			improved and " [PB]" or ""
 		)
 	)
+	self:_notifyActivity(player, "PARKOUR CLEAR", ("Route %s | Best %s"):format(self:_formatSecondsFromMs(elapsedMs), self:_formatSecondsFromMs(bestMs)), ACTIVITY_COLORS.parkour, true, ("+%dT +%dXP%s"):format(reward, xpAward, improved and " PB" or ""))
 end
 
 function ActivityService:_ensureTrainingSession(player)
@@ -397,6 +586,7 @@ function ActivityService:_ensureTrainingSession(player)
 	}
 	self._trainingSessions[player.UserId] = session
 	self:_notify(player, "Training drill started. Clear all hurdles and tag every target.")
+	self:_notifyActivity(player, "TRAINING LIVE", "Clear all hurdles and tag every target.", ACTIVITY_COLORS.training, false, nil)
 	return session
 end
 
@@ -413,6 +603,7 @@ function ActivityService:_startTraining(player)
 		targets = {},
 	}
 	self:_notify(player, "Training drill started. Clear all hurdles and tag every target.")
+	self:_notifyActivity(player, "TRAINING LIVE", "Clear all hurdles and tag every target.", ACTIVITY_COLORS.training, false, nil)
 end
 
 function ActivityService:_recordTrainingHurdle(player, hurdleIndex)
@@ -426,6 +617,7 @@ function ActivityService:_recordTrainingHurdle(player, hurdleIndex)
 		total += 1
 	end
 	self:_notify(player, ("Training hurdle %d/%d."):format(total, TRAINING_HURDLE_COUNT))
+	self:_notifyActivity(player, "TRAINING HURDLE", ("%d/%d hurdles cleared"):format(total, TRAINING_HURDLE_COUNT), ACTIVITY_COLORS.training, false, nil)
 end
 
 function ActivityService:_recordTrainingTarget(player, targetIndex, targetPart)
@@ -441,6 +633,7 @@ function ActivityService:_recordTrainingTarget(player, targetIndex, targetPart)
 	end
 	if targetCount < TRAINING_TARGET_COUNT then
 		self:_notify(player, ("Training targets %d/%d."):format(targetCount, TRAINING_TARGET_COUNT))
+		self:_notifyActivity(player, "TRAINING TARGET", ("%d/%d targets tagged"):format(targetCount, TRAINING_TARGET_COUNT), ACTIVITY_COLORS.training, false, nil)
 	end
 
 	local hurdleCount = 0
@@ -496,6 +689,7 @@ function ActivityService:_finishTraining(player)
 			improved and " [PB]" or ""
 		)
 	)
+	self:_notifyActivity(player, "TRAINING CLEAR", ("Score %d | Best %d"):format(score, bestScore), ACTIVITY_COLORS.training, true, ("+%dT +%dXP%s"):format(reward, xpAward, improved and " PB" or ""))
 end
 
 function ActivityService:_startRange(player)
@@ -514,6 +708,7 @@ function ActivityService:_startRange(player)
 		lastHitAt = 0,
 	}
 	self:_notify(player, "Range trial started. Tag targets for 20 seconds. Mix your target order to keep the streak alive.")
+	self:_notifyActivity(player, "RANGE LIVE", "Tag targets for 20 seconds. Mix the order to keep the streak alive.", ACTIVITY_COLORS.range, false, nil)
 
 	task.delay(RANGE_DURATION + 0.05, function()
 		local session = self._rangeSessions[player.UserId]
@@ -544,6 +739,7 @@ function ActivityService:_hitRangeTarget(player, targetIndex, targetPart)
 	self:_flashRangeTarget(targetPart)
 	if session.score % 5 == 0 then
 		self:_notify(player, ("Range streak: %d tags."):format(session.score))
+		self:_notifyActivity(player, "RANGE STREAK", ("%d tags landed"):format(session.score), ACTIVITY_COLORS.range, false, nil)
 	end
 end
 
@@ -579,6 +775,7 @@ function ActivityService:_finishRange(player, timedOut)
 			suffix
 		)
 	)
+	self:_notifyActivity(player, "RANGE COMPLETE", ("Score %d | Best %d%s"):format(score, bestScore, timedOut and " | Timer expired" or ""), ACTIVITY_COLORS.range, true, ("+%dT +%dXP%s"):format(reward, xpAward, improved and " PB" or ""))
 end
 
 function ActivityService:_startSalvage(player)
@@ -593,6 +790,7 @@ function ActivityService:_startSalvage(player)
 		nextCache = 1,
 	}
 	self:_notify(player, "Salvage sweep started. Recover every cache, then extract.")
+	self:_notifyActivity(player, "SALVAGE LIVE", "Recover every cache, then extract.", ACTIVITY_COLORS.salvage, false, nil)
 end
 
 function ActivityService:_collectSalvageCache(player, cacheIndex)
@@ -606,6 +804,7 @@ function ActivityService:_collectSalvageCache(player, cacheIndex)
 
 	session.nextCache += 1
 	self:_notify(player, ("Salvage cache secured: %d/%d."):format(cacheIndex, SALVAGE_CACHE_COUNT))
+	self:_notifyActivity(player, "CACHE SECURED", ("%d/%d salvage caches recovered"):format(cacheIndex, SALVAGE_CACHE_COUNT), ACTIVITY_COLORS.salvage, false, nil)
 end
 
 function ActivityService:_finishSalvage(player)
@@ -641,6 +840,7 @@ function ActivityService:_finishSalvage(player)
 			improved and " [PB]" or ""
 		)
 	)
+	self:_notifyActivity(player, "SALVAGE CLEAR", ("Extract %s | Best %s"):format(self:_formatSecondsFromMs(elapsedMs), self:_formatSecondsFromMs(bestMs)), ACTIVITY_COLORS.salvage, true, ("+%dT +%dXP%s"):format(reward, xpAward, improved and " PB" or ""))
 end
 
 function ActivityService:_bindTouched(part, key, handler)
@@ -668,134 +868,310 @@ function ActivityService:_bindPrompt(prompt, handler)
 	end)
 end
 
-function ActivityService:_bindParkour(plaza)
-	local course = plaza and plaza:FindFirstChild("ParkourCourse")
-	if not course then
+function ActivityService:_ensurePrompt(part, promptName, actionText, objectText, maxDistance)
+	if not part or not part:IsA("BasePart") then
+		return nil
+	end
+
+	local prompt = part:FindFirstChild(promptName)
+	if prompt and not prompt:IsA("ProximityPrompt") then
+		prompt:Destroy()
+		prompt = nil
+	end
+
+	if not prompt then
+		prompt = Instance.new("ProximityPrompt")
+		prompt.Name = promptName
+		prompt.Parent = part
+	end
+
+	prompt.ActionText = actionText
+	prompt.ObjectText = objectText
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0
+	prompt.RequiresLineOfSight = false
+	prompt.MaxActivationDistance = maxDistance or 10
+
+	return prompt
+end
+
+function ActivityService:_requireChild(root, childName, areaName)
+	local child = self:_resolveNamedDescendant(root, childName)
+	if not child then
+		warnMissingActivityContent(areaName, childName)
+		return nil
+	end
+	return child
+end
+
+function ActivityService:_bindRequiredTouched(root, childName, key, areaName, handler)
+	local part = self:_requireChild(root, childName, areaName)
+	if not part then
+		return
+	end
+	if part:IsA("BasePart") then
+		self:_bindTouched(part, key, handler)
+	else
+		warnMissingActivityContent(areaName, childName)
+	end
+end
+
+function ActivityService:_bindRequiredPrompt(root, childName, areaName, handler)
+	local prompt = self:_requireChild(root, childName, areaName)
+	if not prompt then
+		return
+	end
+	if prompt:IsA("ProximityPrompt") then
+		self:_bindPrompt(prompt, handler)
+	else
+		warnMissingActivityContent(areaName, childName)
+	end
+end
+
+function ActivityService:_bindOptionalPromptOnPart(root, partName, promptName, areaName, actionText, objectText, maxDistance, handler)
+	local part = self:_requireChild(root, partName, areaName)
+	if not part then
+		return
+	end
+	if not part:IsA("BasePart") then
+		warnMissingActivityContent(areaName, partName)
 		return
 	end
 
-	self:_bindTouched(course:FindFirstChild("StartPad"), "parkour_start", function(player)
-		self:_startParkour(player)
-	end)
-	self:_bindPrompt(course:FindFirstChild("ParkourStartPrompt"), function(player)
-		self:_startParkour(player)
-	end)
-	for checkpointIndex = 1, PARKOUR_CHECKPOINT_COUNT do
-		self:_bindTouched(course:FindFirstChild("Platform" .. tostring(checkpointIndex)), "parkour_checkpoint_" .. tostring(checkpointIndex), function(player)
-			self:_hitParkourCheckpoint(player, checkpointIndex)
-		end)
+	local prompt = self:_ensurePrompt(part, promptName, actionText, objectText, maxDistance)
+	if prompt then
+		self:_bindPrompt(prompt, handler)
 	end
-	self:_bindTouched(course:FindFirstChild("FinishPad"), "parkour_finish", function(player)
-		self:_finishParkour(player)
+end
+
+function ActivityService:_bindTargetInteraction(targetPart, key, promptName, objectText, handler)
+	if not targetPart or not targetPart:IsA("BasePart") then
+		return
+	end
+
+	self:_bindTouched(targetPart, key, handler)
+
+	local prompt = self:_ensurePrompt(targetPart, promptName, "Tag", objectText, 12)
+	if prompt then
+		self:_bindPrompt(prompt, handler)
+	end
+
+	local detector = targetPart:FindFirstChildOfClass("ClickDetector") or Instance.new("ClickDetector")
+	detector.MaxActivationDistance = 48
+	detector.Parent = targetPart
+	detector.MouseClick:Connect(function(player)
+		if not player or not self:_isTouchReady(player, "click_" .. key, 0.2) then
+			return
+		end
+		handler(player)
 	end)
 end
 
-function ActivityService:_bindTraining(plaza)
-	local yard = plaza and plaza:FindFirstChild("TrainingYard")
-	if not yard then
-		return
+function ActivityService:_bindParkour(plaza)
+	if self._boundActivityKeys.parkour then
+		return true
+	end
+	local course = self:_resolveNamedDescendant(plaza, "ParkourCourse")
+	if not course then
+		warnMissingActivityContent("ParkourCourse", "ParkourCourse")
+		return false
 	end
 
-	self:_bindTouched(yard:FindFirstChild("EntryPad"), "training_start", function(player)
+	self:_bindRequiredTouched(course, "StartPad", "parkour_start", "ParkourCourse", function(player)
+		self:_startParkour(player)
+	end)
+	self:_bindOptionalPromptOnPart(course, "StartPad", "ParkourStartPrompt", "ParkourCourse", "Start", "Parkour Line", 10, function(player)
+		self:_startParkour(player)
+	end)
+	for checkpointIndex = 1, PARKOUR_CHECKPOINT_COUNT do
+		self:_bindRequiredTouched(course, "Platform" .. tostring(checkpointIndex), "parkour_checkpoint_" .. tostring(checkpointIndex), "ParkourCourse", function(player)
+			self:_hitParkourCheckpoint(player, checkpointIndex)
+		end)
+	end
+	self:_bindRequiredTouched(course, "FinishPad", "parkour_finish", "ParkourCourse", function(player)
+		self:_finishParkour(player)
+	end)
+	self:_bindOptionalPromptOnPart(course, "FinishPad", "ParkourFinishPrompt", "ParkourCourse", "Finish", "Parkour Line", 10, function(player)
+		self:_finishParkour(player)
+	end)
+	self._boundActivityKeys.parkour = true
+	return true
+end
+
+function ActivityService:_bindTraining(plaza)
+	if self._boundActivityKeys.training then
+		return true
+	end
+	local yard = self:_resolveNamedDescendant(plaza, "TrainingYard")
+	if not yard then
+		warnMissingActivityContent("TrainingYard", "TrainingYard")
+		return false
+	end
+
+	self:_bindRequiredTouched(yard, "EntryPad", "training_start", "TrainingYard", function(player)
 		self:_startTraining(player)
 	end)
-	self:_bindPrompt(yard:FindFirstChild("TrainingEnterPrompt"), function(player)
+	self:_bindOptionalPromptOnPart(yard, "EntryPad", "TrainingEnterPrompt", "TrainingYard", "Train", "Training Yard", 10, function(player)
 		self:_startTraining(player)
 	end)
 	for hurdleIndex = 1, TRAINING_HURDLE_COUNT do
-		self:_bindTouched(yard:FindFirstChild("Hurdle" .. tostring(hurdleIndex)), "training_hurdle_" .. tostring(hurdleIndex), function(player)
+		self:_bindRequiredTouched(yard, "Hurdle" .. tostring(hurdleIndex), "training_hurdle_" .. tostring(hurdleIndex), "TrainingYard", function(player)
 			self:_recordTrainingHurdle(player, hurdleIndex)
 		end)
-		self:_bindTouched(yard:FindFirstChild("HurdleTrigger" .. tostring(hurdleIndex)), "training_hurdle_trigger_" .. tostring(hurdleIndex), function(player)
+		self:_bindRequiredTouched(yard, "HurdleTrigger" .. tostring(hurdleIndex), "training_hurdle_trigger_" .. tostring(hurdleIndex), "TrainingYard", function(player)
 			self:_recordTrainingHurdle(player, hurdleIndex)
 		end)
 	end
 	for targetIndex = 1, TRAINING_TARGET_COUNT do
-		local targetFace = yard:FindFirstChild("TargetFace" .. tostring(targetIndex))
+		local targetFace = self:_requireChild(yard, "TargetFace" .. tostring(targetIndex), "TrainingYard")
 		if targetFace and targetFace:IsA("BasePart") then
-			local detector = targetFace:FindFirstChildOfClass("ClickDetector") or Instance.new("ClickDetector")
-			detector.MaxActivationDistance = 48
-			detector.Parent = targetFace
-			detector.MouseClick:Connect(function(player)
+			self:_bindTargetInteraction(targetFace, "training_target_" .. tostring(targetIndex), "TrainingTargetPrompt" .. tostring(targetIndex), "Training Target", function(player)
 				self:_recordTrainingTarget(player, targetIndex, targetFace)
 			end)
 		end
 	end
+	self._boundActivityKeys.training = true
+	return true
 end
 
 function ActivityService:_bindRange(plaza)
-	local range = plaza and plaza:FindFirstChild("TargetRange")
+	if self._boundActivityKeys.range then
+		return true
+	end
+	local range = self:_resolveNamedDescendant(plaza, "TargetRange")
 	if not range then
-		return
+		warnMissingActivityContent("TargetRange", "TargetRange")
+		return false
 	end
 
-	self:_bindTouched(range:FindFirstChild("FiringLine"), "range_start", function(player)
+	self:_bindRequiredTouched(range, "FiringLine", "range_start", "TargetRange", function(player)
 		self:_startRange(player)
 	end)
-	self:_bindPrompt(range:FindFirstChild("TargetRangePrompt"), function(player)
+	self:_bindOptionalPromptOnPart(range, "FiringLine", "TargetRangePrompt", "TargetRange", "Range", "Target Range", 10, function(player)
 		self:_startRange(player)
 	end)
 
 	for targetIndex = 1, 3 do
-		local targetFace = range:FindFirstChild("TargetFace" .. tostring(targetIndex))
+		local targetFace = self:_requireChild(range, "TargetFace" .. tostring(targetIndex), "TargetRange")
 		if targetFace and targetFace:IsA("BasePart") then
-			local detector = targetFace:FindFirstChildOfClass("ClickDetector") or Instance.new("ClickDetector")
-			detector.MaxActivationDistance = 48
-			detector.Parent = targetFace
-			detector.MouseClick:Connect(function(player)
+			self:_bindTargetInteraction(targetFace, "range_target_" .. tostring(targetIndex), "RangeTargetPrompt" .. tostring(targetIndex), "Range Target", function(player)
 				self:_hitRangeTarget(player, targetIndex, targetFace)
 			end)
 		end
 	end
+	self._boundActivityKeys.range = true
+	return true
 end
 
 function ActivityService:_bindSalvage(plaza)
-	local run = plaza and plaza:FindFirstChild("SalvageRun")
+	if self._boundActivityKeys.salvage then
+		return true
+	end
+	local run = self:_resolveNamedDescendant(plaza, "SalvageRun")
 	if not run then
-		return
+		warnMissingActivityContent("SalvageRun", "SalvageRun")
+		return false
 	end
 
-	self:_bindTouched(run:FindFirstChild("StartPad"), "salvage_start", function(player)
+	self:_bindRequiredTouched(run, "StartPad", "salvage_start", "SalvageRun", function(player)
 		self:_startSalvage(player)
 	end)
-	self:_bindPrompt(run:FindFirstChild("SalvageStartPrompt"), function(player)
+	self:_bindOptionalPromptOnPart(run, "StartPad", "SalvageStartPrompt", "SalvageRun", "Salvage", "Salvage Run", 10, function(player)
 		self:_startSalvage(player)
 	end)
 	for cacheIndex = 1, SALVAGE_CACHE_COUNT do
-		self:_bindTouched(run:FindFirstChild("Cache" .. tostring(cacheIndex)), "salvage_cache_" .. tostring(cacheIndex), function(player)
-			self:_collectSalvageCache(player, cacheIndex)
-		end)
+		local cachePart = self:_requireChild(run, "Cache" .. tostring(cacheIndex), "SalvageRun")
+		if cachePart and cachePart:IsA("BasePart") then
+			self:_bindTargetInteraction(cachePart, "salvage_cache_" .. tostring(cacheIndex), "SalvageCachePrompt" .. tostring(cacheIndex), "Salvage Cache", function(player)
+				self:_collectSalvageCache(player, cacheIndex)
+			end)
+		end
 	end
-	self:_bindTouched(run:FindFirstChild("FinishPad"), "salvage_finish", function(player)
+	self:_bindRequiredTouched(run, "FinishPad", "salvage_finish", "SalvageRun", function(player)
 		self:_finishSalvage(player)
 	end)
-	self:_bindPrompt(run:FindFirstChild("SalvageExtractPrompt"), function(player)
+	self:_bindOptionalPromptOnPart(run, "FinishPad", "SalvageExtractPrompt", "SalvageRun", "Extract", "Salvage Run", 10, function(player)
 		self:_finishSalvage(player)
 	end)
+	self._boundActivityKeys.salvage = true
+	return true
 end
 
 function ActivityService:_bindSecrets(plaza)
+	if self._boundActivityKeys.secrets then
+		return
+	end
 	for secretName in pairs(SECRET_REWARDS) do
 		local secretPart = plaza and plaza:FindFirstChild(secretName, true)
 		if secretPart and secretPart:IsA("BasePart") then
 			self:_bindTouched(secretPart, "secret_" .. secretName, function(player)
 				self:_claimSecret(player, secretName)
 			end)
+			local prompt = self:_ensurePrompt(secretPart, secretName .. "Prompt", "Claim", "Hidden Cache", 12)
+			if prompt then
+				self:_bindPrompt(prompt, function(player)
+					self:_claimSecret(player, secretName)
+				end)
+			end
 		end
 	end
+	self._boundActivityKeys.secrets = true
 end
 
 function ActivityService:_bindLobbyActivities()
-	local plaza = self:_getPlaza()
-	if not plaza then
-		return
+	if self._activitiesBound then
+		return true
 	end
 
-	self:_bindTraining(plaza)
-	self:_bindParkour(plaza)
-	self:_bindRange(plaza)
-	self:_bindSalvage(plaza)
+	LobbyWorld.ensureActivityContent()
+
+	local plaza = self:_getPlaza()
+	if not plaza then
+		warn(("[ActivityService] %s is missing. Lobby activities will not bind."):format(self._gameFlowConfig.LobbyName))
+		return false
+	end
+
+	local trainingBound = self:_bindTraining(plaza)
+	local parkourBound = self:_bindParkour(plaza)
+	local rangeBound = self:_bindRange(plaza)
+	local salvageBound = self:_bindSalvage(plaza)
+	self:_bindTransitPrompts(plaza)
 	self:_bindSecrets(plaza)
+	self._activitiesBound = trainingBound and parkourBound and rangeBound and salvageBound
+	return self._activitiesBound
+end
+
+function ActivityService:RequestTransit(player, activityKey)
+	if not self:_canUseLobbyActivity(player) then
+		return false, "unavailable"
+	end
+	LobbyWorld.ensureActivityContent()
+	local targetInfo = ACTIVITY_TRANSIT_TARGETS[tostring(activityKey or "")]
+	if not targetInfo then
+		return false, "invalid_activity"
+	end
+	local plaza = self:_getPlaza()
+	if not plaza then
+		return false, "lobby_unavailable"
+	end
+	local area = self:_resolveNamedDescendant(plaza, targetInfo.area)
+	if not area then
+		return false, "activity_missing"
+	end
+	local entryPart = self:_resolveNamedDescendant(area, targetInfo.entry)
+	if not (entryPart and entryPart:IsA("BasePart")) then
+		return false, "entry_missing"
+	end
+	if not self:_teleportPlayerToPart(player, entryPart, Vector3.new(0, 4, 0)) then
+		return false, "teleport_failed"
+	end
+	task.defer(function()
+		if player and player.Parent == Players then
+			self:_beginActivityFromKey(player, activityKey)
+		end
+	end)
+	self:_notify(player, ("Transit routed to %s. Activity live."):format(tostring(targetInfo.area)))
+	return true, targetInfo.area
 end
 
 return ActivityService
